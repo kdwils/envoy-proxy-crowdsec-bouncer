@@ -24,9 +24,16 @@ func NewServer(config config.Config, bouncer bouncer.Bouncer) *Server {
 }
 
 func (s Server) Serve(port int) error {
+	http.HandleFunc("/healthz", s.Healthz())
 	http.HandleFunc("/check", s.Check())
 	addr := fmt.Sprintf(":%d", port)
 	return http.ListenAndServe(addr, nil)
+}
+
+func (s Server) Healthz() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 func (s Server) Check() http.HandlerFunc {
