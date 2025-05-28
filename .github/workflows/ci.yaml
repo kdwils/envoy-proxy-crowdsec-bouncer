@@ -1,0 +1,25 @@
+name: Go
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Run unit tests
+        run: nix develop --command go test -v -coverprofile=coverage.txt ./...
+
+      - name: Build binary
+        run: nix develop --command go build .
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          tags: envoy-gateway-bouncer:ci
+          push: false
