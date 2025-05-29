@@ -90,6 +90,13 @@ go test ./...
 go build -o envoy-gateway-bouncer
 ```
 
+### nix
+
+starting a shell with the project dependencies:
+```bash
+nix develop .
+```
+
 ## Envoy Gateway Configuration
 
 Configure Envoy Gateway to use the bouncer for external authorization:
