@@ -36,6 +36,12 @@ func (c *Cache) Set(ip string, bounced bool) {
 	}
 }
 
+func (c *Cache) Delete(ip string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, ip)
+}
+
 func (c *Cache) Get(ip string) (Entry, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
