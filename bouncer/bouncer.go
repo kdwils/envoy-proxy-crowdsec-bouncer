@@ -138,19 +138,19 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	}
 
 	logger = logger.With(slog.String("ip", ip))
-	logger.Debug("starting decision check", "check_ip", ip)
+	logger.Debug("starting decision check")
 
 	entry, ok := b.cache.Get(ip)
 	if ok {
 		logger.Debug("cache hit", "entry", entry)
 		if entry.Bounced {
-			logger.Info("bouncing", "ip", ip)
+			logger.Info("bouncing")
 			return true, nil
 		}
 	}
 
 	if !isValidIP(ip) {
-		logger.Error("invalid ip address", "ip", ip)
+		logger.Error("invalid ip address")
 		return false, errors.New("invalid ip address")
 	}
 
@@ -160,7 +160,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		return false, err
 	}
 	if decisions == nil {
-		logger.Debug("no decisions found for ip", "ip", ip)
+		logger.Debug("no decisions found for ip")
 		b.cache.Set(ip, false)
 		return false, nil
 	}
@@ -171,14 +171,14 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 			continue
 		}
 		if isBannedDecision(decision) {
-			logger.Info("bouncing", "ip", ip)
+			logger.Info("bouncing")
 			b.cache.Set(ip, true)
 			return true, nil
 		}
 	}
 
 	b.cache.Set(ip, false)
-	logger.Debug("no ban decisions found for ip", "ip", ip)
+	logger.Debug("no ban decisions found")
 	return false, nil
 }
 
