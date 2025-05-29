@@ -10,6 +10,7 @@ import (
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
 	"github.com/kdwils/envoy-gateway-bouncer/config"
+	"github.com/kdwils/envoy-gateway-bouncer/logger"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -46,12 +47,11 @@ func (s *Server) Serve(port int) error {
 
 func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	reqLogger := slog.New(s.logger.Handler())
-	ctx = context.WithValue(ctx, loggerKey, reqLogger)
-	return handler(ctx, req)
+	return handler(logger.WithContext(ctx, reqLogger), req)
 }
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
-	logger := FromContext(ctx)
+	logger := logger.FromContext(ctx)
 	if s.bouncer == nil {
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "internal server error"), nil
 	}
@@ -82,7 +82,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		return getDeniedResponse(envoy_type.StatusCode_Forbidden, "forbidden"), nil
 	}
 
-	logger.Info("request allowed")
+	logger.Info("ok")
 	return &auth.CheckResponse{
 		Status: &status.Status{
 			Code: 0,

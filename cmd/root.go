@@ -4,6 +4,7 @@ Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"log/slog"
 	"os"
 	"strings"
 
@@ -42,6 +43,7 @@ func initConfig() {
 	viper.SetEnvPrefix("ENVOY_BOUNCER")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", ""))
 	viper.SetDefault("server.port", 8080)
+	viper.SetDefault("server.logLevel", slog.LevelInfo)
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.apiURL", "")
 	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})

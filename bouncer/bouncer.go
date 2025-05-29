@@ -3,6 +3,8 @@ package bouncer
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 
@@ -10,6 +12,7 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
+	"github.com/kdwils/envoy-gateway-bouncer/logger"
 	"github.com/kdwils/envoy-gateway-bouncer/version"
 )
 
@@ -50,22 +53,29 @@ func newBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 }
 
 func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error) {
+	logger := logger.FromContext(ctx).With(slog.String("ip", ip), slog.String("headers", fmt.Sprintf("%+v", headers)))
+	logger.Debug("bouncer")
 	if ip == "" {
+		logger.Debug("no ip provided")
 		return false, errors.New("no ip found")
 	}
 
 	if xff, ok := headers["x-forwarded-for"]; ok {
+		logger.Debug("found xff header", "xff", xff)
 		if len(xff) > maxHeaderLength {
+			logger.Error("xff header too big", "length", len(xff))
 			return false, errors.New("header too big")
 		}
 		ips := strings.Split(xff, ",")
 		if len(ips) > maxIPs {
+			logger.Error("too many ips in xff header", "length", len(ips))
 			return false, errors.New("too many ips in chain")
 		}
 
 		for i := len(ips) - 1; i >= 0; i-- {
 			parsedIP := strings.TrimSpace(ips[i])
 			if !b.isTrustedProxy(parsedIP) && isValidIP(parsedIP) {
+				logger.Debug("using ip from xff header", "ip", parsedIP)
 				ip = parsedIP
 				break
 			}
@@ -73,27 +83,33 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	}
 
 	if !isValidIP(ip) {
+		logger.Error("invalid ip address", "ip", ip)
 		return false, errors.New("invalid ip address")
 	}
 
 	decisions, err := b.getDecision(ip)
 	if err != nil {
+		logger.Error("error getting decisions", "error", err)
 		return false, err
 	}
 	if decisions == nil {
+		logger.Debug("decisions are nil", "ip", ip)
 		return false, nil
 	}
 
 	for _, decision := range *decisions {
 		if decision.Value == nil || decision.Type == nil {
+			logger.Warn("decision has nil value or type", "decision", decision)
 			continue
 		}
 
 		if *decision.Value == ip && strings.EqualFold(*decision.Type, "ban") {
+			logger.Info("bouncing", "ip", ip)
 			return true, nil
 		}
 	}
 
+	logger.Debug("no ban decisions found for ip", "ip", ip)
 	return false, nil
 }
 

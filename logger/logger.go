@@ -1,4 +1,4 @@
-package server
+package logger
 
 import (
 	"context"
@@ -10,8 +10,8 @@ type ctxKey string
 
 const loggerKey ctxKey = "logger"
 
-// WithLogger returns a new context with the provided logger
-func WithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+// WithContext returns a new context with the provided logger
+func WithContext(ctx context.Context, logger *slog.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey, logger)
 }
 

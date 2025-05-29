@@ -10,12 +10,13 @@ import (
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-gateway-bouncer/config"
+	"github.com/kdwils/envoy-gateway-bouncer/logger"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
 
 func TestServer_Check(t *testing.T) {
-	log := FromContext(context.Background())
+	log := logger.FromContext(context.Background())
 	t.Run("bouncer not initialized", func(t *testing.T) {
 		s := NewServer(config.Config{}, nil, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})

@@ -14,7 +14,3 @@ type LiveBouncerClient interface {
 type Bouncer interface {
 	Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error)
 }
-
-func ptr[A any](thing A) *A {
-	return &thing
-}

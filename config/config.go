@@ -12,7 +12,8 @@ type Config struct {
 }
 
 type Server struct {
-	Port int `yaml:"port" json:"port"`
+	Port     int `yaml:"port" json:"port"`
+	LogLevel int `yaml:"logLevel" json:"logLevel"`
 }
 
 type Bouncer struct {
