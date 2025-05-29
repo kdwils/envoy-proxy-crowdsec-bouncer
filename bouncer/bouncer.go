@@ -97,8 +97,7 @@ func newLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 }
 
 func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error) {
-	logger := logger.FromContext(ctx).With(slog.String("ip", ip), slog.String("headers", fmt.Sprintf("%+v", headers)))
-	logger.Debug("bouncer")
+	logger := logger.FromContext(ctx).With(slog.String("method", "bounce")).With(slog.String("headers", fmt.Sprintf("%+v", headers)))
 	if ip == "" {
 		logger.Debug("no ip provided")
 		return false, errors.New("no ip found")
@@ -109,17 +108,15 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		return false, errors.New("cache is nil")
 	}
 
-	entry, ok := b.cache.Get(ip)
-	if ok {
-		logger.Debug("cache hit", "entry", entry)
-		if entry.Bounced {
-			logger.Debug("bouncing", "ip", ip)
-			return true, nil
+	var xff string
+	for k, v := range headers {
+		if strings.EqualFold(k, "x-forwarded-for") {
+			xff = v
+			break
 		}
 	}
-
-	if xff, ok := headers["x-forwarded-for"]; ok {
-		logger.Debug("found xff header", "xff", xff)
+	if xff != "" {
+		logger.Info("found xff header", "xff", xff)
 		if len(xff) > maxHeaderLength {
 			logger.Error("xff header too big", "length", len(xff))
 			return false, errors.New("header too big")
@@ -133,10 +130,21 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		for i := len(ips) - 1; i >= 0; i-- {
 			parsedIP := strings.TrimSpace(ips[i])
 			if !b.isTrustedProxy(parsedIP) && isValidIP(parsedIP) {
-				logger.Debug("using ip from xff header", "ip", parsedIP)
+				logger.Info("using ip from xff header", "ip", parsedIP)
 				ip = parsedIP
 				break
 			}
+		}
+	}
+
+	logger = logger.With(slog.String("ip", ip))
+
+	entry, ok := b.cache.Get(ip)
+	if ok {
+		logger.Debug("cache hit", "entry", entry)
+		if entry.Bounced {
+			logger.Info("bouncing", "ip", ip)
+			return true, nil
 		}
 	}
 
@@ -189,11 +197,24 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 			logger.Debug("sync context done")
 			return nil
 		case d := <-b.stream.Stream:
+			if d == nil {
+				logger.Debug("received nil decision stream")
+				continue
+			}
+
 			for _, decision := range d.Deleted {
+				if decision == nil || decision.Value == nil {
+					continue
+				}
+
 				b.cache.Delete(*decision.Value)
 			}
 
 			for _, decision := range d.New {
+				if decision == nil || decision.Value == nil {
+					continue
+				}
+
 				b.cache.Set(*decision.Value, isBannedDecision(decision))
 			}
 		}
