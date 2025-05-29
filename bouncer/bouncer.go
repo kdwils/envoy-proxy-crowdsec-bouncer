@@ -130,7 +130,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		for i := len(ips) - 1; i >= 0; i-- {
 			parsedIP := strings.TrimSpace(ips[i])
 			if !b.isTrustedProxy(parsedIP) && isValidIP(parsedIP) {
-				logger.Debug("using ip from xff header", "ip", parsedIP)
+				logger.Info("using ip from xff header", "ip", parsedIP)
 				ip = parsedIP
 				break
 			}
