@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -45,10 +46,13 @@ var serveCmd = &cobra.Command{
 		logger := slog.New(handler)
 
 		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
+		go cache.Cleanup()
+
 		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies, cache)
 		if err != nil {
 			return err
 		}
+		go bouncer.Sync(context.Background())
 
 		server := server.NewServer(config, bouncer, logger)
 		err = server.Serve(config.Server.Port)
