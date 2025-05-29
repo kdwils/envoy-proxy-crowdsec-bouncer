@@ -1,6 +1,6 @@
 package main
 
-import "github.com/kdwils/envoy-gateway-bouncer/cmd"
+import "github.com/kdwils/envoy-proxy-bouncer/cmd"
 
 func main() {
 	cmd.Execute()

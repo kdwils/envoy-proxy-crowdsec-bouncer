@@ -1,11 +1,11 @@
-# Envoy Gateway Bouncer
+# Envoy Proxy Bouncer
 
-A CrowdSec bouncer implementation for Envoy Gateway's external authorization (ext_authz) system. This bouncer validates incoming requests against CrowdSec decisions and blocks malicious traffic.
+A CrowdSec bouncer implementation for Envoy Proxy's external authorization (ext_authz) system. This bouncer validates incoming requests against CrowdSec decisions and blocks malicious traffic.
 
 ## Installation
 
 ```bash
-go install github.com/kdwils/envoy-gateway-bouncer@latest
+go install github.com/kdwils/envoy-proxy-bouncer@latest
 ```
 
 ## Configuration
@@ -41,7 +41,7 @@ cache:
 
 Run with config file:
 ```bash
-envoy-gateway-bouncer serve --config config.yaml
+envoy-proxy-bouncer serve --config config.yaml
 ```
 
 ### Environment Variables
@@ -108,14 +108,14 @@ sudo cscli bouncers add envoy-bouncer
 ### Starting the Bouncer
 
 ```bash
-envoy-gateway-bouncer serve
+envoy-proxy-bouncer serve
 ```
 
 ### Testing IP Decisions
 
 ```bash
 # Test if an IP is banned
-envoy-gateway-bouncer bounce -i 192.168.1.1
+envoy-proxy-bouncer bounce -i 192.168.1.1
 
 # Manual gRPC request test
 grpcurl -plaintext -d @ localhost:8080 envoy.service.auth.v3.Authorization/Check < request.json
@@ -150,12 +150,12 @@ Build and run with Docker:
 
 ```bash
 # Build
-docker build -t envoy-gateway-bouncer .
+docker build -t envoy-proxy-bouncer .
 
 # Run
 docker run -p 8080:8080 \
   -v $(pwd)/config.yaml:/app/config.yaml \
-  envoy-gateway-bouncer
+  envoy-proxy-bouncer
 ```
 
 ## Headers
@@ -179,7 +179,7 @@ For X-Forwarded-For headers with multiple IPs, the bouncer uses the first (leftm
 go test ./...
 
 # Build from source
-go build -o envoy-gateway-bouncer
+go build -o envoy-proxy-bouncer
 ```
 
 ### nix

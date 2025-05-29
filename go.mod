@@ -1,4 +1,4 @@
-module github.com/kdwils/envoy-gateway-bouncer
+module github.com/kdwils/envoy-proxy-bouncer
 
 go 1.24.2
 

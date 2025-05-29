@@ -10,9 +10,9 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
-	"github.com/kdwils/envoy-gateway-bouncer/cache"
-	"github.com/kdwils/envoy-gateway-bouncer/logger"
-	"github.com/kdwils/envoy-gateway-bouncer/version"
+	"github.com/kdwils/envoy-proxy-bouncer/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/version"
 )
 
 const (
@@ -78,7 +78,7 @@ func newStreamBouncer(apiKey, apiURL string) (*csbouncer.StreamBouncer, error) {
 	b := &csbouncer.StreamBouncer{
 		APIKey:    apiKey,
 		APIUrl:    apiURL,
-		UserAgent: "envoy-gateway-bouncer/" + version.Version,
+		UserAgent: "envoy-proxy-bouncer/" + version.Version,
 	}
 
 	err := b.Init()
@@ -89,7 +89,7 @@ func newLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	b := &csbouncer.LiveBouncer{
 		APIKey:    apiKey,
 		APIUrl:    apiURL,
-		UserAgent: "envoy-gateway-bouncer/" + version.Version,
+		UserAgent: "envoy-proxy-bouncer/" + version.Version,
 	}
 
 	err := b.Init()
