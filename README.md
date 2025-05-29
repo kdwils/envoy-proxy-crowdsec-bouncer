@@ -166,7 +166,7 @@ The bouncer checks for IP addresses in the following order:
 1. Configured headers (in order specified in config)
 2. Request's RemoteAddr
 
-For X-Forwarded-For headers with multiple IPs, the bouncer uses the first (leftmost) IP.
+For X-Forwarded-For headers with multiple IPs the bouncer uses the first (rightmost) non-trusted IP. For this reason, it is recommended to configure the bouncer with trusted proxies.
 
 ## Response Codes
 
