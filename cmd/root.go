@@ -1,6 +1,3 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -48,4 +45,6 @@ func initConfig() {
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.apiURL", "")
 	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})
+	viper.SetDefault("cache.ttl", "10m")
+	viper.SetDefault("cache.maxEntries", 10000)
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
+	"github.com/kdwils/envoy-gateway-bouncer/cache"
 	"github.com/kdwils/envoy-gateway-bouncer/logger"
 	"github.com/kdwils/envoy-gateway-bouncer/version"
 )
@@ -22,26 +23,45 @@ const (
 )
 
 type EnvoyBouncer struct {
+	stream         *csbouncer.StreamBouncer
 	bouncer        LiveBouncerClient
-	headers        []string
 	trustedProxies []string
+	cache          *cache.Cache
 }
 
-func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string) (Bouncer, error) {
-	bouncer, err := newBouncer(apiKey, apiURL)
+func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cache.Cache) (Bouncer, error) {
+	stream, err := newStreamBouncer(apiKey, apiURL)
+	if err != nil {
+		return nil, err
+	}
+
+	bouncer, err := newLiveBouncer(apiKey, apiURL)
 	if err != nil {
 		return nil, err
 	}
 
 	b := &EnvoyBouncer{
 		bouncer:        bouncer,
+		stream:         stream,
 		trustedProxies: trustedProxies,
+		cache:          cache,
 	}
 
 	return b, nil
 }
 
-func newBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
+func newStreamBouncer(apiKey, apiURL string) (*csbouncer.StreamBouncer, error) {
+	b := &csbouncer.StreamBouncer{
+		APIKey:    apiKey,
+		APIUrl:    apiURL,
+		UserAgent: "envoy-gateway-bouncer/" + version.Version,
+	}
+
+	err := b.Init()
+	return b, err
+}
+
+func newLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	b := &csbouncer.LiveBouncer{
 		APIKey:    apiKey,
 		APIUrl:    apiURL,
@@ -58,6 +78,20 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	if ip == "" {
 		logger.Debug("no ip provided")
 		return false, errors.New("no ip found")
+	}
+
+	if b.cache == nil {
+		logger.Debug("cache is nil")
+		return false, errors.New("cache is nil")
+	}
+
+	entry, ok := b.cache.Get(ip)
+	if ok {
+		logger.Debug("cache hit", "entry", entry)
+		if entry.Bounced {
+			logger.Debug("bouncing", "ip", ip)
+			return true, nil
+		}
 	}
 
 	if xff, ok := headers["x-forwarded-for"]; ok {
@@ -93,7 +127,8 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		return false, err
 	}
 	if decisions == nil {
-		logger.Debug("decisions are nil", "ip", ip)
+		logger.Debug("no decisions found for ip", "ip", ip)
+		b.cache.Set(ip, false)
 		return false, nil
 	}
 
@@ -102,15 +137,43 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 			logger.Warn("decision has nil value or type", "decision", decision)
 			continue
 		}
-
-		if *decision.Value == ip && strings.EqualFold(*decision.Type, "ban") {
+		if isBannedDecision(decision) {
 			logger.Info("bouncing", "ip", ip)
+			b.cache.Set(ip, true)
 			return true, nil
 		}
 	}
 
+	b.cache.Set(ip, false)
 	logger.Debug("no ban decisions found for ip", "ip", ip)
 	return false, nil
+}
+
+func (b *EnvoyBouncer) Sync(ctx context.Context) error {
+	if b.bouncer == nil {
+		return errors.New("bouncer not initialized")
+	}
+
+	logger := logger.FromContext(ctx).With(slog.String("method", "sync"))
+	go func() {
+		b.stream.Run(ctx)
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Debug("sync context done")
+			return nil
+		case d := <-b.stream.Stream:
+			for _, decision := range d.Deleted {
+				b.cache.Delete(*decision.Value)
+			}
+
+			for _, decision := range d.New {
+				b.cache.Set(*decision.Value, isBannedDecision(decision))
+			}
+		}
+	}
 }
 
 func (b *EnvoyBouncer) getDecision(ip string) (*models.GetDecisionsResponse, error) {
@@ -128,4 +191,8 @@ func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
 func isValidIP(ip string) bool {
 	parsedIP := net.ParseIP(ip)
 	return parsedIP != nil
+}
+
+func isBannedDecision(decision *models.Decision) bool {
+	return decision != nil && decision.Type != nil && strings.EqualFold(*decision.Type, "ban")
 }
