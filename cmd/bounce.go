@@ -25,7 +25,7 @@ var bounceCmd = &cobra.Command{
 			return err
 		}
 
-		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.Headers)
+		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies)
 		if err != nil {
 			return err
 		}

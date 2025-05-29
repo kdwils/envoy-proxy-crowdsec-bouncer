@@ -19,10 +19,8 @@ server:
 bouncer:
   apiKey: "your-crowdsec-bouncer-api-key"  # required
   apiURL: "http://crowdsec:8080"           # required
-  headers:                                 # optional (defaults to X-Forwarded-For, X-Real-IP, X-Client-IP, True-Client-IP)
-    - "X-Forwarded-For"
-    - "X-Real-IP"
-    - "True-Client-IP"
+  trustedProxies:                          # optional (defaults to 127.0.0.1, ::1)
+    - my-trusted-proxy-1
 ```
 
 ### Getting a Bouncer API Key

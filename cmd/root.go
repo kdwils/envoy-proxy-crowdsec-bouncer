@@ -44,6 +44,5 @@ func initConfig() {
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.apiURL", "")
-	viper.SetDefault("bouncer.headers", []string{"X-Forwarded-For", "X-Real-IP", "X-Client-IP", "True-Client-IP"})
-
+	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})
 }

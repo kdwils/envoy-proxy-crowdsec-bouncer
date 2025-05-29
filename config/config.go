@@ -16,9 +16,9 @@ type Server struct {
 }
 
 type Bouncer struct {
-	ApiKey  string   `yaml:"apiKey" json:"apiKey"`
-	ApiURL  string   `yaml:"apiURL" json:"apiURL"`
-	Headers []string `yaml:"headers" json:"headers"`
+	ApiKey         string   `yaml:"apiKey" json:"apiKey"`
+	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
+	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
 }
 
 func New(v *viper.Viper) (Config, error) {
