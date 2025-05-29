@@ -42,6 +42,7 @@ func initConfig() {
 
 	viper.SetEnvPrefix("ENVOY_BOUNCER")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", ""))
+	viper.AutomaticEnv()
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.logLevel", slog.LevelInfo)
 	viper.SetDefault("bouncer.apiKey", "")
