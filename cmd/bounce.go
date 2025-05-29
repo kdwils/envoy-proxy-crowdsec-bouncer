@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
+	"github.com/kdwils/envoy-gateway-bouncer/cache"
 	"github.com/kdwils/envoy-gateway-bouncer/config"
 
 	"github.com/spf13/cobra"
@@ -24,7 +25,8 @@ var bounceCmd = &cobra.Command{
 			return err
 		}
 
-		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies)
+		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
+		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies, cache)
 		if err != nil {
 			return err
 		}

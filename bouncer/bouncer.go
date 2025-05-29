@@ -12,6 +12,7 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
+	"github.com/kdwils/envoy-gateway-bouncer/cache"
 	"github.com/kdwils/envoy-gateway-bouncer/logger"
 	"github.com/kdwils/envoy-gateway-bouncer/version"
 )
@@ -23,11 +24,11 @@ const (
 
 type EnvoyBouncer struct {
 	bouncer        LiveBouncerClient
-	headers        []string
 	trustedProxies []string
+	cache          *cache.Cache
 }
 
-func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string) (Bouncer, error) {
+func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cache.Cache) (Bouncer, error) {
 	bouncer, err := newBouncer(apiKey, apiURL)
 	if err != nil {
 		return nil, err
@@ -36,6 +37,7 @@ func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string) (Bouncer, e
 	b := &EnvoyBouncer{
 		bouncer:        bouncer,
 		trustedProxies: trustedProxies,
+		cache:          cache,
 	}
 
 	return b, nil
@@ -58,6 +60,17 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	if ip == "" {
 		logger.Debug("no ip provided")
 		return false, errors.New("no ip found")
+	}
+
+	if b.cache == nil {
+		logger.Debug("cache is nil")
+		return false, errors.New("cache is nil")
+	}
+
+	entry, ok := b.cache.Get(ip)
+	if ok {
+		logger.Debug("cache hit", "entry", entry)
+		return entry.Bounced, nil
 	}
 
 	if xff, ok := headers["x-forwarded-for"]; ok {
@@ -94,6 +107,8 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	}
 	if decisions == nil {
 		logger.Debug("decisions are nil", "ip", ip)
+		b.cache.Set(ip, false)
+		logger.Debug("added ok ip to cache", "ip", ip)
 		return false, nil
 	}
 
@@ -105,11 +120,15 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 
 		if *decision.Value == ip && strings.EqualFold(*decision.Type, "ban") {
 			logger.Info("bouncing", "ip", ip)
+			b.cache.Set(ip, true)
+			logger.Debug("added bounced ip to cache", "ip", ip)
 			return true, nil
 		}
 	}
 
 	logger.Debug("no ban decisions found for ip", "ip", ip)
+	b.cache.Set(ip, false)
+	logger.Debug("added ok ip to cache", "ip", ip)
 	return false, nil
 }
 

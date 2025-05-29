@@ -48,4 +48,6 @@ func initConfig() {
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.apiURL", "")
 	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})
+	viper.SetDefault("cache.ttl", "5m")
+	viper.SetDefault("cache.maxEntries", 10000)
 }
