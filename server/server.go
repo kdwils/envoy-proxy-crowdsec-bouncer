@@ -31,7 +31,7 @@ func NewServer(config config.Config, bouncer bouncer.Bouncer, logger *slog.Logge
 	}
 }
 
-func (s *Server) Serve(port int) error {
+func (s *Server) Serve(ctx context.Context, port int) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
@@ -42,6 +42,14 @@ func (s *Server) Serve(port int) error {
 	)
 	auth.RegisterAuthorizationServer(grpcServer, s)
 	reflection.Register(grpcServer)
+
+	go func() {
+		<-ctx.Done()
+		s.logger.Info("shutting down gRPC server...")
+		grpcServer.GracefulStop()
+		s.logger.Info("gRPC server shutdown complete")
+	}()
+
 	return grpcServer.Serve(lis)
 }
 

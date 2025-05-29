@@ -8,8 +8,6 @@ import (
 	"net"
 	"strings"
 
-	"slices"
-
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
 	"github.com/kdwils/envoy-gateway-bouncer/cache"
@@ -25,12 +23,17 @@ const (
 type EnvoyBouncer struct {
 	stream         *csbouncer.StreamBouncer
 	bouncer        LiveBouncerClient
-	trustedProxies []string
+	trustedProxies []*net.IPNet
 	cache          *cache.Cache
 }
 
 func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cache.Cache) (Bouncer, error) {
 	stream, err := newStreamBouncer(apiKey, apiURL)
+	if err != nil {
+		return nil, err
+	}
+
+	addresses, err := parseProxyAddresses(trustedProxies)
 	if err != nil {
 		return nil, err
 	}
@@ -43,11 +46,32 @@ func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cach
 	b := &EnvoyBouncer{
 		bouncer:        bouncer,
 		stream:         stream,
-		trustedProxies: trustedProxies,
+		trustedProxies: addresses,
 		cache:          cache,
 	}
 
 	return b, nil
+}
+
+func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
+	ipNets := make([]*net.IPNet, 0, len(trustedProxies))
+	for _, proxy := range trustedProxies {
+		if !strings.Contains(proxy, "/") {
+			if strings.Contains(proxy, ":") {
+				proxy = proxy + "/128" // IPv6
+			} else {
+				proxy = proxy + "/32" // IPv4
+			}
+		}
+
+		_, ipNet, err := net.ParseCIDR(proxy)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy address %s: %v", proxy, err)
+		}
+		ipNets = append(ipNets, ipNet)
+	}
+
+	return ipNets, nil
 }
 
 func newStreamBouncer(apiKey, apiURL string) (*csbouncer.StreamBouncer, error) {
@@ -185,7 +209,17 @@ func (b *EnvoyBouncer) getDecision(ip string) (*models.GetDecisionsResponse, err
 }
 
 func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
-	return slices.Contains(b.trustedProxies, ip)
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+
+	for _, ipNet := range b.trustedProxies {
+		if ipNet.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 func isValidIP(ip string) bool {
