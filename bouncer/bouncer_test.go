@@ -3,6 +3,7 @@ package bouncer
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -169,9 +170,14 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
 		b := &EnvoyBouncer{
-			bouncer:        mockBouncer,
-			trustedProxies: []string{"10.0.0.1"},
-			cache:          cache,
+			bouncer: mockBouncer,
+			trustedProxies: []*net.IPNet{
+				{
+					IP:   net.ParseIP("10.0.0.1"),
+					Mask: net.CIDRMask(32, 32),
+				},
+			},
+			cache: cache,
 		}
 		headers := map[string]string{
 			"x-forwarded-for": "192.168.1.1,10.0.0.1",
@@ -185,5 +191,98 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.True(t, ok)
 		assert.False(t, entry.Bounced)
 		assert.False(t, entry.Expired())
+	})
+}
+
+func TestEnvoyBouncer_isTrustedProxy(t *testing.T) {
+	t.Run("invalid ip", func(t *testing.T) {
+		b := &EnvoyBouncer{}
+		result := b.isTrustedProxy("not-an-ip")
+		assert.False(t, result)
+	})
+
+	t.Run("ip in trusted range", func(t *testing.T) {
+		b := &EnvoyBouncer{
+			trustedProxies: []*net.IPNet{
+				{
+					IP:   net.ParseIP("192.168.1.0"),
+					Mask: net.CIDRMask(24, 32),
+				},
+			},
+		}
+		result := b.isTrustedProxy("192.168.1.100")
+		assert.True(t, result)
+	})
+
+	t.Run("ip not in trusted range", func(t *testing.T) {
+		b := &EnvoyBouncer{
+			trustedProxies: []*net.IPNet{
+				{
+					IP:   net.ParseIP("192.168.1.0"),
+					Mask: net.CIDRMask(24, 32),
+				},
+			},
+		}
+		result := b.isTrustedProxy("192.168.2.1")
+		assert.False(t, result)
+	})
+
+	t.Run("multiple trusted ranges", func(t *testing.T) {
+		b := &EnvoyBouncer{
+			trustedProxies: []*net.IPNet{
+				{
+					IP:   net.ParseIP("192.168.1.0"),
+					Mask: net.CIDRMask(24, 32),
+				},
+				{
+					IP:   net.ParseIP("10.0.0.0"),
+					Mask: net.CIDRMask(8, 32),
+				},
+			},
+		}
+		result := b.isTrustedProxy("10.1.1.1")
+		assert.True(t, result)
+	})
+}
+
+func TestParseProxyAddresses(t *testing.T) {
+	t.Run("valid IPv4", func(t *testing.T) {
+		proxies := []string{"192.168.1.1"}
+		result, err := parseProxyAddresses(proxies)
+		assert.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, "192.168.1.1/32", result[0].String())
+	})
+
+	t.Run("valid IPv6", func(t *testing.T) {
+		proxies := []string{"2001:db8::1"}
+		result, err := parseProxyAddresses(proxies)
+		assert.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, "2001:db8::1/128", result[0].String())
+	})
+
+	t.Run("valid CIDR", func(t *testing.T) {
+		proxies := []string{"192.168.1.0/24", "2001:db8::/64"}
+		result, err := parseProxyAddresses(proxies)
+		assert.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, "192.168.1.0/24", result[0].String())
+		assert.Equal(t, "2001:db8::/64", result[1].String())
+	})
+
+	t.Run("invalid address", func(t *testing.T) {
+		proxies := []string{"invalid"}
+		result, err := parseProxyAddresses(proxies)
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "invalid proxy address")
+	})
+
+	t.Run("empty list", func(t *testing.T) {
+		proxies := []string{}
+		result, err := parseProxyAddresses(proxies)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
 	})
 }
