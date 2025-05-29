@@ -203,10 +203,18 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 			}
 
 			for _, decision := range d.Deleted {
+				if decision == nil || decision.Value == nil {
+					continue
+				}
+
 				b.cache.Delete(*decision.Value)
 			}
 
 			for _, decision := range d.New {
+				if decision == nil || decision.Value == nil {
+					continue
+				}
+
 				b.cache.Set(*decision.Value, isBannedDecision(decision))
 			}
 		}
