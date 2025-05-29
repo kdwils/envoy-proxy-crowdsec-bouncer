@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -18,12 +19,14 @@ type Server struct {
 	auth.UnimplementedAuthorizationServer
 	bouncer bouncer.Bouncer
 	config  config.Config
+	logger  *slog.Logger
 }
 
-func NewServer(config config.Config, bouncer bouncer.Bouncer) *Server {
+func NewServer(config config.Config, bouncer bouncer.Bouncer, logger *slog.Logger) *Server {
 	return &Server{
 		config:  config,
 		bouncer: bouncer,
+		logger:  logger,
 	}
 }
 
@@ -33,13 +36,22 @@ func (s *Server) Serve(port int) error {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(s.loggerInterceptor),
+	)
 	auth.RegisterAuthorizationServer(grpcServer, s)
 	reflection.Register(grpcServer)
 	return grpcServer.Serve(lis)
 }
 
+func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	reqLogger := slog.New(s.logger.Handler())
+	ctx = context.WithValue(ctx, loggerKey, reqLogger)
+	return handler(ctx, req)
+}
+
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
+	logger := FromContext(ctx)
 	if s.bouncer == nil {
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "internal server error"), nil
 	}
@@ -51,20 +63,26 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		}
 	}
 
+	logger = logger.With(slog.String("ip", ip))
+
 	headers := make(map[string]string)
 	if req.Attributes != nil && req.Attributes.Request != nil && req.Attributes.Request.Http != nil {
 		headers = req.Attributes.Request.Http.Headers
 	}
+	logger = logger.With(slog.String("headers", fmt.Sprintf("%+v", headers)))
 
-	bounce, err := s.bouncer.Bounce(ip, headers)
+	bounce, err := s.bouncer.Bounce(ctx, ip, headers)
 	if err != nil {
+		logger.Error("bounce check failed", "error", err)
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "internal error"), nil
 	}
 
 	if bounce {
+		logger.Error("bouncing request")
 		return getDeniedResponse(envoy_type.StatusCode_Forbidden, "forbidden"), nil
 	}
 
+	logger.Info("request allowed")
 	return &auth.CheckResponse{
 		Status: &status.Status{
 			Code: 0,

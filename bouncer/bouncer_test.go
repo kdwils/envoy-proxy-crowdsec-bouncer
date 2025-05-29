@@ -1,6 +1,7 @@
 package bouncer
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
 		b := &EnvoyBouncer{bouncer: mockBouncer}
-		banned, err := b.Bounce("", nil)
+		banned, err := b.Bounce(context.TODO(), "", nil)
 		assert.Error(t, err)
 		assert.Equal(t, "no ip found", err.Error())
 		assert.False(t, banned)
@@ -34,7 +35,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		headers := map[string]string{
 			"x-forwarded-for": strings.Repeat("a", maxHeaderLength+1),
 		}
-		banned, err := b.Bounce("192.168.1.1", headers)
+		banned, err := b.Bounce(context.TODO(), "192.168.1.1", headers)
 		assert.Error(t, err)
 		assert.Equal(t, "header too big", err.Error())
 		assert.False(t, banned)
@@ -53,7 +54,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		headers := map[string]string{
 			"x-forwarded-for": strings.Join(ips, ","),
 		}
-		banned, err := b.Bounce("192.168.1.1", headers)
+		banned, err := b.Bounce(context.TODO(), "192.168.1.1", headers)
 		assert.Error(t, err)
 		assert.Equal(t, "too many ips in chain", err.Error())
 		assert.False(t, banned)
@@ -65,7 +66,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
 		b := &EnvoyBouncer{bouncer: mockBouncer}
-		banned, err := b.Bounce("not-an-ip", nil)
+		banned, err := b.Bounce(context.TODO(), "not-an-ip", nil)
 		assert.Error(t, err)
 		assert.Equal(t, "invalid ip address", err.Error())
 		assert.False(t, banned)
@@ -78,7 +79,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
 		b := &EnvoyBouncer{bouncer: mockBouncer}
 		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, errors.New("bouncer error"))
-		banned, err := b.Bounce("192.168.1.1", nil)
+		banned, err := b.Bounce(context.TODO(), "192.168.1.1", nil)
 		assert.Error(t, err)
 		assert.Equal(t, "bouncer error", err.Error())
 		assert.False(t, banned)
@@ -91,7 +92,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
 		b := &EnvoyBouncer{bouncer: mockBouncer}
 		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, nil)
-		banned, err := b.Bounce("192.168.1.1", nil)
+		banned, err := b.Bounce(context.TODO(), "192.168.1.1", nil)
 		assert.NoError(t, err)
 		assert.False(t, banned)
 	})
@@ -111,7 +112,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 			},
 		}
 		mockBouncer.EXPECT().Get(ip).Return(decisions, nil)
-		banned, err := b.Bounce(ip, nil)
+		banned, err := b.Bounce(context.TODO(), ip, nil)
 		assert.NoError(t, err)
 		assert.True(t, banned)
 	})
@@ -131,7 +132,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 			},
 		}
 		mockBouncer.EXPECT().Get(ip).Return(decisions, nil)
-		banned, err := b.Bounce(ip, nil)
+		banned, err := b.Bounce(context.TODO(), ip, nil)
 		assert.NoError(t, err)
 		assert.False(t, banned)
 	})
@@ -149,7 +150,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 			"x-forwarded-for": "192.168.1.1,10.0.0.1",
 		}
 		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, nil)
-		banned, err := b.Bounce("1.1.1.1", headers)
+		banned, err := b.Bounce(context.TODO(), "1.1.1.1", headers)
 		assert.NoError(t, err)
 		assert.False(t, banned)
 	})

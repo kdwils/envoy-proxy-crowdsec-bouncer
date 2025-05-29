@@ -1,6 +1,8 @@
 package bouncer
 
 import (
+	"context"
+
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 )
 
@@ -10,7 +12,7 @@ type LiveBouncerClient interface {
 }
 
 type Bouncer interface {
-	Bounce(ip string, headers map[string]string) (bool, error)
+	Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error)
 }
 
 func ptr[A any](thing A) *A {

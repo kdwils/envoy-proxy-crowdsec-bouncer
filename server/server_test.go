@@ -15,8 +15,9 @@ import (
 )
 
 func TestServer_Check(t *testing.T) {
+	log := FromContext(context.Background())
 	t.Run("bouncer not initialized", func(t *testing.T) {
-		s := NewServer(config.Config{}, nil)
+		s := NewServer(config.Config{}, nil, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
@@ -29,10 +30,10 @@ func TestServer_Check(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockBouncer.EXPECT().
-			Bounce("", gomock.Any()).
+			Bounce(gomock.Any(), "", gomock.Any()).
 			Return(false, fmt.Errorf("test error"))
 
-		s := NewServer(config.Config{}, mockBouncer)
+		s := NewServer(config.Config{}, mockBouncer, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
@@ -45,10 +46,10 @@ func TestServer_Check(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockBouncer.EXPECT().
-			Bounce("192.0.2.1", gomock.Any()).
+			Bounce(gomock.Any(), "192.0.2.1", gomock.Any()).
 			Return(true, nil)
 
-		s := NewServer(config.Config{}, mockBouncer)
+		s := NewServer(config.Config{}, mockBouncer, log)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -75,10 +76,10 @@ func TestServer_Check(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockBouncer.EXPECT().
-			Bounce("192.0.2.1", gomock.Any()).
+			Bounce(gomock.Any(), "192.0.2.1", gomock.Any()).
 			Return(false, nil)
 
-		s := NewServer(config.Config{}, mockBouncer)
+		s := NewServer(config.Config{}, mockBouncer, log)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{

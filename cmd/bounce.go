@@ -29,7 +29,7 @@ var bounceCmd = &cobra.Command{
 			return err
 		}
 
-		bounce, err := bouncer.Bounce(ip, nil)
+		bounce, err := bouncer.Bounce(cmd.Context(), ip, nil)
 		if err != nil {
 			return err
 		}

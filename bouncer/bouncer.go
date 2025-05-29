@@ -1,6 +1,7 @@
 package bouncer
 
 import (
+	"context"
 	"errors"
 	"net"
 	"strings"
@@ -48,7 +49,7 @@ func newBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	return b, err
 }
 
-func (b *EnvoyBouncer) Bounce(ip string, headers map[string]string) (bool, error) {
+func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error) {
 	if ip == "" {
 		return false, errors.New("no ip found")
 	}
