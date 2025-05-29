@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
-	"strings"
+	"os/signal"
+	"syscall"
 
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
 	"github.com/kdwils/envoy-gateway-bouncer/cache"
@@ -22,21 +22,6 @@ var serveCmd = &cobra.Command{
 	Long:  `serve the envoy gateway bouncer`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v := viper.GetViper()
-		required := []string{
-			"bouncer.apiKey",
-			"bouncer.apiURL",
-		}
-
-		var missingKeys []string
-		for _, key := range required {
-			if !viper.IsSet(key) || viper.GetString(key) == "" {
-				missingKeys = append(missingKeys, key)
-			}
-		}
-		if len(missingKeys) > 0 {
-			return fmt.Errorf("missing required configurations: %s", strings.Join(missingKeys, ", "))
-		}
-
 		config, err := config.New(v)
 		if err != nil {
 			return err
@@ -54,8 +39,17 @@ var serveCmd = &cobra.Command{
 		}
 		go bouncer.Sync(context.Background())
 
+		ctx, cancel := context.WithCancel(context.Background())
 		server := server.NewServer(config, bouncer, logger)
-		err = server.Serve(config.Server.Port)
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			sig := <-sigCh
+			logger.Info("received signal", "signal", sig)
+			cancel()
+		}()
+
+		err = server.Serve(ctx, config.Server.Port)
 		return err
 	},
 }
