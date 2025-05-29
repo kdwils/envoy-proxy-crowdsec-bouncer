@@ -13,14 +13,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v16
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
 
       - name: Run unit tests
-        run: nix develop --command go test -v -coverprofile=coverage.txt ./...
+        run: go test -v -coverprofile=coverage.txt ./...
 
       - name: Build binary
-        run: nix develop --command go build .
+        run: CGO_ENABLED=0 go build -o envoy-gateway-bouncer .
 
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main'
