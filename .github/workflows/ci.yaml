@@ -23,7 +23,7 @@ jobs:
         run: go test -v -coverprofile=coverage.txt ./...
 
       - name: Build binary
-        run: CGO_ENABLED=0 go build -o envoy-gateway-bouncer .
+        run: CGO_ENABLED=0 go build -o envoy-proxy-bouncer .
 
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main'
@@ -37,7 +37,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5.5.1
         with:
-          images: ghcr.io/kdwils/envoy-gateway-bouncer
+          images: ghcr.io/kdwils/envoy-proxy-bouncer
           tags: |
             type=sha,format=long
             type=ref,event=tag

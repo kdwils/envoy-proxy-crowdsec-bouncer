@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
-	"github.com/kdwils/envoy-gateway-bouncer/bouncer/mocks"
-	"github.com/kdwils/envoy-gateway-bouncer/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )

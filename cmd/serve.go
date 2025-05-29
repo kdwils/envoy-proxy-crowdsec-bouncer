@@ -7,10 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
-	"github.com/kdwils/envoy-gateway-bouncer/cache"
-	"github.com/kdwils/envoy-gateway-bouncer/config"
-	"github.com/kdwils/envoy-gateway-bouncer/server"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

@@ -8,9 +8,9 @@ import (
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	"github.com/kdwils/envoy-gateway-bouncer/bouncer/mocks"
-	"github.com/kdwils/envoy-gateway-bouncer/config"
-	"github.com/kdwils/envoy-gateway-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )

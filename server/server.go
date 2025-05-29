@@ -8,9 +8,9 @@ import (
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
-	"github.com/kdwils/envoy-gateway-bouncer/config"
-	"github.com/kdwils/envoy-gateway-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
