@@ -4,11 +4,27 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 )
 
 type ctxKey string
 
 const loggerKey ctxKey = "logger"
+
+func LevelFromString(level string) slog.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
 
 // WithContext returns a new context with the provided logger
 func WithContext(ctx context.Context, logger *slog.Logger) context.Context {

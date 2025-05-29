@@ -10,7 +10,9 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
+	"github.com/kdwils/envoy-proxy-bouncer/version"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -27,8 +29,12 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
-		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.Level(config.Server.LogLevel)})
+		level := logger.LevelFromString(config.Server.LogLevel)
+
+		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		logger := slog.New(handler)
+
+		logger.Info("starting envoy-proxy-bouncer", "version", version.Version, "logLevel", level)
 
 		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
 		go cache.Cleanup()

@@ -116,21 +116,21 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		}
 	}
 	if xff != "" {
-		logger.Info("found xff header", "xff", xff)
+		logger.Debug("found xff header", "xff", xff)
 		if len(xff) > maxHeaderLength {
-			logger.Error("xff header too big", "length", len(xff))
+			logger.Warn("xff header too big", "length", len(xff))
 			return false, errors.New("header too big")
 		}
 		ips := strings.Split(xff, ",")
 		if len(ips) > maxIPs {
-			logger.Error("too many ips in xff header", "length", len(ips))
+			logger.Warn("too many ips in xff header", "length", len(ips))
 			return false, errors.New("too many ips in chain")
 		}
 
 		for i := len(ips) - 1; i >= 0; i-- {
 			parsedIP := strings.TrimSpace(ips[i])
 			if !b.isTrustedProxy(parsedIP) && isValidIP(parsedIP) {
-				logger.Info("using ip from xff header", "ip", parsedIP)
+				logger.Debug("using ip from xff header", "ip", parsedIP)
 				ip = parsedIP
 				break
 			}
@@ -138,6 +138,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	}
 
 	logger = logger.With(slog.String("ip", ip))
+	logger.Debug("starting decision check", "check_ip", ip)
 
 	entry, ok := b.cache.Get(ip)
 	if ok {
@@ -234,7 +235,6 @@ func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
 	if parsed == nil {
 		return false
 	}
-
 	for _, ipNet := range b.trustedProxies {
 		if ipNet.Contains(parsed) {
 			return true
