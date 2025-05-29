@@ -10,17 +10,88 @@ go install github.com/kdwils/envoy-gateway-bouncer@latest
 
 ## Configuration
 
-The bouncer requires a configuration file (`config.yaml`):
+The bouncer can be configured using:
+1. Configuration file (YAML or JSON)
+2. Environment variables
+3. Command line flags
+
+### Configuration File
+
+Create a `config.yaml` file:
 
 ```yaml
 server:
   port: 8080                               # optional (defaults to 8080)
+  logLevel: "info"                         # optional (defaults to info)
 
 bouncer:
   apiKey: "your-crowdsec-bouncer-api-key"  # required
   apiURL: "http://crowdsec:8080"           # required
+  
   trustedProxies:                          # optional (defaults to 127.0.0.1, ::1)
-    - my-trusted-proxy-1
+    - 192.168.0.1                          # IPv4
+    - 2001:db8::1                          # IPv6
+    - 10.0.0.0/8                           # CIDR range
+    - 100.64.0.0/10                        # CIDR range
+
+cache:
+  ttl: "10m"                               # optional (defaults to 10m)
+  maxEntries: 10000                        # optional (defaults to 10000) 
+```
+
+Run with config file:
+```bash
+envoy-gateway-bouncer serve --config config.yaml
+```
+
+### Environment Variables
+
+All configuration options can be set via environment variables using the prefix `ENVOY_BOUNCER_` and replacing dots with underscores:
+
+```bash
+# Server configuration
+export ENVOY_BOUNCER_SERVER_PORT=8080
+export ENVOY_BOUNCER_SERVER_LOG_LEVEL=debug
+
+# Bouncer configuration
+export ENVOY_BOUNCER_BOUNCER_API_KEY=your-api-key
+export ENVOY_BOUNCER_BOUNCER_API_URL=http://crowdsec:8080
+export ENVOY_BOUNCER_BOUNCER_TRUSTED_PROXIES=192.168.0.1,10.0.0.0/8
+
+# Cache configuration
+export ENVOY_BOUNCER_CACHE_TTL=10m
+export ENVOY_BOUNCER_CACHE_MAX_ENTRIES=10000
+```
+
+### Configuration Precedence
+
+The configuration is loaded in the following order (last wins):
+1. Default values
+2. Configuration file
+3. Environment variables
+4. Command line flags
+
+### Required Configuration
+
+The following configuration options are required:
+- `bouncer.apiKey`: CrowdSec bouncer API key
+- `bouncer.apiURL`: CrowdSec API URL
+
+### Default Values
+
+```yaml
+server:
+  port: 8080
+  logLevel: "info"
+
+bouncer:
+  trustedProxies:
+    - "127.0.0.1"
+    - "::1"
+
+cache:
+  ttl: "10m"
+  maxEntries: 10000
 ```
 
 ### Getting a Bouncer API Key
