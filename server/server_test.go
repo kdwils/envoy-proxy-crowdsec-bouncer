@@ -1,10 +1,13 @@
 package server
 
 import (
-	"net/http"
-	"net/http/httptest"
+	"context"
+	"fmt"
 	"testing"
 
+	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+
+	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-gateway-bouncer/config"
 	"github.com/stretchr/testify/assert"
@@ -12,30 +15,12 @@ import (
 )
 
 func TestServer_Check(t *testing.T) {
-	t.Run("method not allowed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		s := NewServer(config.Config{}, nil)
-		req := httptest.NewRequest(http.MethodPost, "/check", nil)
-		w := httptest.NewRecorder()
-
-		s.Check()(w, req)
-
-		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
-	})
-
 	t.Run("bouncer not initialized", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
 		s := NewServer(config.Config{}, nil)
-		req := httptest.NewRequest(http.MethodGet, "/check", nil)
-		w := httptest.NewRecorder()
+		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
-		s.Check()(w, req)
-
-		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.NoError(t, err)
+		assert.Equal(t, int32(500), resp.Status.Code)
 	})
 
 	t.Run("bouncer error", func(t *testing.T) {
@@ -44,16 +29,14 @@ func TestServer_Check(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockBouncer.EXPECT().
-			Bounce(gomock.Any()).
-			Return(false, assert.AnError)
+			Bounce("", gomock.Any()).
+			Return(false, fmt.Errorf("test error"))
 
 		s := NewServer(config.Config{}, mockBouncer)
-		req := httptest.NewRequest(http.MethodGet, "/check", nil)
-		w := httptest.NewRecorder()
+		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
-		s.Check()(w, req)
-
-		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.NoError(t, err)
+		assert.Equal(t, int32(500), resp.Status.Code)
 	})
 
 	t.Run("request blocked", func(t *testing.T) {
@@ -62,16 +45,28 @@ func TestServer_Check(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockBouncer.EXPECT().
-			Bounce(gomock.Any()).
+			Bounce("192.0.2.1", gomock.Any()).
 			Return(true, nil)
 
 		s := NewServer(config.Config{}, mockBouncer)
-		req := httptest.NewRequest(http.MethodGet, "/check", nil)
-		w := httptest.NewRecorder()
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Address: "192.0.2.1",
+							},
+						},
+					},
+				},
+			},
+		}
 
-		s.Check()(w, req)
+		resp, err := s.Check(context.Background(), req)
 
-		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.NoError(t, err)
+		assert.Equal(t, int32(403), resp.Status.Code)
 	})
 
 	t.Run("request allowed", func(t *testing.T) {
@@ -79,14 +74,28 @@ func TestServer_Check(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
-		mockBouncer.EXPECT().Bounce(gomock.Any()).Return(false, nil)
+		mockBouncer.EXPECT().
+			Bounce("192.0.2.1", gomock.Any()).
+			Return(false, nil)
 
 		s := NewServer(config.Config{}, mockBouncer)
-		req := httptest.NewRequest(http.MethodGet, "/check", nil)
-		w := httptest.NewRecorder()
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Address: "192.0.2.1",
+							},
+						},
+					},
+				},
+			},
+		}
 
-		s.Check()(w, req)
+		resp, err := s.Check(context.Background(), req)
 
-		assert.Equal(t, http.StatusOK, w.Code)
+		assert.NoError(t, err)
+		assert.Equal(t, int32(0), resp.Status.Code) // OK
 	})
 }

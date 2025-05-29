@@ -10,7 +10,6 @@
 package mocks
 
 import (
-	http "net/http"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -41,16 +40,16 @@ func (m *MockBouncer) EXPECT() *MockBouncerMockRecorder {
 }
 
 // Bounce mocks base method.
-func (m *MockBouncer) Bounce(r *http.Request) (bool, error) {
+func (m *MockBouncer) Bounce(ip string, headers map[string]string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Bounce", r)
+	ret := m.ctrl.Call(m, "Bounce", ip, headers)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Bounce indicates an expected call of Bounce.
-func (mr *MockBouncerMockRecorder) Bounce(r any) *gomock.Call {
+func (mr *MockBouncerMockRecorder) Bounce(ip, headers any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Bounce", reflect.TypeOf((*MockBouncer)(nil).Bounce), r)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Bounce", reflect.TypeOf((*MockBouncer)(nil).Bounce), ip, headers)
 }

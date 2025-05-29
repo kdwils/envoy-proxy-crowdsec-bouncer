@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"log"
-	"net/http"
 
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
 	"github.com/kdwils/envoy-gateway-bouncer/config"
@@ -30,13 +29,7 @@ var bounceCmd = &cobra.Command{
 			return err
 		}
 
-		req := &http.Request{
-			Header: http.Header{
-				"X-Forwarded-For": []string{ip},
-			},
-		}
-
-		bounce, err := bouncer.Bounce(req)
+		bounce, err := bouncer.Bounce(ip, nil)
 		if err != nil {
 			return err
 		}

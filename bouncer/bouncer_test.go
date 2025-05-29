@@ -2,7 +2,6 @@ package bouncer
 
 import (
 	"errors"
-	"net/http"
 	"strings"
 	"testing"
 
@@ -13,235 +12,145 @@ import (
 )
 
 func TestEnvoyBouncer_Bounce(t *testing.T) {
-	t.Run("error getting decisions", func(t *testing.T) {
+
+	t.Run("empty ip", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
+
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, errors.New("error getting decisions"))
-
-		bouncer := EnvoyBouncer{
-			bouncer: mockBouncer,
-		}
-
-		req := &http.Request{
-			RemoteAddr: "192.168.1.1:12345",
-		}
-
-		bounce, err := bouncer.Bounce(req)
+		b := &EnvoyBouncer{bouncer: mockBouncer}
+		banned, err := b.Bounce("", nil)
 		assert.Error(t, err)
-		assert.False(t, bounce)
+		assert.Equal(t, "no ip found", err.Error())
+		assert.False(t, banned)
 	})
 
-	t.Run("no decisions found", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		mockBouncer.EXPECT().Get("192.168.1.1").Return(&models.GetDecisionsResponse{}, nil)
-
-		bouncer := EnvoyBouncer{
-			bouncer: mockBouncer,
-		}
-
-		req := &http.Request{
-			RemoteAddr: "192.168.1.1:12345",
-		}
-
-		bounce, err := bouncer.Bounce(req)
-		assert.NoError(t, err)
-		assert.False(t, bounce)
-	})
-
-	t.Run("decision found", func(t *testing.T) {
+	t.Run("header too big", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		mockBouncer.EXPECT().Get("192.168.1.1").Return(&models.GetDecisionsResponse{
-			{
-				Value:    ptr("192.168.1.1"),
-				Scope:    ptr("ip"),
-				Duration: ptr("1h"),
-				Type:     ptr("ban"),
-			},
-		}, nil)
-
-		bouncer := EnvoyBouncer{
-			bouncer: mockBouncer,
+		b := &EnvoyBouncer{bouncer: mockBouncer}
+		headers := map[string]string{
+			"x-forwarded-for": strings.Repeat("a", maxHeaderLength+1),
 		}
-
-		req := &http.Request{
-			RemoteAddr: "192.168.1.1:12345",
-		}
-
-		bounce, err := bouncer.Bounce(req)
-		assert.NoError(t, err)
-		assert.True(t, bounce)
-	})
-}
-
-func TestEnvoyBouncer_getRequestIP(t *testing.T) {
-	t.Run("get ip from header", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			headers: []string{"X-Real-IP"},
-		}
-
-		req := &http.Request{
-			Header: make(http.Header),
-		}
-		req.Header.Set("X-Real-IP", "192.168.1.1")
-
-		ip := bouncer.getRequestIP(req)
-		assert.Equal(t, "192.168.1.1", ip)
-	})
-
-	t.Run("get ip from x-forwarded-for header with trusted proxy", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			headers:        []string{"X-Forwarded-For"},
-			trustedProxies: []string{"10.0.0.1"},
-		}
-
-		req := &http.Request{
-			Header: make(http.Header),
-		}
-		req.Header.Set("X-Forwarded-For", "192.168.1.1, 10.0.0.1")
-
-		ip := bouncer.getRequestIP(req)
-		assert.Equal(t, "192.168.1.1", ip)
-	})
-
-	t.Run("get ip from remote addr", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			headers: []string{},
-		}
-
-		req := &http.Request{
-			RemoteAddr: "192.168.1.1:12345",
-		}
-
-		ip := bouncer.getRequestIP(req)
-		assert.Equal(t, "192.168.1.1", ip)
-	})
-
-	t.Run("get ip from remote addr without port", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			headers: []string{},
-		}
-
-		req := &http.Request{
-			RemoteAddr: "192.168.1.1",
-		}
-
-		ip := bouncer.getRequestIP(req)
-		assert.Equal(t, "192.168.1.1", ip)
-	})
-	t.Run("get ipv6 from remote addr", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			headers: []string{},
-		}
-
-		req := &http.Request{
-			RemoteAddr: "[2001:db8::1]:12345",
-		}
-
-		ip := bouncer.getRequestIP(req)
-		assert.Equal(t, "2001:db8::1", ip)
-	})
-
-	t.Run("invalid ip in header", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			headers: []string{"X-Real-IP"},
-		}
-
-		req := &http.Request{
-			Header: make(http.Header),
-		}
-		req.Header.Set("X-Real-IP", "not-an-ip")
-
-		ip := bouncer.getRequestIP(req)
-		assert.Equal(t, "", ip)
-	})
-
-	t.Run("header exceeds max length", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			headers: []string{"X-Forwarded-For"},
-		}
-
-		req := &http.Request{
-			Header: make(http.Header),
-		}
-
-		longIP := strings.Repeat("192.168.1.1,", maxHeaderLength)
-		req.Header.Set("X-Forwarded-For", longIP)
-
-		ip := bouncer.getRequestIP(req)
-		assert.Equal(t, "", ip)
-	})
-}
-
-func TestIsValidIP(t *testing.T) {
-	tests := []struct {
-		name string
-		ip   string
-		want bool
-	}{
-		{"valid IPv4", "192.168.1.1", true},
-		{"valid IPv6", "2001:db8::1", true},
-		{"invalid IP", "not an ip", false},
-		{"empty string", "", false},
-		{"IPv4 with port", "192.168.1.1:8080", false},
-		{"IPv6 with port", "[2001:db8::1]:8080", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isValidIP(tt.ip)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func TestEnvoyBouncer_getIPFromHeader(t *testing.T) {
-	t.Run("trusted proxy chain", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			trustedProxies: []string{"10.0.0.1", "10.0.0.2"},
-		}
-
-		req := &http.Request{
-			Header: make(http.Header),
-		}
-		req.Header.Set("X-Forwarded-For", "192.168.1.1, 10.0.0.2, 10.0.0.1")
-
-		ip := bouncer.getIPFromHeader(req, "X-Forwarded-For")
-		assert.Equal(t, "192.168.1.1", ip)
-	})
-
-	t.Run("all trusted proxies", func(t *testing.T) {
-		bouncer := EnvoyBouncer{
-			trustedProxies: []string{"10.0.0.1", "10.0.0.2"},
-		}
-
-		req := &http.Request{
-			Header: make(http.Header),
-		}
-		req.Header.Set("X-Forwarded-For", "10.0.0.2, 10.0.0.1")
-
-		ip := bouncer.getIPFromHeader(req, "X-Forwarded-For")
-		assert.Equal(t, "", ip)
+		banned, err := b.Bounce("192.168.1.1", headers)
+		assert.Error(t, err)
+		assert.Equal(t, "header too big", err.Error())
+		assert.False(t, banned)
 	})
 
 	t.Run("too many ips in chain", func(t *testing.T) {
-		bouncer := EnvoyBouncer{}
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 
-		req := &http.Request{
-			Header: make(http.Header),
-		}
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{bouncer: mockBouncer}
 		ips := make([]string, maxIPs+1)
 		for i := range ips {
 			ips[i] = "192.168.1.1"
 		}
-		req.Header.Set("X-Forwarded-For", strings.Join(ips, ", "))
+		headers := map[string]string{
+			"x-forwarded-for": strings.Join(ips, ","),
+		}
+		banned, err := b.Bounce("192.168.1.1", headers)
+		assert.Error(t, err)
+		assert.Equal(t, "too many ips in chain", err.Error())
+		assert.False(t, banned)
+	})
 
-		ip := bouncer.getIPFromHeader(req, "X-Forwarded-For")
-		assert.Equal(t, "", ip)
+	t.Run("invalid ip", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{bouncer: mockBouncer}
+		banned, err := b.Bounce("not-an-ip", nil)
+		assert.Error(t, err)
+		assert.Equal(t, "invalid ip address", err.Error())
+		assert.False(t, banned)
+	})
+
+	t.Run("bouncer error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{bouncer: mockBouncer}
+		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, errors.New("bouncer error"))
+		banned, err := b.Bounce("192.168.1.1", nil)
+		assert.Error(t, err)
+		assert.Equal(t, "bouncer error", err.Error())
+		assert.False(t, banned)
+	})
+
+	t.Run("no decisions", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{bouncer: mockBouncer}
+		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, nil)
+		banned, err := b.Bounce("192.168.1.1", nil)
+		assert.NoError(t, err)
+		assert.False(t, banned)
+	})
+
+	t.Run("ip banned", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{bouncer: mockBouncer}
+		ip := "192.168.1.1"
+		decisionType := "ban"
+		decisions := &models.GetDecisionsResponse{
+			{
+				Value: &ip,
+				Type:  &decisionType,
+			},
+		}
+		mockBouncer.EXPECT().Get(ip).Return(decisions, nil)
+		banned, err := b.Bounce(ip, nil)
+		assert.NoError(t, err)
+		assert.True(t, banned)
+	})
+
+	t.Run("ip not banned", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{bouncer: mockBouncer}
+		ip := "192.168.1.1"
+		decisionType := "allow"
+		decisions := &models.GetDecisionsResponse{
+			{
+				Value: &ip,
+				Type:  &decisionType,
+			},
+		}
+		mockBouncer.EXPECT().Get(ip).Return(decisions, nil)
+		banned, err := b.Bounce(ip, nil)
+		assert.NoError(t, err)
+		assert.False(t, banned)
+	})
+
+	t.Run("trusted proxy chain", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{
+			bouncer:        mockBouncer,
+			trustedProxies: []string{"10.0.0.1"},
+		}
+		headers := map[string]string{
+			"x-forwarded-for": "192.168.1.1,10.0.0.1",
+		}
+		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, nil)
+		banned, err := b.Bounce("1.1.1.1", headers)
+		assert.NoError(t, err)
+		assert.False(t, banned)
 	})
 }
