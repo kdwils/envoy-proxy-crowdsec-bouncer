@@ -116,14 +116,14 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		}
 	}
 	if xff != "" {
-		logger.Info("found xff header", "xff", xff)
+		logger.Debug("found xff header", "xff", xff)
 		if len(xff) > maxHeaderLength {
-			logger.Error("xff header too big", "length", len(xff))
+			logger.Warn("xff header too big", "length", len(xff))
 			return false, errors.New("header too big")
 		}
 		ips := strings.Split(xff, ",")
 		if len(ips) > maxIPs {
-			logger.Error("too many ips in xff header", "length", len(ips))
+			logger.Warn("too many ips in xff header", "length", len(ips))
 			return false, errors.New("too many ips in chain")
 		}
 
@@ -138,18 +138,19 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	}
 
 	logger = logger.With(slog.String("ip", ip))
+	logger.Debug("starting decision check")
 
 	entry, ok := b.cache.Get(ip)
 	if ok {
 		logger.Debug("cache hit", "entry", entry)
 		if entry.Bounced {
-			logger.Info("bouncing", "ip", ip)
+			logger.Info("bouncing")
 			return true, nil
 		}
 	}
 
 	if !isValidIP(ip) {
-		logger.Error("invalid ip address", "ip", ip)
+		logger.Error("invalid ip address")
 		return false, errors.New("invalid ip address")
 	}
 
@@ -159,7 +160,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		return false, err
 	}
 	if decisions == nil {
-		logger.Debug("no decisions found for ip", "ip", ip)
+		logger.Debug("no decisions found for ip")
 		b.cache.Set(ip, false)
 		return false, nil
 	}
@@ -170,14 +171,14 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 			continue
 		}
 		if isBannedDecision(decision) {
-			logger.Info("bouncing", "ip", ip)
+			logger.Info("bouncing")
 			b.cache.Set(ip, true)
 			return true, nil
 		}
 	}
 
 	b.cache.Set(ip, false)
-	logger.Debug("no ban decisions found for ip", "ip", ip)
+	logger.Debug("no ban decisions found")
 	return false, nil
 }
 
@@ -234,7 +235,6 @@ func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
 	if parsed == nil {
 		return false
 	}
-
 	for _, ipNet := range b.trustedProxies {
 		if ipNet.Contains(parsed) {
 			return true

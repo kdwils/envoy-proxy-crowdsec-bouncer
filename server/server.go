@@ -71,8 +71,6 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		}
 	}
 
-	logger = logger.With(slog.String("ip", ip))
-
 	headers := make(map[string]string)
 	if req.Attributes != nil && req.Attributes.Request != nil && req.Attributes.Request.Http != nil {
 		headers = req.Attributes.Request.Http.Headers
