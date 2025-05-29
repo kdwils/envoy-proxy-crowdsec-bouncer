@@ -18,18 +18,16 @@ import (
 
 type Server struct {
 	auth.UnimplementedAuthorizationServer
-	bouncer  bouncer.Bouncer
-	config   config.Config
-	logger   *slog.Logger
-	shutdown chan bool
+	bouncer bouncer.Bouncer
+	config  config.Config
+	logger  *slog.Logger
 }
 
 func NewServer(config config.Config, bouncer bouncer.Bouncer, logger *slog.Logger) *Server {
 	return &Server{
-		config:   config,
-		bouncer:  bouncer,
-		logger:   logger,
-		shutdown: make(chan bool),
+		config:  config,
+		bouncer: bouncer,
+		logger:  logger,
 	}
 }
 
