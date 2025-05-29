@@ -2,6 +2,8 @@
 
 A CrowdSec bouncer implementation for Envoy Proxy's external authorization (ext_authz) system. This bouncer validates incoming requests against CrowdSec decisions and blocks malicious traffic.
 
+This project works for envoy proxy or envoy gateway in a kubernetes environment.
+
 ## Installation
 
 ```bash
