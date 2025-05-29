@@ -1,7 +1,7 @@
 package bouncer
 
 import (
-	"net/http"
+	"context"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 )
@@ -12,9 +12,5 @@ type LiveBouncerClient interface {
 }
 
 type Bouncer interface {
-	Bounce(r *http.Request) (bool, error)
-}
-
-func ptr[A any](thing A) *A {
-	return &thing
+	Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error)
 }

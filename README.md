@@ -46,8 +46,31 @@ envoy-gateway-bouncer serve
 # Test if an IP is banned
 envoy-gateway-bouncer bounce -i 192.168.1.1
 
-# Manual HTTP request test
-curl -v -H "X-Forwarded-For: 192.168.1.1" http://localhost:8080/check
+# Manual gRPC request test
+grpcurl -plaintext -d @ localhost:8080 envoy.service.auth.v3.Authorization/Check < request.json
+```
+
+An examle request would look like:
+```json
+{
+  "attributes": {
+    "source": {
+      "address": {
+        "socketAddress": {
+          "address": "192.168.1.100",
+          "portValue": 50555
+        }
+      }
+    },
+    "request": {
+      "http": {
+        "headers": {
+          "x-forwarded-for": "192.168.1.100, 10.0.0.1"
+        }
+      }
+    }
+  }
+}
 ```
 
 ## Docker
@@ -93,44 +116,4 @@ go build -o envoy-gateway-bouncer
 starting a shell with the project dependencies:
 ```bash
 nix develop .
-```
-
-## Envoy Gateway Configuration
-
-Configure Envoy Gateway to use the bouncer for external authorization:
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: example
-spec:
-  gatewayClassName: envoy-gateway
-  listeners:
-  - name: http
-    port: 80
-    protocol: HTTP
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: SecurityPolicy
-metadata:
-  name: ext-authz
-spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: example
-  extAuth:
-    extensionRef:
-      name: envoy-bouncer
-      namespace: default
----
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: ExtensionService
-metadata:
-  name: envoy-bouncer
-spec:
-  services:
-  - name: envoy-bouncer
-    port: 8080
 ```

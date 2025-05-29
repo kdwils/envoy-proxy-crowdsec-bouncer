@@ -1,15 +1,18 @@
 package bouncer
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net"
-	"net/http"
 	"strings"
 
 	"slices"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
+	"github.com/kdwils/envoy-gateway-bouncer/logger"
 	"github.com/kdwils/envoy-gateway-bouncer/version"
 )
 
@@ -17,13 +20,6 @@ const (
 	maxHeaderLength = 1024
 	maxIPs          = 20
 )
-
-var validHeaders = []string{
-	"X-Forwarded-For",
-	"X-Real-IP",
-	"X-Client-IP",
-	"True-Client-IP",
-}
 
 type EnvoyBouncer struct {
 	bouncer        LiveBouncerClient
@@ -39,7 +35,6 @@ func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string) (Bouncer, e
 
 	b := &EnvoyBouncer{
 		bouncer:        bouncer,
-		headers:        validHeaders,
 		trustedProxies: trustedProxies,
 	}
 
@@ -57,38 +52,64 @@ func newBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	return b, err
 }
 
-func (b *EnvoyBouncer) Bounce(r *http.Request) (bool, error) {
-	if r == nil {
-		return false, errors.New("nil request")
+func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error) {
+	logger := logger.FromContext(ctx).With(slog.String("ip", ip), slog.String("headers", fmt.Sprintf("%+v", headers)))
+	logger.Debug("bouncer")
+	if ip == "" {
+		logger.Debug("no ip provided")
+		return false, errors.New("no ip found")
 	}
 
-	ip := b.getRequestIP(r)
-	if ip == "" {
-		return false, errors.New("no ip found")
+	if xff, ok := headers["x-forwarded-for"]; ok {
+		logger.Debug("found xff header", "xff", xff)
+		if len(xff) > maxHeaderLength {
+			logger.Error("xff header too big", "length", len(xff))
+			return false, errors.New("header too big")
+		}
+		ips := strings.Split(xff, ",")
+		if len(ips) > maxIPs {
+			logger.Error("too many ips in xff header", "length", len(ips))
+			return false, errors.New("too many ips in chain")
+		}
+
+		for i := len(ips) - 1; i >= 0; i-- {
+			parsedIP := strings.TrimSpace(ips[i])
+			if !b.isTrustedProxy(parsedIP) && isValidIP(parsedIP) {
+				logger.Debug("using ip from xff header", "ip", parsedIP)
+				ip = parsedIP
+				break
+			}
+		}
+	}
+
+	if !isValidIP(ip) {
+		logger.Error("invalid ip address", "ip", ip)
+		return false, errors.New("invalid ip address")
 	}
 
 	decisions, err := b.getDecision(ip)
 	if err != nil {
+		logger.Error("error getting decisions", "error", err)
 		return false, err
 	}
 	if decisions == nil {
+		logger.Debug("decisions are nil", "ip", ip)
 		return false, nil
 	}
 
 	for _, decision := range *decisions {
 		if decision.Value == nil || decision.Type == nil {
+			logger.Warn("decision has nil value or type", "decision", decision)
 			continue
 		}
 
-		if *decision.Value != ip {
-			continue
-		}
-
-		if strings.EqualFold(*decision.Type, "ban") {
+		if *decision.Value == ip && strings.EqualFold(*decision.Type, "ban") {
+			logger.Info("bouncing", "ip", ip)
 			return true, nil
 		}
 	}
 
+	logger.Debug("no ban decisions found for ip", "ip", ip)
 	return false, nil
 }
 
@@ -102,66 +123,6 @@ func (b *EnvoyBouncer) getDecision(ip string) (*models.GetDecisionsResponse, err
 
 func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
 	return slices.Contains(b.trustedProxies, ip)
-}
-
-func (b *EnvoyBouncer) getRequestIP(r *http.Request) string {
-	for _, header := range b.headers {
-		ip := b.getIPFromHeader(r, header)
-		if ip != "" {
-			return ip
-		}
-	}
-
-	ip := r.RemoteAddr
-	if strings.Contains(ip, ":") {
-		if strings.HasPrefix(ip, "[") {
-			if host, _, err := net.SplitHostPort(ip); err == nil {
-				ip = strings.Trim(host, "[]")
-			}
-		}
-		if isValidIP(ip) {
-			return ip
-		}
-	}
-
-	host, _, err := net.SplitHostPort(ip)
-	if err == nil {
-		ip = host
-	}
-
-	if isValidIP(ip) {
-		return ip
-	}
-
-	return ""
-}
-
-func (b *EnvoyBouncer) getIPFromHeader(r *http.Request, header string) string {
-	ip := r.Header.Get(header)
-	if ip == "" || len(ip) > maxHeaderLength {
-		return ""
-	}
-
-	if strings.EqualFold(header, "X-Forwarded-For") {
-		ips := strings.Split(ip, ",")
-		if len(ips) > maxIPs {
-			return ""
-		}
-
-		for i := len(ips) - 1; i >= 0; i-- {
-			ip = strings.TrimSpace(ips[i])
-			if !b.isTrustedProxy(ip) && isValidIP(ip) {
-				return ip
-			}
-		}
-		return ""
-	}
-
-	if isValidIP(ip) {
-		return ip
-	}
-
-	return ""
 }
 
 func isValidIP(ip string) bool {

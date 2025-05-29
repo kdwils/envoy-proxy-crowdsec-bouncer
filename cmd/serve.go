@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"log/slog"
+	"os"
+
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
 	"github.com/kdwils/envoy-gateway-bouncer/config"
 	"github.com/kdwils/envoy-gateway-bouncer/server"
@@ -25,7 +28,8 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
-		server := server.NewServer(config, bouncer)
+		logger := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.Level(config.Server.LogLevel)})
+		server := server.NewServer(config, bouncer, slog.New(logger))
 		err = server.Serve(config.Server.Port)
 		return err
 	},

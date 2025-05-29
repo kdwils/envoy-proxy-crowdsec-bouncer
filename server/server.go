@@ -1,65 +1,108 @@
 package server
 
 import (
+	"context"
 	"fmt"
-	"log"
-	"net/http"
+	"log/slog"
+	"net"
 
+	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
 	"github.com/kdwils/envoy-gateway-bouncer/config"
+	"github.com/kdwils/envoy-gateway-bouncer/logger"
+	"google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 type Server struct {
+	auth.UnimplementedAuthorizationServer
 	bouncer bouncer.Bouncer
 	config  config.Config
+	logger  *slog.Logger
 }
 
-func NewServer(config config.Config, bouncer bouncer.Bouncer) *Server {
-	s := &Server{
+func NewServer(config config.Config, bouncer bouncer.Bouncer, logger *slog.Logger) *Server {
+	return &Server{
 		config:  config,
 		bouncer: bouncer,
-	}
-
-	return s
-}
-
-func (s Server) Serve(port int) error {
-	http.HandleFunc("/healthz", s.Healthz())
-	http.HandleFunc("/check", s.Check())
-	addr := fmt.Sprintf(":%d", port)
-	return http.ListenAndServe(addr, nil)
-}
-
-func (s Server) Healthz() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		logger:  logger,
 	}
 }
 
-func (s Server) Check() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
+func (s *Server) Serve(port int) error {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return fmt.Errorf("failed to listen: %v", err)
+	}
 
-		if s.bouncer == nil {
-			http.Error(w, "bouncer not initialized", http.StatusForbidden)
-			return
-		}
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(s.loggerInterceptor),
+	)
+	auth.RegisterAuthorizationServer(grpcServer, s)
+	reflection.Register(grpcServer)
+	return grpcServer.Serve(lis)
+}
 
-		bounce, err := s.bouncer.Bounce(r)
-		if err != nil {
-			log.Printf("error checking request: %v", err)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
+func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	reqLogger := slog.New(s.logger.Handler())
+	return handler(logger.WithContext(ctx, reqLogger), req)
+}
 
-		if bounce {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
+func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
+	logger := logger.FromContext(ctx)
+	if s.bouncer == nil {
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "internal server error"), nil
+	}
 
-		w.WriteHeader(http.StatusOK)
+	ip := ""
+	if req.Attributes != nil && req.Attributes.Source != nil && req.Attributes.Source.Address != nil {
+		if socketAddress := req.Attributes.Source.Address.GetSocketAddress(); socketAddress != nil {
+			ip = socketAddress.GetAddress()
+		}
+	}
+
+	logger = logger.With(slog.String("ip", ip))
+
+	headers := make(map[string]string)
+	if req.Attributes != nil && req.Attributes.Request != nil && req.Attributes.Request.Http != nil {
+		headers = req.Attributes.Request.Http.Headers
+	}
+	logger = logger.With(slog.String("headers", fmt.Sprintf("%+v", headers)))
+
+	bounce, err := s.bouncer.Bounce(ctx, ip, headers)
+	if err != nil {
+		logger.Error("bounce check failed", "error", err)
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "internal error"), nil
+	}
+
+	if bounce {
+		logger.Error("bouncing request")
+		return getDeniedResponse(envoy_type.StatusCode_Forbidden, "forbidden"), nil
+	}
+
+	logger.Info("ok")
+	return &auth.CheckResponse{
+		Status: &status.Status{
+			Code: 0,
+		},
+		HttpResponse: &auth.CheckResponse_OkResponse{},
+	}, nil
+}
+
+func getDeniedResponse(code envoy_type.StatusCode, body string) *auth.CheckResponse {
+	return &auth.CheckResponse{
+		Status: &status.Status{
+			Code: int32(code),
+		},
+		HttpResponse: &auth.CheckResponse_DeniedResponse{
+			DeniedResponse: &auth.DeniedHttpResponse{
+				Status: &envoy_type.HttpStatus{
+					Code: code,
+				},
+				Body: body,
+			},
+		},
 	}
 }
