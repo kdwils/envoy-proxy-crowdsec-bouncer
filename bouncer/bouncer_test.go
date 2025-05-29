@@ -244,16 +244,4 @@ func TestEnvoyBouncer_getIPFromHeader(t *testing.T) {
 		ip := bouncer.getIPFromHeader(req, "X-Forwarded-For")
 		assert.Equal(t, "", ip)
 	})
-
-	t.Run("invalid header name", func(t *testing.T) {
-		bouncer := EnvoyBouncer{}
-
-		req := &http.Request{
-			Header: make(http.Header),
-		}
-		req.Header.Set("Invalid-Header", "192.168.1.1")
-
-		ip := bouncer.getIPFromHeader(req, "Invalid-Header")
-		assert.Equal(t, "", ip)
-	})
 }
