@@ -54,3 +54,17 @@ func (mr *MockBouncerMockRecorder) Bounce(ctx, ip, headers any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Bounce", reflect.TypeOf((*MockBouncer)(nil).Bounce), ctx, ip, headers)
 }
+
+// Sync mocks base method.
+func (m *MockBouncer) Sync(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Sync", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Sync indicates an expected call of Sync.
+func (mr *MockBouncerMockRecorder) Sync(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sync", reflect.TypeOf((*MockBouncer)(nil).Sync), ctx)
+}
