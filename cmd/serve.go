@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/kdwils/envoy-gateway-bouncer/bouncer"
 	"github.com/kdwils/envoy-gateway-bouncer/cache"
@@ -19,10 +21,28 @@ var serveCmd = &cobra.Command{
 	Long:  `serve the envoy gateway bouncer`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		v := viper.GetViper()
+		required := []string{
+			"bouncer.apiKey",
+			"bouncer.apiURL",
+		}
+
+		var missingKeys []string
+		for _, key := range required {
+			if !viper.IsSet(key) || viper.GetString(key) == "" {
+				missingKeys = append(missingKeys, key)
+			}
+		}
+		if len(missingKeys) > 0 {
+			return fmt.Errorf("missing required configurations: %s", strings.Join(missingKeys, ", "))
+		}
+
 		config, err := config.New(v)
 		if err != nil {
 			return err
 		}
+
+		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.Level(config.Server.LogLevel)})
+		logger := slog.New(handler)
 
 		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
 		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies, cache)
@@ -30,8 +50,7 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
-		logger := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.Level(config.Server.LogLevel)})
-		server := server.NewServer(config, bouncer, slog.New(logger))
+		server := server.NewServer(config, bouncer, logger)
 		err = server.Serve(config.Server.Port)
 		return err
 	},
