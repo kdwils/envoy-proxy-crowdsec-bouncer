@@ -89,6 +89,7 @@ server:
   logLevel: "info"
 
 bouncer:
+  metrics: false
   trustedProxies:
     - "127.0.0.1"
     - "::1"
