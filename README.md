@@ -119,11 +119,11 @@ export ENVOY_BOUNCER_BOUNCER_APIURL=<your-lapi-host>
 envoy-proxy-bouncer serve
 ```
 
-### Testing IP Decisions
+### Testing ip Decisions
 
 ```bash
-# Test if an IP is banned
-envoy-proxy-bouncer bounce -i 192.168.1.1
+# Test if an ip is banned (multiple IPs can be specified)
+envoy-proxy-bouncer bounce -i 192.168.1.1,10.0.0.1
 
 # Manual gRPC request test
 grpcurl -plaintext -d @ localhost:8080 envoy.service.auth.v3.Authorization/Check < request.json
@@ -168,11 +168,11 @@ docker run -p 8080:8080 \
 
 ## Headers
 
-The bouncer checks for IP addresses in the following order:
+The bouncer checks for ip addresses in the following order:
 1. Configured headers (in order specified in config)
 2. Request's RemoteAddr
 
-For X-Forwarded-For headers with multiple IPs the bouncer uses the first (rightmost) non-trusted IP. For this reason, it is recommended to configure the bouncer with trusted proxies.
+For X-Forwarded-For headers with multiple IPs the bouncer uses the first (rightmost) non-trusted ip. For this reason, it is recommended to configure the bouncer with trusted proxies.
 
 ## Response Codes
 
