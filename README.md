@@ -107,8 +107,8 @@ sudo cscli bouncers add envoy-bouncer
 
 2. Set the key as an environment variable with your LAPI host:
 ```bash
-export ENVOY_BOUNCER_BOUNCER_API_KEY=<your-api-key>
-export ENVOY_BOUNCER_BOUNCER_API_URL=<your-lapi-host>
+export ENVOY_BOUNCER_BOUNCER_APIKEY=<your-api-key>
+export ENVOY_BOUNCER_BOUNCER_APIURL=<your-lapi-host>
 ```
 
 ## Usage
