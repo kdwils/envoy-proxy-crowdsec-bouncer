@@ -420,6 +420,11 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 				assert.Equal(t, "ips", *item.Unit)
 			}
 		}
+
+		assert.Equal(t, int64(0), b.metrics.TotalRequests)
+		assert.Equal(t, int64(0), b.metrics.BouncedRequests)
+		assert.Equal(t, int64(0), b.metrics.CachedRequests)
+		assert.Equal(t, 0, len(b.metrics.HitsByIP))
 	})
 }
 func TestEnvoyBouncer_IncHitsByIP(t *testing.T) {

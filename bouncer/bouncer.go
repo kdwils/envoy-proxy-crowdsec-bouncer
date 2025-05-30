@@ -127,24 +127,33 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 		Items: make([]*models.MetricsDetailItem, 0),
 	}
 
+	totalRequests := atomic.SwapInt64(&b.metrics.TotalRequests, 0)
+	bouncedRequests := atomic.SwapInt64(&b.metrics.BouncedRequests, 0)
+	cachedRequests := atomic.SwapInt64(&b.metrics.CachedRequests, 0)
+
+	b.mu.Lock()
+	uniqueIPs := len(b.metrics.HitsByIP)
+	b.metrics.HitsByIP = make(map[string]int64)
+	b.mu.Unlock()
+
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("requests"),
-		Value: ptr(float64(atomic.LoadInt64(&b.metrics.TotalRequests))),
+		Value: ptr(float64(atomic.LoadInt64(&totalRequests))),
 		Unit:  ptr("processed"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("requests"),
-		Value: ptr(float64(atomic.LoadInt64(&b.metrics.BouncedRequests))),
+		Value: ptr(float64(atomic.LoadInt64(&bouncedRequests))),
 		Unit:  ptr("bounced"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("requests"),
-		Value: ptr(float64(atomic.LoadInt64(&b.metrics.CachedRequests))),
+		Value: ptr(float64(atomic.LoadInt64(&cachedRequests))),
 		Unit:  ptr("cached"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("unique"),
-		Value: ptr(float64(atomic.LoadInt64(ptr(int64(len(b.metrics.HitsByIP)))))),
+		Value: ptr(float64(atomic.LoadInt64(ptr(int64(uniqueIPs))))),
 		Unit:  ptr("ips"),
 	})
 
@@ -187,19 +196,25 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		for i := len(ips) - 1; i >= 0; i-- {
 			parsedIP := strings.TrimSpace(ips[i])
 			if !b.isTrustedProxy(parsedIP) && isValidIP(parsedIP) {
-				logger.Info("using ip from xff header", "ip", parsedIP)
+				logger.Debug("using ip from xff header", "ip", parsedIP)
 				ip = parsedIP
 				break
 			}
 		}
 	}
 
+	if !isValidIP(ip) {
+		logger.Error("invalid ip address")
+		return false, errors.New("invalid ip address")
+	}
+
 	logger = logger.With(slog.String("ip", ip))
 	logger.Debug("starting decision check")
 
+	b.IncHitsByIP(ip)
+
 	entry, ok := b.cache.Get(ip)
 	if ok {
-		b.IncHitsByIP(ip)
 		b.IncCacheHits()
 		logger.Debug("cache hit", "entry", entry)
 		if entry.Bounced {
@@ -210,12 +225,6 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		return entry.Bounced, nil
 	}
 
-	if !isValidIP(ip) {
-		logger.Error("invalid ip address")
-		return false, errors.New("invalid ip address")
-	}
-
-	b.IncHitsByIP(ip)
 	decisions, err := b.getDecision(ip)
 	if err != nil {
 		logger.Error("error getting decisions", "error", err)
