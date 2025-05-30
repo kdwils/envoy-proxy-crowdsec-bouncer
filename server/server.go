@@ -75,7 +75,6 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	if req.Attributes != nil && req.Attributes.Request != nil && req.Attributes.Request.Http != nil {
 		headers = req.Attributes.Request.Http.Headers
 	}
-	logger = logger.With(slog.String("headers", fmt.Sprintf("%+v", headers)))
 
 	bounce, err := s.bouncer.Bounce(ctx, ip, headers)
 	if err != nil {
