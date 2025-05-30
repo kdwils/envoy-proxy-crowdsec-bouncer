@@ -29,6 +29,8 @@ server:
 bouncer:
   apiKey: "your-crowdsec-bouncer-api-key"  # required
   apiURL: "http://crowdsec:8080"           # required
+
+  metrics: true                            # optional (defaults to false) - report metrics to the LAPI instance
   
   trustedProxies:                          # optional (defaults to 127.0.0.1, ::1)
     - 192.168.0.1                          # IPv4
@@ -190,3 +192,28 @@ starting a shell with the project dependencies:
 ```bash
 nix develop .
 ```
+
+## Metrics
+
+The bouncer reports metrics to CrowdSec's dashboard including:
+- Total requests processed
+- Number of requests bounced
+- Cached requests
+- Number of unique IPs seen
+
+These are opt-in and can be enabled by setting `metrics: true` in the bouncer config.
+
+### Viewing Metrics
+From `cscli`
+```bash
+cscli metrics
+```
+
+## Deploying
+
+I have personally only tested this in a kubernetes cluster with Envoy Gateway installed. If there are other environments that aren't working, feel free to open an issue and i'll try to help.
+
+### Kubernetes
+
+The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway:
+An example lives at `examples/deploy`.
