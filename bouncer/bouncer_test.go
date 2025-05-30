@@ -192,6 +192,70 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.False(t, entry.Bounced)
 		assert.False(t, entry.Expired())
 	})
+
+	t.Run("ip already cached - bounced", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cache := cache.New(time.Minute, 10)
+		cache.Set("192.168.1.1", true)
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{
+			bouncer: mockBouncer,
+			trustedProxies: []*net.IPNet{
+				{
+					IP:   net.ParseIP("10.0.0.1"),
+					Mask: net.CIDRMask(32, 32),
+				},
+			},
+			cache: cache,
+		}
+		headers := map[string]string{
+			"x-forwarded-for": "192.168.1.1,10.0.0.1",
+		}
+
+		bounced, err := b.Bounce(context.TODO(), "192.168.1.1", headers)
+		assert.NoError(t, err)
+		assert.True(t, bounced)
+
+		entry, ok := cache.Get("192.168.1.1")
+		assert.True(t, ok)
+		assert.True(t, entry.Bounced)
+		assert.False(t, entry.Expired())
+	})
+
+	t.Run("ip already cached - ok", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cache := cache.New(time.Minute, 10)
+		cache.Set("192.168.1.1", false)
+
+		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
+		b := &EnvoyBouncer{
+			bouncer: mockBouncer,
+			trustedProxies: []*net.IPNet{
+				{
+					IP:   net.ParseIP("10.0.0.1"),
+					Mask: net.CIDRMask(32, 32),
+				},
+			},
+			cache: cache,
+		}
+		headers := map[string]string{
+			"x-forwarded-for": "192.168.1.1,10.0.0.1",
+		}
+
+		banned, err := b.Bounce(context.TODO(), "192.168.1.1", headers)
+		assert.NoError(t, err)
+		assert.False(t, banned)
+
+		entry, ok := cache.Get("192.168.1.1")
+		assert.True(t, ok)
+		assert.False(t, entry.Bounced)
+		assert.False(t, entry.Expired())
+	})
 }
 
 func TestEnvoyBouncer_isTrustedProxy(t *testing.T) {

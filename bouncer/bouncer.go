@@ -143,10 +143,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	entry, ok := b.cache.Get(ip)
 	if ok {
 		logger.Debug("cache hit", "entry", entry)
-		if entry.Bounced {
-			logger.Info("bouncing")
-			return true, nil
-		}
+		return entry.Bounced, nil
 	}
 
 	if !isValidIP(ip) {
