@@ -5,7 +5,7 @@ The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. An 
 You will need to create a secret with your LAPI API key and configure the bouncer to use it. I did this via env vars, but you can also use a config map or a file.
 
 > [!WARNING]
-> Make sure you point the bouncer to your LAPI instance.
+> Make sure you point the bouncer to your LAPI instance and update the image sha from `envoy-bouncer` to your desired version.
 
 ## Deploying
 1. Create a secret with your LAPI API key:
