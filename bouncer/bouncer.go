@@ -117,8 +117,15 @@ func newLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	err := b.Init()
 	return b, err
 }
-
 func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, updateInterval time.Duration) {
+	totalRequests := atomic.SwapInt64(&b.metrics.TotalRequests, 0)
+	bouncedRequests := atomic.SwapInt64(&b.metrics.BouncedRequests, 0)
+	cachedRequests := atomic.SwapInt64(&b.metrics.CachedRequests, 0)
+
+	if totalRequests == 0 && bouncedRequests == 0 && cachedRequests == 0 {
+		return
+	}
+
 	metrics := &models.DetailedMetrics{
 		Meta: &models.MetricsMeta{
 			UtcNowTimestamp:   ptr(time.Now().Unix()),
@@ -127,10 +134,6 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 		Items: make([]*models.MetricsDetailItem, 0),
 	}
 
-	totalRequests := atomic.SwapInt64(&b.metrics.TotalRequests, 0)
-	bouncedRequests := atomic.SwapInt64(&b.metrics.BouncedRequests, 0)
-	cachedRequests := atomic.SwapInt64(&b.metrics.CachedRequests, 0)
-
 	b.mu.Lock()
 	uniqueIPs := len(b.metrics.HitsByIP)
 	b.metrics.HitsByIP = make(map[string]int64)
@@ -138,22 +141,22 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("requests"),
-		Value: ptr(float64(atomic.LoadInt64(&totalRequests))),
+		Value: ptr(float64(totalRequests)),
 		Unit:  ptr("processed"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("requests"),
-		Value: ptr(float64(atomic.LoadInt64(&bouncedRequests))),
+		Value: ptr(float64(bouncedRequests)),
 		Unit:  ptr("bounced"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("requests"),
-		Value: ptr(float64(atomic.LoadInt64(&cachedRequests))),
+		Value: ptr(float64(cachedRequests)),
 		Unit:  ptr("cached"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("unique"),
-		Value: ptr(float64(atomic.LoadInt64(ptr(int64(uniqueIPs))))),
+		Value: ptr(float64(uniqueIPs)),
 		Unit:  ptr("ips"),
 	})
 
