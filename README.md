@@ -55,16 +55,16 @@ All configuration options can be set via environment variables using the prefix 
 ```bash
 # Server configuration
 export ENVOY_BOUNCER_SERVER_PORT=8080
-export ENVOY_BOUNCER_SERVER_LOG_LEVEL=debug
+export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
 
 # Bouncer configuration
-export ENVOY_BOUNCER_BOUNCER_API_KEY=your-api-key
-export ENVOY_BOUNCER_BOUNCER_API_URL=http://crowdsec:8080
-export ENVOY_BOUNCER_BOUNCER_TRUSTED_PROXIES=192.168.0.1,10.0.0.0/8
+export ENVOY_BOUNCER_BOUNCER_APIKEY=your-api-key
+export ENVOY_BOUNCER_BOUNCER_APIURL=http://crowdsec:8080
+export ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
 
 # Cache configuration
 export ENVOY_BOUNCER_CACHE_TTL=10m
-export ENVOY_BOUNCER_CACHE_MAX_ENTRIES=10000
+export ENVOY_BOUNCER_CACHE_MAXENTRIES=10000
 ```
 
 ### Configuration Precedence
