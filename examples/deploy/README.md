@@ -1,6 +1,6 @@
 # Kubernetes
 
-The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. An example manifest is provided at `manifest.yaml`.
+The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. An example manifest is provided at [manifest.yaml](manifest.yaml).
 
 You will need to create a secret with your LAPI API key and configure the bouncer to use it. I did this via env vars, but you can also use a config map or a file.
 
@@ -39,3 +39,7 @@ kubectl apply -f manifest.yaml
 ```bash
 kubectl logs -f deployment/envoy-bouncer
 ```
+
+## Configurating Envoy Gateway
+
+The bouncer can be configured as an external authorization service in Envoy Gateway. An example policy is provided at [policy.yaml](policy.yaml).
