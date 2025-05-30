@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, "no ip found", err.Error())
 		assert.False(t, banned)
+		assert.Equal(t, int64(0), atomic.LoadInt64(&b.metrics.TotalRequests))
 	})
 
 	t.Run("header too big", func(t *testing.T) {
@@ -134,6 +136,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.True(t, ok)
 		assert.True(t, entry.Bounced)
 		assert.False(t, entry.Expired())
+		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.TotalRequests))
+		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.BouncedRequests))
 	})
 
 	t.Run("ip not banned", func(t *testing.T) {
@@ -225,6 +229,9 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.True(t, ok)
 		assert.True(t, entry.Bounced)
 		assert.False(t, entry.Expired())
+		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.TotalRequests))
+		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.BouncedRequests))
+		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.CachedRequests))
 	})
 
 	t.Run("ip already cached - ok", func(t *testing.T) {
