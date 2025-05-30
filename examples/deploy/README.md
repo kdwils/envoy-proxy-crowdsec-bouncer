@@ -23,6 +23,11 @@ To base64 encode your API key:
 echo -n <your-api-key> | base64
 ```
 
+Apply it to the cluster
+```bash
+kubectl apply -f secret.yaml
+```
+
 2. Deploy the bouncer:
 ```bash
 kubectl apply -f manifest.yaml

@@ -216,4 +216,4 @@ I have personally only tested this in a kubernetes cluster with Envoy Gateway in
 ### Kubernetes
 
 The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway:
-An example lives at [examples/deploy](examples/deploy).
+An example lives [here](examples/deploy/README.md).
