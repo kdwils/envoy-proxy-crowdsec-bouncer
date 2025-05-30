@@ -47,6 +47,7 @@ var serveCmd = &cobra.Command{
 		go bouncer.Sync(context.Background())
 
 		if config.Bouncer.Metrics {
+			logger.Info("metrics enabled, starting bouncer metrics")
 			go func() {
 				if err := bouncer.Metrics(context.Background()); err != nil {
 					logger.Error("metrics error", "error", err)

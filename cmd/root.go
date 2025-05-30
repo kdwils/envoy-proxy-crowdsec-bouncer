@@ -44,6 +44,7 @@ func initConfig() {
 	viper.SetDefault("server.logLevel", slog.LevelInfo)
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.apiURL", "")
+	viper.SetDefault("bouncer.metrics", false)
 	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})
 	viper.SetDefault("cache.ttl", "10m")
 	viper.SetDefault("cache.maxEntries", 10000)
