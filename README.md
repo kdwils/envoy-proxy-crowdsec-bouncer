@@ -99,16 +99,16 @@ cache:
   maxEntries: 10000
 ```
 
-### Getting a Bouncer API Key
-
-1. Generate an API key from your CrowdSec instance:
+### Simple bouncer configuration
+1. Generate an API key from your LAPI instance:
 ```bash
 sudo cscli bouncers add envoy-bouncer
 ```
 
-2. Set the key as an environment variable:
+2. Set the key as an environment variable with your LAPI host:
 ```bash
 export ENVOY_BOUNCER_BOUNCER_API_KEY=<your-api-key>
+export ENVOY_BOUNCER_BOUNCER_API_URL=<your-lapi-host>
 ```
 
 ## Usage
