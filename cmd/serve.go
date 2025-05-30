@@ -13,6 +13,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -44,6 +45,15 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 		go bouncer.Sync(context.Background())
+
+		if config.Bouncer.Metrics {
+			logger.Info("metrics enabled, starting bouncer metrics")
+			go func() {
+				if err := bouncer.Metrics(context.Background()); err != nil {
+					logger.Error("metrics error", "error", err)
+				}
+			}()
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		server := server.NewServer(config, bouncer, logger)
