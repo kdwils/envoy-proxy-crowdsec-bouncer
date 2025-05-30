@@ -128,19 +128,19 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 	}
 
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
-		Name:  ptr("processed"),
+		Name:  ptr("requests"),
 		Value: ptr(float64(atomic.LoadInt64(&b.metrics.TotalRequests))),
-		Unit:  ptr("requests"),
+		Unit:  ptr("processed"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
-		Name:  ptr("bounced"),
+		Name:  ptr("requests"),
 		Value: ptr(float64(atomic.LoadInt64(&b.metrics.BouncedRequests))),
-		Unit:  ptr("requests"),
+		Unit:  ptr("bounced"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
-		Name:  ptr("cached"),
+		Name:  ptr("requests"),
 		Value: ptr(float64(atomic.LoadInt64(&b.metrics.CachedRequests))),
-		Unit:  ptr("requests"),
+		Unit:  ptr("cached"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("unique"),
