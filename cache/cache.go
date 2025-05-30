@@ -61,6 +61,12 @@ func (c *Cache) Get(ip string) (Entry, bool) {
 	return entry, ok
 }
 
+func (c *Cache) Size() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return len(c.entries)
+}
+
 func (c *Cache) Cleanup() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()

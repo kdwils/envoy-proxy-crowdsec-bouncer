@@ -27,7 +27,6 @@ type Metrics struct {
 	TotalRequests   int64 `json:"total_requests"`
 	BouncedRequests int64 `json:"banned_requests"`
 	CachedRequests  int64 `json:"cache_hits"`
-	UniqueIPs       int64 `json:"unique_ips"`
 }
 
 type EnvoyBouncer struct {
@@ -142,7 +141,7 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("count"),
-		Value: ptr(float64(atomic.LoadInt64(&b.metrics.UniqueIPs))),
+		Value: ptr(float64(atomic.LoadInt64(ptr(int64(b.cache.Size()))))),
 		Unit:  ptr("ips"),
 	})
 

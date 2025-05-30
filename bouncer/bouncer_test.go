@@ -360,3 +360,45 @@ func TestParseProxyAddresses(t *testing.T) {
 		assert.Empty(t, result)
 	})
 }
+func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
+	t.Run("metrics update", func(t *testing.T) {
+		cache := cache.New(time.Minute, 10)
+		b := &EnvoyBouncer{
+			cache:   cache,
+			metrics: &Metrics{},
+		}
+
+		atomic.StoreInt64(&b.metrics.TotalRequests, 100)
+		atomic.StoreInt64(&b.metrics.BouncedRequests, 25)
+		atomic.StoreInt64(&b.metrics.CachedRequests, 75)
+		cache.Set("1.1.1.1", true)
+
+		metrics := &models.RemediationComponentsMetrics{}
+		updateInterval := 10 * time.Second
+
+		b.metricsUpdater(metrics, updateInterval)
+
+		assert.Len(t, metrics.Metrics, 1)
+		assert.Len(t, metrics.Metrics[0].Items, 4)
+
+		assert.NotNil(t, metrics.Metrics[0].Meta.UtcNowTimestamp)
+		assert.Equal(t, int64(10), *metrics.Metrics[0].Meta.WindowSizeSeconds)
+
+		for _, item := range metrics.Metrics[0].Items {
+			switch *item.Name {
+			case "processed":
+				assert.Equal(t, float64(100), *item.Value)
+				assert.Equal(t, "requests", *item.Unit)
+			case "bounced":
+				assert.Equal(t, float64(25), *item.Value)
+				assert.Equal(t, "requests", *item.Unit)
+			case "cached":
+				assert.Equal(t, float64(75), *item.Value)
+				assert.Equal(t, "requests", *item.Unit)
+			case "count":
+				assert.Equal(t, float64(1), *item.Value)
+				assert.Equal(t, "ips", *item.Unit)
+			}
+		}
+	})
+}

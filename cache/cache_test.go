@@ -54,3 +54,32 @@ func TestCache(t *testing.T) {
 		}
 	})
 }
+func TestCacheSize(t *testing.T) {
+	t.Run("empty cache size", func(t *testing.T) {
+		c := New(time.Minute, 100)
+		if size := c.Size(); size != 0 {
+			t.Errorf("expected size 0, got %d", size)
+		}
+	})
+
+	t.Run("cache size after adding entries", func(t *testing.T) {
+		c := New(time.Minute, 100)
+		c.Set("192.168.1.1", true)
+		c.Set("192.168.1.2", false)
+
+		if size := c.Size(); size != 2 {
+			t.Errorf("expected size 2, got %d", size)
+		}
+	})
+
+	t.Run("cache size after deletion", func(t *testing.T) {
+		c := New(time.Minute, 100)
+		c.Set("192.168.1.1", true)
+		c.Set("192.168.1.2", false)
+		c.Delete("192.168.1.1")
+
+		if size := c.Size(); size != 1 {
+			t.Errorf("expected size 1, got %d", size)
+		}
+	})
+}
