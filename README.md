@@ -29,6 +29,8 @@ server:
 bouncer:
   apiKey: "your-crowdsec-bouncer-api-key"  # required
   apiURL: "http://crowdsec:8080"           # required
+
+  metrics: true                            # optional (defaults to false) - report metrics to the LAPI instance
   
   trustedProxies:                          # optional (defaults to 127.0.0.1, ::1)
     - 192.168.0.1                          # IPv4
@@ -53,16 +55,16 @@ All configuration options can be set via environment variables using the prefix 
 ```bash
 # Server configuration
 export ENVOY_BOUNCER_SERVER_PORT=8080
-export ENVOY_BOUNCER_SERVER_LOG_LEVEL=debug
+export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
 
 # Bouncer configuration
-export ENVOY_BOUNCER_BOUNCER_API_KEY=your-api-key
-export ENVOY_BOUNCER_BOUNCER_API_URL=http://crowdsec:8080
-export ENVOY_BOUNCER_BOUNCER_TRUSTED_PROXIES=192.168.0.1,10.0.0.0/8
+export ENVOY_BOUNCER_BOUNCER_APIKEY=your-api-key
+export ENVOY_BOUNCER_BOUNCER_APIURL=http://crowdsec:8080
+export ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
 
 # Cache configuration
 export ENVOY_BOUNCER_CACHE_TTL=10m
-export ENVOY_BOUNCER_CACHE_MAX_ENTRIES=10000
+export ENVOY_BOUNCER_CACHE_MAXENTRIES=10000
 ```
 
 ### Configuration Precedence
@@ -87,6 +89,7 @@ server:
   logLevel: "info"
 
 bouncer:
+  metrics: false
   trustedProxies:
     - "127.0.0.1"
     - "::1"
@@ -96,14 +99,17 @@ cache:
   maxEntries: 10000
 ```
 
-### Getting a Bouncer API Key
-
-1. Generate an API key from your CrowdSec instance:
+### Simple bouncer configuration
+1. Generate an API key from your LAPI instance:
 ```bash
 sudo cscli bouncers add envoy-bouncer
 ```
 
-2. Save the generated API key in your config.yaml
+2. Set the key as an environment variable with your LAPI host:
+```bash
+export ENVOY_BOUNCER_BOUNCER_APIKEY=<your-api-key>
+export ENVOY_BOUNCER_BOUNCER_APIURL=<your-lapi-host>
+```
 
 ## Usage
 
@@ -113,11 +119,11 @@ sudo cscli bouncers add envoy-bouncer
 envoy-proxy-bouncer serve
 ```
 
-### Testing IP Decisions
+### Testing ip Decisions
 
 ```bash
-# Test if an IP is banned
-envoy-proxy-bouncer bounce -i 192.168.1.1
+# Test if an ip is banned (multiple IPs can be specified)
+envoy-proxy-bouncer bounce -i 192.168.1.1,10.0.0.1
 
 # Manual gRPC request test
 grpcurl -plaintext -d @ localhost:8080 envoy.service.auth.v3.Authorization/Check < request.json
@@ -162,11 +168,11 @@ docker run -p 8080:8080 \
 
 ## Headers
 
-The bouncer checks for IP addresses in the following order:
+The bouncer checks for ip addresses in the following order:
 1. Configured headers (in order specified in config)
 2. Request's RemoteAddr
 
-For X-Forwarded-For headers with multiple IPs the bouncer uses the first (rightmost) non-trusted IP. For this reason, it is recommended to configure the bouncer with trusted proxies.
+For X-Forwarded-For headers with multiple IPs the bouncer uses the first (rightmost) non-trusted ip. For this reason, it is recommended to configure the bouncer with trusted proxies.
 
 ## Response Codes
 
@@ -190,3 +196,28 @@ starting a shell with the project dependencies:
 ```bash
 nix develop .
 ```
+
+## Metrics
+
+The bouncer reports metrics to CrowdSec's dashboard including:
+- Total requests processed
+- Number of requests bounced
+- Cached requests
+- Number of unique IPs seen
+
+These are opt-in and can be enabled by setting `metrics: true` in the bouncer config.
+
+### Viewing Metrics
+From `cscli`
+```bash
+cscli metrics
+```
+
+## Deploying
+
+I have personally only tested this in a kubernetes cluster with Envoy Gateway installed. If there are other environments that aren't working, feel free to open an issue and i'll try to help.
+
+### Kubernetes
+
+The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway:
+An example lives [here](examples/deploy/README.md).

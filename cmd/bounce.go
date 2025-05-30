@@ -1,17 +1,19 @@
 package cmd
 
 import (
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/logger"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-var ip string
+var ips []string
 
 // bounceCmd represents the bounce command
 var bounceCmd = &cobra.Command{
@@ -25,27 +27,34 @@ var bounceCmd = &cobra.Command{
 			return err
 		}
 
+		level := logger.LevelFromString(config.Server.LogLevel)
+
+		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+		logger := slog.New(handler)
+
 		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
 		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies, cache)
 		if err != nil {
 			return err
 		}
 
-		bounce, err := bouncer.Bounce(cmd.Context(), ip, nil)
-		if err != nil {
-			return err
-		}
-		if bounce {
-			log.Println("not allowed")
-			return nil
+		for _, ip := range ips {
+			bounce, err := bouncer.Bounce(cmd.Context(), ip, nil)
+			if err != nil {
+				return err
+			}
+			if bounce {
+				logger.Info("not allowed", "ip", ip)
+				return nil
+			}
+			logger.Info("allowed", "ip", ip)
 		}
 
-		log.Println("allowed")
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(bounceCmd)
-	bounceCmd.Flags().StringVarP(&ip, "ip", "i", "", "ip address")
+	bounceCmd.Flags().StringSliceVarP(&ips, "ips", "i", []string{}, "ip addresses")
 }
