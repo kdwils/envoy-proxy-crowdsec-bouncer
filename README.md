@@ -106,7 +106,10 @@ cache:
 sudo cscli bouncers add envoy-bouncer
 ```
 
-2. Save the generated API key in your config.yaml
+2. Set the key as an environment variable:
+```bash
+export ENVOY_BOUNCER_BOUNCER_API_KEY=<your-api-key>
+```
 
 ## Usage
 
