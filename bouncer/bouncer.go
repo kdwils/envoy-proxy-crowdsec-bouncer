@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,11 +25,11 @@ const (
 )
 
 type Metrics struct {
-	TotalRequests   int64 `json:"total_requests"`
-	BouncedRequests int64 `json:"banned_requests"`
-	CachedRequests  int64 `json:"cache_hits"`
+	TotalRequests   int64            `json:"total_requests"`
+	BouncedRequests int64            `json:"banned_requests"`
+	CachedRequests  int64            `json:"cache_hits"`
+	HitsByIP        map[string]int64 `json:"hits_by_ip"`
 }
-
 type EnvoyBouncer struct {
 	stream          *csbouncer.StreamBouncer
 	bouncer         LiveBouncerClient
@@ -36,6 +37,7 @@ type EnvoyBouncer struct {
 	cache           *cache.Cache
 	metrics         *Metrics
 	metricsProvider *csbouncer.MetricsProvider
+	mu              sync.RWMutex
 }
 
 func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cache.Cache) (Bouncer, error) {
@@ -60,6 +62,7 @@ func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cach
 		trustedProxies: addresses,
 		cache:          cache,
 		metrics:        &Metrics{},
+		mu:             sync.RWMutex{},
 	}
 
 	provider, err := csbouncer.NewMetricsProvider(bouncer.APIClient, bouncer.UserAgent, b.metricsUpdater, logrus.StandardLogger())
@@ -140,8 +143,8 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 		Unit:  ptr("requests"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
-		Name:  ptr("count"),
-		Value: ptr(float64(atomic.LoadInt64(ptr(int64(b.cache.Size()))))),
+		Name:  ptr("unique"),
+		Value: ptr(float64(atomic.LoadInt64(ptr(int64(len(b.metrics.HitsByIP)))))),
 		Unit:  ptr("ips"),
 	})
 
@@ -196,6 +199,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 
 	entry, ok := b.cache.Get(ip)
 	if ok {
+		b.IncHitsByIP(ip)
 		b.IncCacheHits()
 		logger.Debug("cache hit", "entry", entry)
 		if entry.Bounced {
@@ -211,6 +215,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		return false, errors.New("invalid ip address")
 	}
 
+	b.IncHitsByIP(ip)
 	decisions, err := b.getDecision(ip)
 	if err != nil {
 		logger.Error("error getting decisions", "error", err)
@@ -327,6 +332,38 @@ func isBannedDecision(decision *models.Decision) bool {
 	return decision != nil && decision.Type != nil && strings.EqualFold(*decision.Type, "ban")
 }
 
-func (b *EnvoyBouncer) IncTotalRequests()   { atomic.AddInt64(&b.metrics.TotalRequests, 1) }
-func (b *EnvoyBouncer) IncBouncedRequests() { atomic.AddInt64(&b.metrics.BouncedRequests, 1) }
-func (b *EnvoyBouncer) IncCacheHits()       { atomic.AddInt64(&b.metrics.CachedRequests, 1) }
+func (b *EnvoyBouncer) IncTotalRequests() {
+	if b.metrics == nil {
+		return
+	}
+	atomic.AddInt64(&b.metrics.TotalRequests, 1)
+}
+
+func (b *EnvoyBouncer) IncBouncedRequests() {
+	if b.metrics == nil {
+		return
+	}
+	atomic.AddInt64(&b.metrics.BouncedRequests, 1)
+}
+
+func (b *EnvoyBouncer) IncCacheHits() {
+	if b.metrics == nil {
+		return
+	}
+
+	atomic.AddInt64(&b.metrics.CachedRequests, 1)
+}
+
+func (b *EnvoyBouncer) IncHitsByIP(ip string) {
+	if b.metrics == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.metrics.HitsByIP == nil {
+		b.metrics.HitsByIP = make(map[string]int64)
+	}
+
+	b.metrics.HitsByIP[ip]++
+}

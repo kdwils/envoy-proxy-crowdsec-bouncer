@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,6 +30,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.Equal(t, "no ip found", err.Error())
 		assert.False(t, banned)
 		assert.Equal(t, int64(0), atomic.LoadInt64(&b.metrics.TotalRequests))
+		assert.Equal(t, 0, len(b.metrics.HitsByIP))
 	})
 
 	t.Run("header too big", func(t *testing.T) {
@@ -45,6 +47,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, "header too big", err.Error())
 		assert.False(t, banned)
+		assert.Equal(t, 0, len(b.metrics.HitsByIP))
 	})
 
 	t.Run("too many ips in chain", func(t *testing.T) {
@@ -65,6 +68,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, "too many ips in chain", err.Error())
 		assert.False(t, banned)
+		assert.Equal(t, 0, len(b.metrics.HitsByIP))
 	})
 
 	t.Run("invalid ip", func(t *testing.T) {
@@ -78,6 +82,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, "invalid ip address", err.Error())
 		assert.False(t, banned)
+		assert.Equal(t, 0, len(b.metrics.HitsByIP))
 	})
 
 	t.Run("bouncer error", func(t *testing.T) {
@@ -92,6 +97,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, "bouncer error", err.Error())
 		assert.False(t, banned)
+		assert.Equal(t, 1, len(b.metrics.HitsByIP))
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
 	})
 
 	t.Run("no decisions", func(t *testing.T) {
@@ -110,6 +117,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.True(t, ok)
 		assert.False(t, entry.Bounced)
 		assert.False(t, entry.Expired())
+		assert.Equal(t, 1, len(b.metrics.HitsByIP))
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
 	})
 
 	t.Run("ip banned", func(t *testing.T) {
@@ -138,6 +147,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.False(t, entry.Expired())
 		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.TotalRequests))
 		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.BouncedRequests))
+		assert.Equal(t, 1, len(b.metrics.HitsByIP))
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
 	})
 
 	t.Run("ip not banned", func(t *testing.T) {
@@ -164,6 +175,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.True(t, ok)
 		assert.False(t, entry.Bounced)
 		assert.False(t, entry.Expired())
+		assert.Equal(t, 1, len(b.metrics.HitsByIP))
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
 	})
 
 	t.Run("trusted proxy chain", func(t *testing.T) {
@@ -196,6 +209,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.True(t, ok)
 		assert.False(t, entry.Bounced)
 		assert.False(t, entry.Expired())
+		assert.Equal(t, 1, len(b.metrics.HitsByIP))
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
 	})
 
 	t.Run("ip already cached - bounced", func(t *testing.T) {
@@ -232,6 +247,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.TotalRequests))
 		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.BouncedRequests))
 		assert.Equal(t, int64(1), atomic.LoadInt64(&b.metrics.CachedRequests))
+		assert.Equal(t, 1, len(b.metrics.HitsByIP))
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
 	})
 
 	t.Run("ip already cached - ok", func(t *testing.T) {
@@ -265,6 +282,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		assert.True(t, ok)
 		assert.False(t, entry.Bounced)
 		assert.False(t, entry.Expired())
+		assert.Equal(t, 1, len(b.metrics.HitsByIP))
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
 	})
 }
 
@@ -286,6 +305,7 @@ func TestEnvoyBouncer_isTrustedProxy(t *testing.T) {
 		}
 		result := b.isTrustedProxy("192.168.1.100")
 		assert.True(t, result)
+
 	})
 
 	t.Run("ip not in trusted range", func(t *testing.T) {
@@ -400,5 +420,46 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 				assert.Equal(t, "ips", *item.Unit)
 			}
 		}
+	})
+}
+func TestEnvoyBouncer_IncHitsByIP(t *testing.T) {
+	t.Run("first hit", func(t *testing.T) {
+		b := &EnvoyBouncer{
+			metrics: &Metrics{},
+			mu:      sync.RWMutex{},
+		}
+
+		b.IncHitsByIP("192.168.1.1")
+
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
+	})
+
+	t.Run("multiple hits", func(t *testing.T) {
+		b := &EnvoyBouncer{
+			metrics: &Metrics{
+				HitsByIP: map[string]int64{
+					"192.168.1.1": 1,
+				},
+			},
+			mu: sync.RWMutex{},
+		}
+
+		b.IncHitsByIP("192.168.1.1")
+		b.IncHitsByIP("192.168.1.1")
+
+		assert.Equal(t, int64(3), b.metrics.HitsByIP["192.168.1.1"])
+	})
+
+	t.Run("multiple IPs", func(t *testing.T) {
+		b := &EnvoyBouncer{
+			metrics: &Metrics{},
+			mu:      sync.RWMutex{},
+		}
+
+		b.IncHitsByIP("192.168.1.1")
+		b.IncHitsByIP("192.168.1.2")
+
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
+		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.2"])
 	})
 }
