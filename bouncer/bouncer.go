@@ -24,11 +24,10 @@ const (
 )
 
 type Metrics struct {
-	TotalRequests     int64 `json:"total_requests"`
-	BannedRequests    int64 `json:"banned_requests"`
-	CacheHits         int64 `json:"cache_hits"`
-	CacheMisses       int64 `json:"cache_misses"`
-	StreamedDecisions int64 `json:"streamed_decisions"`
+	TotalRequests   int64 `json:"total_requests"`
+	BouncedRequests int64 `json:"banned_requests"`
+	CachedRequests  int64 `json:"cache_hits"`
+	UniqueIPs       int64 `json:"unique_ips"`
 }
 
 type EnvoyBouncer struct {
@@ -127,15 +126,26 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 	}
 
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
-		Name:  ptr("dropped"),
-		Value: ptr(float64(atomic.LoadInt64(&b.metrics.BannedRequests))),
-		Unit:  ptr("requests"),
-	})
-	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("processed"),
 		Value: ptr(float64(atomic.LoadInt64(&b.metrics.TotalRequests))),
 		Unit:  ptr("requests"),
 	})
+	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
+		Name:  ptr("bounced"),
+		Value: ptr(float64(atomic.LoadInt64(&b.metrics.BouncedRequests))),
+		Unit:  ptr("requests"),
+	})
+	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
+		Name:  ptr("cached"),
+		Value: ptr(float64(atomic.LoadInt64(&b.metrics.CachedRequests))),
+		Unit:  ptr("requests"),
+	})
+	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
+		Name:  ptr("count"),
+		Value: ptr(float64(atomic.LoadInt64(&b.metrics.UniqueIPs))),
+		Unit:  ptr("ips"),
+	})
+
 	met.Metrics = append(met.Metrics, metrics)
 }
 
@@ -150,6 +160,8 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		logger.Debug("cache is nil")
 		return false, errors.New("cache is nil")
 	}
+
+	b.IncTotalRequests()
 
 	var xff string
 	for k, v := range headers {
@@ -187,9 +199,13 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	if ok {
 		b.IncCacheHits()
 		logger.Debug("cache hit", "entry", entry)
+		if entry.Bounced {
+			logger.Debug("ip already bounced")
+			b.IncBouncedRequests()
+			return true, nil
+		}
 		return entry.Bounced, nil
 	}
-	b.IncCacheMisses()
 
 	if !isValidIP(ip) {
 		logger.Error("invalid ip address")
@@ -215,7 +231,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		if isBannedDecision(decision) {
 			logger.Info("bouncing")
 			b.cache.Set(ip, true)
-			b.IncBannedRequests()
+			b.IncBouncedRequests()
 			return true, nil
 		}
 	}
@@ -245,8 +261,6 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 				logger.Debug("received nil decision stream")
 				continue
 			}
-
-			b.IncStreamedDecisions()
 
 			for _, decision := range d.Deleted {
 				if decision == nil || decision.Value == nil {
@@ -314,18 +328,6 @@ func isBannedDecision(decision *models.Decision) bool {
 	return decision != nil && decision.Type != nil && strings.EqualFold(*decision.Type, "ban")
 }
 
-func (b *EnvoyBouncer) IncTotalRequests()     { atomic.AddInt64(&b.metrics.TotalRequests, 1) }
-func (b *EnvoyBouncer) IncBannedRequests()    { atomic.AddInt64(&b.metrics.BannedRequests, 1) }
-func (b *EnvoyBouncer) IncCacheHits()         { atomic.AddInt64(&b.metrics.CacheHits, 1) }
-func (b *EnvoyBouncer) IncCacheMisses()       { atomic.AddInt64(&b.metrics.CacheMisses, 1) }
-func (b *EnvoyBouncer) IncStreamedDecisions() { atomic.AddInt64(&b.metrics.StreamedDecisions, 1) }
-
-func (b *EnvoyBouncer) GetMetrics() any {
-	return map[string]any{
-		"route":            "envoy",
-		"name":             "envoy-gateway-bouncer/" + version.Version,
-		"denied_requests":  atomic.LoadInt64(&b.metrics.BannedRequests),
-		"allowed_requests": atomic.LoadInt64(&b.metrics.TotalRequests) - atomic.LoadInt64(&b.metrics.BannedRequests),
-		"stream_new":       atomic.LoadInt64(&b.metrics.StreamedDecisions),
-	}
-}
+func (b *EnvoyBouncer) IncTotalRequests()   { atomic.AddInt64(&b.metrics.TotalRequests, 1) }
+func (b *EnvoyBouncer) IncBouncedRequests() { atomic.AddInt64(&b.metrics.BouncedRequests, 1) }
+func (b *EnvoyBouncer) IncCacheHits()       { atomic.AddInt64(&b.metrics.CachedRequests, 1) }
