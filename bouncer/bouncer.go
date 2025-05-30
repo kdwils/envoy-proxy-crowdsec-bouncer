@@ -7,12 +7,15 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -20,11 +23,21 @@ const (
 	maxIPs          = 20
 )
 
+type Metrics struct {
+	TotalRequests     int64 `json:"total_requests"`
+	BannedRequests    int64 `json:"banned_requests"`
+	CacheHits         int64 `json:"cache_hits"`
+	CacheMisses       int64 `json:"cache_misses"`
+	StreamedDecisions int64 `json:"streamed_decisions"`
+}
+
 type EnvoyBouncer struct {
-	stream         *csbouncer.StreamBouncer
-	bouncer        LiveBouncerClient
-	trustedProxies []*net.IPNet
-	cache          *cache.Cache
+	stream          *csbouncer.StreamBouncer
+	bouncer         LiveBouncerClient
+	trustedProxies  []*net.IPNet
+	cache           *cache.Cache
+	metrics         *Metrics
+	metricsProvider *csbouncer.MetricsProvider
 }
 
 func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cache.Cache) (Bouncer, error) {
@@ -48,7 +61,15 @@ func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cach
 		stream:         stream,
 		trustedProxies: addresses,
 		cache:          cache,
+		metrics:        &Metrics{},
 	}
+
+	provider, err := csbouncer.NewMetricsProvider(bouncer.APIClient, bouncer.UserAgent, b.metricsUpdater, logrus.StandardLogger())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create metrics provider: %w", err)
+	}
+
+	b.metricsProvider = provider
 
 	return b, nil
 }
@@ -96,8 +117,30 @@ func newLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	return b, err
 }
 
+func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, updateInterval time.Duration) {
+	metrics := &models.DetailedMetrics{
+		Meta: &models.MetricsMeta{
+			UtcNowTimestamp:   ptr(time.Now().Unix()),
+			WindowSizeSeconds: ptr(int64(updateInterval.Seconds())),
+		},
+		Items: make([]*models.MetricsDetailItem, 0),
+	}
+
+	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
+		Name:  ptr("dropped"),
+		Value: ptr(float64(atomic.LoadInt64(&b.metrics.BannedRequests))),
+		Unit:  ptr("requests"),
+	})
+	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
+		Name:  ptr("processed"),
+		Value: ptr(float64(atomic.LoadInt64(&b.metrics.TotalRequests))),
+		Unit:  ptr("requests"),
+	})
+	met.Metrics = append(met.Metrics, metrics)
+}
+
 func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error) {
-	logger := logger.FromContext(ctx).With(slog.String("method", "bounce")).With(slog.String("headers", fmt.Sprintf("%+v", headers)))
+	logger := logger.FromContext(ctx).With(slog.String("method", "bounce"))
 	if ip == "" {
 		logger.Debug("no ip provided")
 		return false, errors.New("no ip found")
@@ -142,9 +185,11 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 
 	entry, ok := b.cache.Get(ip)
 	if ok {
+		b.IncCacheHits()
 		logger.Debug("cache hit", "entry", entry)
 		return entry.Bounced, nil
 	}
+	b.IncCacheMisses()
 
 	if !isValidIP(ip) {
 		logger.Error("invalid ip address")
@@ -170,6 +215,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		if isBannedDecision(decision) {
 			logger.Info("bouncing")
 			b.cache.Set(ip, true)
+			b.IncBannedRequests()
 			return true, nil
 		}
 	}
@@ -200,6 +246,8 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 				continue
 			}
 
+			b.IncStreamedDecisions()
+
 			for _, decision := range d.Deleted {
 				if decision == nil || decision.Value == nil {
 					continue
@@ -215,6 +263,23 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 
 				b.cache.Set(*decision.Value, isBannedDecision(decision))
 			}
+		}
+	}
+}
+
+func (b *EnvoyBouncer) Metrics(ctx context.Context) error {
+	if b.metricsProvider == nil {
+		return errors.New("metrics provider not initialized")
+	}
+	go b.metricsProvider.Run(ctx)
+
+	logger := logger.FromContext(ctx).With(slog.String("method", "metrics"))
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Debug("sync context done")
+			return nil
 		}
 	}
 }
@@ -247,4 +312,20 @@ func isValidIP(ip string) bool {
 
 func isBannedDecision(decision *models.Decision) bool {
 	return decision != nil && decision.Type != nil && strings.EqualFold(*decision.Type, "ban")
+}
+
+func (b *EnvoyBouncer) IncTotalRequests()     { atomic.AddInt64(&b.metrics.TotalRequests, 1) }
+func (b *EnvoyBouncer) IncBannedRequests()    { atomic.AddInt64(&b.metrics.BannedRequests, 1) }
+func (b *EnvoyBouncer) IncCacheHits()         { atomic.AddInt64(&b.metrics.CacheHits, 1) }
+func (b *EnvoyBouncer) IncCacheMisses()       { atomic.AddInt64(&b.metrics.CacheMisses, 1) }
+func (b *EnvoyBouncer) IncStreamedDecisions() { atomic.AddInt64(&b.metrics.StreamedDecisions, 1) }
+
+func (b *EnvoyBouncer) GetMetrics() any {
+	return map[string]any{
+		"route":            "envoy",
+		"name":             "envoy-gateway-bouncer/" + version.Version,
+		"denied_requests":  atomic.LoadInt64(&b.metrics.BannedRequests),
+		"allowed_requests": atomic.LoadInt64(&b.metrics.TotalRequests) - atomic.LoadInt64(&b.metrics.BannedRequests),
+		"stream_new":       atomic.LoadInt64(&b.metrics.StreamedDecisions),
+	}
 }

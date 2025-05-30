@@ -22,6 +22,7 @@ type Bouncer struct {
 	ApiKey         string   `yaml:"apiKey" json:"apiKey"`
 	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
 	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
+	Metrics        bool     `yaml:"metrics" json:"metrics"`
 }
 
 type Cache struct {

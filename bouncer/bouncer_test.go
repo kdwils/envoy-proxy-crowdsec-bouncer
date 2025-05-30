@@ -22,7 +22,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		banned, err := b.Bounce(context.TODO(), "", nil)
 		assert.Error(t, err)
 		assert.Equal(t, "no ip found", err.Error())
@@ -35,7 +35,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		headers := map[string]string{
 			"x-forwarded-for": strings.Repeat("a", maxHeaderLength+1),
 		}
@@ -51,7 +51,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		ips := make([]string, maxIPs+1)
 		for i := range ips {
 			ips[i] = "192.168.1.1"
@@ -71,7 +71,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		banned, err := b.Bounce(context.TODO(), "not-an-ip", nil)
 		assert.Error(t, err)
 		assert.Equal(t, "invalid ip address", err.Error())
@@ -84,7 +84,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, errors.New("bouncer error"))
 		banned, err := b.Bounce(context.TODO(), "192.168.1.1", nil)
 		assert.Error(t, err)
@@ -98,7 +98,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		mockBouncer.EXPECT().Get("192.168.1.1").Return(nil, nil)
 		banned, err := b.Bounce(context.TODO(), "192.168.1.1", nil)
 		assert.NoError(t, err)
@@ -116,7 +116,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		ip := "192.168.1.1"
 		decisionType := "ban"
 		decisions := &models.GetDecisionsResponse{
@@ -142,7 +142,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 		cache := cache.New(time.Minute, 10)
 
 		mockBouncer := mocks.NewMockLiveBouncerClient(ctrl)
-		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache}
+		b := &EnvoyBouncer{bouncer: mockBouncer, cache: cache, metrics: &Metrics{}}
 		ip := "192.168.1.1"
 		decisionType := "allow"
 		decisions := &models.GetDecisionsResponse{
@@ -177,7 +177,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 					Mask: net.CIDRMask(32, 32),
 				},
 			},
-			cache: cache,
+			cache:   cache,
+			metrics: &Metrics{},
 		}
 		headers := map[string]string{
 			"x-forwarded-for": "192.168.1.1,10.0.0.1",
@@ -209,7 +210,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 					Mask: net.CIDRMask(32, 32),
 				},
 			},
-			cache: cache,
+			cache:   cache,
+			metrics: &Metrics{},
 		}
 		headers := map[string]string{
 			"x-forwarded-for": "192.168.1.1,10.0.0.1",
@@ -241,7 +243,8 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 					Mask: net.CIDRMask(32, 32),
 				},
 			},
-			cache: cache,
+			cache:   cache,
+			metrics: &Metrics{},
 		}
 		headers := map[string]string{
 			"x-forwarded-for": "192.168.1.1,10.0.0.1",
