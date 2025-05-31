@@ -4,6 +4,37 @@ A CrowdSec bouncer implementation for Envoy Proxy's external authorization (ext_
 
 This project works for envoy proxy or envoy gateway in a kubernetes environment.
 
+## How it works
+
+The bounce is deployed as an external authorization service for Envoy Proxy. It determines the ip of the request, respecting trusted proxies configuerd, and asks the LAPI for a decision.
+
+```mermaid
+sequenceDiagram
+    participant Request
+    participant Envoy as Envoy Proxy
+    participant Bouncer as Envoy Bouncer
+    participant LAPI as CrowdSec LAPI
+
+    Request->>Envoy: HTTP Request
+    Envoy->>Bouncer: ext_authz Check Request
+    
+    alt Cache Hit
+        Bouncer-->>Bouncer: Check Cache
+    else Cache Miss
+        Bouncer->>LAPI: Check IP Decision
+        LAPI-->>Bouncer: Return Decision
+        Bouncer-->>Bouncer: Cache Result
+    end
+
+    alt IP is Banned
+        Bouncer-->>Envoy: Return 403 Forbidden
+        Envoy-->>Client: Return 403 Forbidden
+    else IP is Allowed
+        Bouncer-->>Envoy: Return 200 OK
+        Envoy->>Client: Continue with Request
+    end
+```
+
 ## Installation
 
 ```bash
