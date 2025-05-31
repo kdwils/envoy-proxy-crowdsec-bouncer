@@ -28,10 +28,10 @@ sequenceDiagram
 
     alt IP is Banned
         Bouncer-->>Envoy: Return 403 Forbidden
-        Envoy-->>Client: Return 403 Forbidden
+        Envoy-->>Request: Return 403 Forbidden
     else IP is Allowed
         Bouncer-->>Envoy: Return 200 OK
-        Envoy->>Client: Continue with Request
+        Envoy->>Request: Continue with Request
     end
 ```
 
