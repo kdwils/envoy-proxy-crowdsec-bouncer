@@ -6,7 +6,7 @@ This project works for envoy proxy or envoy gateway in a kubernetes environment.
 
 ## How it works
 
-The bounce is deployed as an external authorization service for Envoy Proxy. It determines the ip of the request, respecting trusted proxies configuerd, and asks the LAPI for a decision.
+The bouncer is deployed as an external authorization service for Envoy Proxy. It determines the client ip of the request, respecting trusted proxies configured, and asks the LAPI for a decision.
 
 ```mermaid
 sequenceDiagram
