@@ -87,7 +87,6 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		return getDeniedResponse(envoy_type.StatusCode_Forbidden, "forbidden"), nil
 	}
 
-	logger.Info("ok")
 	return &auth.CheckResponse{
 		Status: &status.Status{
 			Code: 0,

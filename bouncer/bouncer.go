@@ -254,6 +254,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 
 	b.cache.Set(ip, false)
 	logger.Debug("no ban decisions found")
+	logger.Info("ok")
 	return false, nil
 }
 
