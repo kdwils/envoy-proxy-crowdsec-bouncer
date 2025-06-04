@@ -225,6 +225,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 			b.IncBouncedRequests()
 			return true, nil
 		}
+		logger.Info("ok")
 		return entry.Bounced, nil
 	}
 
