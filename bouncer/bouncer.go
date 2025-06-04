@@ -211,7 +211,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 		return false, errors.New("invalid ip address")
 	}
 
-	logger = logger.With(slog.String("ip", ip))
+	logger = logger.With(slog.String("ip", ip), slog.String("xff", xff))
 	logger.Debug("starting decision check")
 
 	b.IncHitsByIP(ip)
