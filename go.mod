@@ -1,6 +1,6 @@
 module github.com/kdwils/envoy-proxy-bouncer
 
-go 1.24.2
+go 1.24.3
 
 require (
 	github.com/crowdsecurity/crowdsec v1.6.8
@@ -11,7 +11,7 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/mock v0.5.1
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822
 	google.golang.org/grpc v1.72.2
 )
 
@@ -24,7 +24,7 @@ require (
 	github.com/crowdsecurity/go-cs-lib v0.0.20 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
-	github.com/expr-lang/expr v1.17.4 // indirect
+	github.com/expr-lang/expr v1.17.5 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect
 	github.com/go-openapi/errors v0.22.1 // indirect
@@ -56,7 +56,7 @@ require (
 	github.com/sagikazarmark/locafero v0.9.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
-	github.com/spf13/cast v1.8.0 // indirect
+	github.com/spf13/cast v1.9.2 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.mongodb.org/mongo-driver v1.17.3 // indirect
