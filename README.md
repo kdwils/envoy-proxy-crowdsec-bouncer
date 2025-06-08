@@ -8,6 +8,25 @@ This project works for envoy proxy or envoy gateway in a kubernetes environment.
 
 The bouncer is deployed as an external authorization service for Envoy Proxy. The bouncer receives decisions from the via stream from the LAPI instance configured. Then, the bouncer determines the client ip of each request while respecting trusted proxies configured, and checks the cache for a ban decision for an ip. If a ban decision is found the bouncer returns a 403 Forbidden response, otherwise it returns a 200 OK response.
 
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Envoy as Envoy Proxy
+    participant Bouncer as Envoy Bouncer
+
+    Client->>Envoy: HTTP Request
+    Envoy->>Bouncer: ExtAuthz Check Request
+    Note over Bouncer: Extract Client IP from request
+
+    alt Banned IP Found
+        Bouncer->>Envoy: 403 Forbidden
+        Envoy->>Client: 403 Forbidden
+    else No Ban Found
+        Bouncer->>Envoy: 200 OK
+        Envoy->>Client: Process Original Request
+    end
+```
+
 ## Installation
 
 ```bash
