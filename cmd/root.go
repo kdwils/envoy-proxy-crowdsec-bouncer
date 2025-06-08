@@ -47,6 +47,4 @@ func initConfig() {
 	viper.SetDefault("bouncer.metrics", false)
 	viper.SetDefault("bouncer.tickerInterval", "10s")
 	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})
-	viper.SetDefault("cache.ttl", "10m")
-	viper.SetDefault("cache.maxEntries", 10000)
 }
