@@ -1,4 +1,4 @@
-module github.com/kdwils/envoy-gateway-bouncer
+module github.com/kdwils/envoy-proxy-bouncer
 
 go 1.24.3
 
@@ -8,7 +8,6 @@ require (
 	github.com/crowdsecurity/crowdsec v1.6.8
 	github.com/crowdsecurity/go-cs-bouncer v0.0.16
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
-	github.com/kdwils/envoy-proxy-bouncer v0.0.0-20250608172201-6a9b99ecb8dd
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
