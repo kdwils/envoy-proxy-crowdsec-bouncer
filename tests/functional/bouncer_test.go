@@ -1,6 +1,3 @@
-//go:build functional
-// +build functional
-
 package functional
 
 import (
