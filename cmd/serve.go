@@ -8,7 +8,6 @@ import (
 	"syscall"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	log "github.com/kdwils/envoy-proxy-bouncer/logger"
@@ -38,10 +37,7 @@ var serveCmd = &cobra.Command{
 		logger.Info("starting envoy-proxy-bouncer", "version", version.Version, "logLevel", level)
 		ctx := log.WithContext(context.Background(), logger)
 
-		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
-		go cache.Cleanup()
-
-		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies, cache)
+		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies)
 		if err != nil {
 			return err
 		}

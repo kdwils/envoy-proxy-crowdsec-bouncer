@@ -3,83 +3,47 @@ package cache
 import (
 	"testing"
 	"time"
+
+	"github.com/crowdsecurity/crowdsec/pkg/models"
 )
 
-func TestCache(t *testing.T) {
-	t.Run("new cache creation", func(t *testing.T) {
-		c := New(time.Minute, 100)
-		if c == nil {
-			t.Error("expected non-nil cache")
-		}
-	})
-
-	t.Run("set and get entry", func(t *testing.T) {
-		c := New(time.Minute, 100)
-		ip := "192.168.1.1"
-		c.Set(ip, true)
-
-		entry, exists := c.Get(ip)
-		if !exists {
-			t.Error("expected entry to exist")
-		}
-		if !entry.Bounced {
-			t.Error("expected entry to be bounced")
-		}
-	})
-
-	t.Run("expired entry", func(t *testing.T) {
-		c := New(time.Millisecond, 100)
-		ip := "192.168.1.1"
-		c.Set(ip, true)
-		time.Sleep(time.Millisecond * 2)
-
-		_, exists := c.Get(ip)
-		if exists {
-			t.Error("expected entry to be expired")
-		}
-	})
-
-	t.Run("entry expiration", func(t *testing.T) {
-		entry := Entry{
-			Bounced:   true,
-			ExpiresAt: time.Now().Add(-time.Minute),
-		}
-		if !entry.Expired() {
-			t.Error("expected entry to be expired")
-		}
-
-		entry.ExpiresAt = time.Now().Add(time.Minute)
-		if entry.Expired() {
-			t.Error("expected entry to not be expired")
-		}
-	})
+func ptr[T any](v T) *T {
+	return &v
 }
-func TestCacheSize(t *testing.T) {
-	t.Run("empty cache size", func(t *testing.T) {
-		c := New(time.Minute, 100)
-		if size := c.Size(); size != 0 {
-			t.Errorf("expected size 0, got %d", size)
-		}
-	})
 
-	t.Run("cache size after adding entries", func(t *testing.T) {
-		c := New(time.Minute, 100)
-		c.Set("192.168.1.1", true)
-		c.Set("192.168.1.2", false)
+func TestCache(t *testing.T) {
+	c := New()
+	if c.Size() != 0 {
+		t.Errorf("expected empty cache, got size %d", c.Size())
+	}
 
-		if size := c.Size(); size != 2 {
-			t.Errorf("expected size 2, got %d", size)
-		}
-	})
+	ip := "192.168.1.1"
+	decision := models.Decision{
+		ID:       1,
+		Origin:   ptr("test"),
+		Type:     ptr("ban"),
+		Value:    &ip,
+		Duration: ptr(time.Hour.String()),
+		Scenario: ptr("test"),
+	}
+	c.Set(ip, decision)
+	if c.Size() != 1 {
+		t.Errorf("expected cache size 1, got %d", c.Size())
+	}
+	got, ok := c.Get(ip)
+	if !ok {
+		t.Errorf("expected to find entry for %s", ip)
+	}
+	if *got.Value != ip {
+		t.Errorf("expected ip %s, got %s", ip, *got.Value)
+	}
+	c.Delete(ip)
+	if c.Size() != 0 {
+		t.Errorf("expected empty cache after delete, got size %d", c.Size())
+	}
 
-	t.Run("cache size after deletion", func(t *testing.T) {
-		c := New(time.Minute, 100)
-		c.Set("192.168.1.1", true)
-		c.Set("192.168.1.2", false)
-		c.Delete("192.168.1.1")
-
-		if size := c.Size(); size != 1 {
-			t.Errorf("expected size 1, got %d", size)
-		}
-	})
+	_, ok = c.Get(ip)
+	if ok {
+		t.Errorf("expected no entry for %s after delete", ip)
+	}
 }
