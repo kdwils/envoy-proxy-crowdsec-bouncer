@@ -108,10 +108,6 @@ bouncer:
   trustedProxies:
     - "127.0.0.1"
     - "::1"
-
-cache:
-  ttl: "10m"
-  maxEntries: 10000
 ```
 
 ### Simple bouncer configuration
