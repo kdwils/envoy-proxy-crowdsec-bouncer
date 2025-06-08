@@ -27,7 +27,6 @@ const (
 type Metrics struct {
 	TotalRequests   int64            `json:"total_requests"`
 	BouncedRequests int64            `json:"banned_requests"`
-	CachedRequests  int64            `json:"cache_hits"`
 	HitsByIP        map[string]int64 `json:"hits_by_ip"`
 }
 type EnvoyBouncer struct {
@@ -113,9 +112,8 @@ func NewLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, updateInterval time.Duration) {
 	totalRequests := atomic.SwapInt64(&b.metrics.TotalRequests, 0)
 	bouncedRequests := atomic.SwapInt64(&b.metrics.BouncedRequests, 0)
-	cachedRequests := atomic.SwapInt64(&b.metrics.CachedRequests, 0)
 
-	if totalRequests == 0 && bouncedRequests == 0 && cachedRequests == 0 {
+	if totalRequests == 0 && bouncedRequests == 0 {
 		return
 	}
 
@@ -141,11 +139,6 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 		Name:  ptr("requests"),
 		Value: ptr(float64(bouncedRequests)),
 		Unit:  ptr("bounced"),
-	})
-	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
-		Name:  ptr("requests"),
-		Value: ptr(float64(cachedRequests)),
-		Unit:  ptr("cached"),
 	})
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("unique"),
@@ -319,14 +312,6 @@ func (b *EnvoyBouncer) IncBouncedRequests() {
 		return
 	}
 	atomic.AddInt64(&b.metrics.BouncedRequests, 1)
-}
-
-func (b *EnvoyBouncer) IncCacheHits() {
-	if b.metrics == nil {
-		return
-	}
-
-	atomic.AddInt64(&b.metrics.CachedRequests, 1)
 }
 
 func (b *EnvoyBouncer) IncHitsByIP(ip string) {

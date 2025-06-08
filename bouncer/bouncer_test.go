@@ -119,7 +119,6 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 
 		atomic.StoreInt64(&b.metrics.TotalRequests, 100)
 		atomic.StoreInt64(&b.metrics.BouncedRequests, 25)
-		atomic.StoreInt64(&b.metrics.CachedRequests, 75)
 		decision := models.Decision{
 			Value: ptr("192.168.1.100"),
 			Type:  ptr("ban"),
@@ -132,7 +131,7 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 		b.metricsUpdater(metrics, updateInterval)
 
 		assert.Len(t, metrics.Metrics, 1)
-		assert.Len(t, metrics.Metrics[0].Items, 4)
+		assert.Len(t, metrics.Metrics[0].Items, 3)
 
 		assert.NotNil(t, metrics.Metrics[0].Meta.UtcNowTimestamp)
 		assert.Equal(t, int64(10), *metrics.Metrics[0].Meta.WindowSizeSeconds)
@@ -145,9 +144,6 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 			case "bounced":
 				assert.Equal(t, float64(25), *item.Value)
 				assert.Equal(t, "requests", *item.Unit)
-			case "cached":
-				assert.Equal(t, float64(75), *item.Value)
-				assert.Equal(t, "requests", *item.Unit)
 			case "count":
 				assert.Equal(t, float64(1), *item.Value)
 				assert.Equal(t, "ips", *item.Unit)
@@ -156,7 +152,6 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 
 		assert.Equal(t, int64(0), b.metrics.TotalRequests)
 		assert.Equal(t, int64(0), b.metrics.BouncedRequests)
-		assert.Equal(t, int64(0), b.metrics.CachedRequests)
 		assert.Equal(t, 0, len(b.metrics.HitsByIP))
 	})
 }
