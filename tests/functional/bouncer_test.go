@@ -81,7 +81,7 @@ func TestBouncer(t *testing.T) {
 	rootCmd := cmd.ServeCmd.Root()
 	rootCmd.SetArgs([]string{"serve"})
 	viper.Set("server.port", 8080)
-	viper.Set("server.logLevel", "info")
+	viper.Set("server.logLevel", "debug")
 	viper.Set("bouncer.apiKey", key)
 	viper.Set("bouncer.apiURL", lapiURL.String())
 	viper.Set("bouncer.trustedProxies", trustedProxies)

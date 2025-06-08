@@ -25,8 +25,8 @@ jobs:
       - name: Build binary
         run: CGO_ENABLED=0 go build -o envoy-proxy-bouncer .
 
-      - name: run functional tests
-        run: go test -v -tags=functional ./tests/functional
+      - name: Run functional tests
+        run: go test -v -tags functional ./tests/functional
 
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main'
