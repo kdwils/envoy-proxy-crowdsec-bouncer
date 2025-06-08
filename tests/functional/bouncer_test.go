@@ -15,7 +15,7 @@ import (
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
-	"github.com/kdwils/envoy-gateway-bouncer/cmd"
+	"github.com/kdwils/envoy-proxy-bouncer/cmd"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
