@@ -38,8 +38,8 @@ type EnvoyBouncer struct {
 	mu              *sync.RWMutex
 }
 
-func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string) (Bouncer, error) {
-	stream, err := newStreamBouncer(apiKey, apiURL)
+func NewEnvoyBouncer(apiKey, apiURL, tickerInterval string, trustedProxies []string) (Bouncer, error) {
+	stream, err := newStreamBouncer(apiKey, apiURL, tickerInterval)
 	if err != nil {
 		return nil, err
 	}
@@ -88,11 +88,12 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 	return ipNets, nil
 }
 
-func newStreamBouncer(apiKey, apiURL string) (*csbouncer.StreamBouncer, error) {
+func newStreamBouncer(apiKey, apiURL, tickerInterval string) (*csbouncer.StreamBouncer, error) {
 	b := &csbouncer.StreamBouncer{
-		APIKey:    apiKey,
-		APIUrl:    apiURL,
-		UserAgent: "envoy-proxy-bouncer/" + version.Version,
+		APIKey:         apiKey,
+		APIUrl:         apiURL,
+		UserAgent:      "envoy-proxy-bouncer/" + version.Version,
+		TickerInterval: tickerInterval,
 	}
 
 	err := b.Init()

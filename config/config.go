@@ -21,6 +21,7 @@ type Bouncer struct {
 	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
 	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
 	Metrics        bool     `yaml:"metrics" json:"metrics"`
+	TickerInterval string   `yaml:"tickerInterval" json:"tickerInterval"`
 }
 
 func New(v *viper.Viper) (Config, error) {

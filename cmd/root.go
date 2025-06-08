@@ -13,7 +13,7 @@ var cfgFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use: "envoy-proxy-bouncer",
+	Use: "envoy-proxy-crowdsec-bounce",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -45,6 +45,7 @@ func initConfig() {
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.apiURL", "")
 	viper.SetDefault("bouncer.metrics", false)
+	viper.SetDefault("bouncer.tickerInterval", "10s")
 	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})
 	viper.SetDefault("cache.ttl", "10m")
 	viper.SetDefault("cache.maxEntries", 10000)

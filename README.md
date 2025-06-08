@@ -108,6 +108,7 @@ bouncer:
   trustedProxies:
     - "127.0.0.1"
     - "::1"
+  tickerInterval: "10s"
 ```
 
 ### Simple bouncer configuration

@@ -91,6 +91,7 @@ func TestBouncer(t *testing.T) {
 	viper.Set("bouncer.apiKey", key)
 	viper.Set("bouncer.apiURL", lapiURL.String())
 	viper.Set("bouncer.trustedProxies", trustedProxies)
+	viper.Set("bouncer.tickerInterval", "1s")
 
 	go func() {
 		err = rootCmd.Execute()
@@ -177,6 +178,43 @@ func TestBouncer(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(403), check.Status.Code)
+	})
+
+	t.Run("ban decision removed", func(t *testing.T) {
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &corev3.Address{
+						Address: &corev3.Address_SocketAddress{
+							SocketAddress: &corev3.SocketAddress{
+								Address: "192.168.1.100",
+							},
+						},
+					},
+				},
+				Request: &auth.AttributeContext_Request{
+					Http: &auth.AttributeContext_HttpRequest{
+						Headers: map[string]string{
+							"x-forwarded-for": "192.168.1.100,10.0.0.1",
+						},
+					},
+				},
+			},
+		}
+
+		_, _, err = lapiContainer.Exec(ctx, []string{
+			"cscli", "decisions", "delete", "-i", "192.168.1.100",
+		})
+		if err != nil {
+			t.Fatalf("failed to exec: %v", err)
+		}
+
+		time.Sleep(2 * time.Second)
+
+		check, err := client.Check(context.TODO(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(0), check.Status.Code)
 	})
 
 }

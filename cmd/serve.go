@@ -36,7 +36,7 @@ var ServeCmd = &cobra.Command{
 		slogger.Info("starting envoy-proxy-bouncer", "version", version.Version, "logLevel", level)
 		ctx := logger.WithContext(context.Background(), slogger)
 
-		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies)
+		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TickerInterval, config.Bouncer.TrustedProxies)
 		if err != nil {
 			return err
 		}
