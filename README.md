@@ -60,6 +60,8 @@ bouncer:
     - 2001:db8::1                          # IPv6
     - 10.0.0.0/8                           # CIDR range
     - 100.64.0.0/10                        # CIDR range
+  
+  tickerInterval: "10s"                    # optional (defaults to 10s) - how often to check for ban decisions from the LAPI stream
 ```
 
 Run with config file:
@@ -80,6 +82,7 @@ export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
 export ENVOY_BOUNCER_BOUNCER_APIKEY=your-api-key
 export ENVOY_BOUNCER_BOUNCER_APIURL=http://crowdsec:8080
 export ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
+export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=5s
 ```
 
 ### Configuration Precedence
@@ -108,6 +111,7 @@ bouncer:
   trustedProxies:
     - "127.0.0.1"
     - "::1"
+  tickerInterval: "10s"
 ```
 
 ### Simple bouncer configuration
