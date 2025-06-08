@@ -13,8 +13,9 @@ FROM gcr.io/distroless/static-debian12
 
 WORKDIR /app
 
-COPY --from=builder /app/envoy-proxy-bouncer /app/
+COPY --chown=1000:1000 --from=builder /app/envoy-proxy-bouncer /app/
+
+USER 1000
 
 ENTRYPOINT ["/app/envoy-proxy-bouncer"]
-
 CMD ["serve"]
