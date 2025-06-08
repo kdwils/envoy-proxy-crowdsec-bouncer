@@ -8,9 +8,9 @@ import (
 	"syscall"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	log "github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 
@@ -34,28 +34,25 @@ var serveCmd = &cobra.Command{
 
 		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		logger := slog.New(handler)
-
 		logger.Info("starting envoy-proxy-bouncer", "version", version.Version, "logLevel", level)
+		ctx := log.WithContext(context.Background(), logger)
 
-		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
-		go cache.Cleanup()
-
-		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies, cache)
+		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies)
 		if err != nil {
 			return err
 		}
-		go bouncer.Sync(context.Background())
+		go bouncer.Sync(ctx)
 
 		if config.Bouncer.Metrics {
 			logger.Info("metrics enabled, starting bouncer metrics")
 			go func() {
-				if err := bouncer.Metrics(context.Background()); err != nil {
+				if err := bouncer.Metrics(ctx); err != nil {
 					logger.Error("metrics error", "error", err)
 				}
 			}()
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 		server := server.NewServer(config, bouncer, logger)
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

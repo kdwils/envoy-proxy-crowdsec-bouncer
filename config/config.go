@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"time"
 
 	"github.com/spf13/viper"
 )
@@ -10,7 +9,6 @@ import (
 type Config struct {
 	Server  Server  `yaml:"server" json:"server"`
 	Bouncer Bouncer `yaml:"bouncer" json:"bouncer"`
-	Cache   Cache   `yaml:"cache" json:"cache"`
 }
 
 type Server struct {
@@ -23,11 +21,6 @@ type Bouncer struct {
 	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
 	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
 	Metrics        bool     `yaml:"metrics" json:"metrics"`
-}
-
-type Cache struct {
-	Ttl        time.Duration `yaml:"ttl" json:"ttl"`
-	MaxEntries int           `yaml:"maxEntries" json:"maxEntries"`
 }
 
 func New(v *viper.Viper) (Config, error) {

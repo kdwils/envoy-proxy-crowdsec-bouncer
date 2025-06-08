@@ -68,10 +68,6 @@ bouncer:
     - 2001:db8::1                          # IPv6
     - 10.0.0.0/8                           # CIDR range
     - 100.64.0.0/10                        # CIDR range
-
-cache:
-  ttl: "10m"                               # optional (defaults to 10m)
-  maxEntries: 10000                        # optional (defaults to 10000) 
 ```
 
 Run with config file:
@@ -92,10 +88,6 @@ export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
 export ENVOY_BOUNCER_BOUNCER_APIKEY=your-api-key
 export ENVOY_BOUNCER_BOUNCER_APIURL=http://crowdsec:8080
 export ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
-
-# Cache configuration
-export ENVOY_BOUNCER_CACHE_TTL=10m
-export ENVOY_BOUNCER_CACHE_MAXENTRIES=10000
 ```
 
 ### Configuration Precedence

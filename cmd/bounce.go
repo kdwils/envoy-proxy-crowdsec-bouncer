@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 
@@ -32,20 +31,22 @@ var bounceCmd = &cobra.Command{
 		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		logger := slog.New(handler)
 
-		cache := cache.New(config.Cache.Ttl, config.Cache.MaxEntries)
-		bouncer, err := bouncer.NewEnvoyBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL, config.Bouncer.TrustedProxies, cache)
+		client, err := bouncer.NewLiveBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL)
 		if err != nil {
 			return err
 		}
 
 		for _, ip := range ips {
-			bounce, err := bouncer.Bounce(cmd.Context(), ip, nil)
+			decisions, err := client.Get(ip)
 			if err != nil {
-				return err
+				logger.Error("error getting decision", "error", err)
+				continue
 			}
-			if bounce {
-				logger.Info("not allowed", "ip", ip)
-				return nil
+			for _, d := range *decisions {
+				if bouncer.IsBannedDecision(d) {
+					logger.Info("not allowed", "ip", ip, "type", *d.Type)
+					continue
+				}
 			}
 			logger.Info("allowed", "ip", ip)
 		}

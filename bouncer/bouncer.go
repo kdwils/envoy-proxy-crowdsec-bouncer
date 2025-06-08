@@ -32,15 +32,14 @@ type Metrics struct {
 }
 type EnvoyBouncer struct {
 	stream          *csbouncer.StreamBouncer
-	bouncer         LiveBouncerClient
 	trustedProxies  []*net.IPNet
 	cache           *cache.Cache
 	metrics         *Metrics
 	metricsProvider *csbouncer.MetricsProvider
-	mu              sync.RWMutex
+	mu              *sync.RWMutex
 }
 
-func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cache.Cache) (Bouncer, error) {
+func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string) (Bouncer, error) {
 	stream, err := newStreamBouncer(apiKey, apiURL)
 	if err != nil {
 		return nil, err
@@ -51,21 +50,15 @@ func NewEnvoyBouncer(apiKey, apiURL string, trustedProxies []string, cache *cach
 		return nil, err
 	}
 
-	bouncer, err := newLiveBouncer(apiKey, apiURL)
-	if err != nil {
-		return nil, err
-	}
-
 	b := &EnvoyBouncer{
-		bouncer:        bouncer,
 		stream:         stream,
 		trustedProxies: addresses,
-		cache:          cache,
-		metrics:        &Metrics{},
-		mu:             sync.RWMutex{},
+		cache:          cache.New(),
+		metrics:        new(Metrics),
+		mu:             new(sync.RWMutex),
 	}
 
-	provider, err := csbouncer.NewMetricsProvider(bouncer.APIClient, bouncer.UserAgent, b.metricsUpdater, logrus.StandardLogger())
+	provider, err := csbouncer.NewMetricsProvider(stream.APIClient, stream.UserAgent, b.metricsUpdater, logrus.StandardLogger())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics provider: %w", err)
 	}
@@ -107,7 +100,7 @@ func newStreamBouncer(apiKey, apiURL string) (*csbouncer.StreamBouncer, error) {
 	return b, err
 }
 
-func newLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
+func NewLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	b := &csbouncer.LiveBouncer{
 		APIKey:    apiKey,
 		APIUrl:    apiURL,
@@ -216,52 +209,25 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 
 	b.IncHitsByIP(ip)
 
-	entry, ok := b.cache.Get(ip)
-	if ok {
-		b.IncCacheHits()
-		logger.Debug("cache hit", "entry", entry)
-		if entry.Bounced {
-			logger.Debug("ip already bounced")
-			b.IncBouncedRequests()
-			return true, nil
-		}
+	decision, ok := b.cache.Get(ip)
+	if !ok {
+		logger.Debug("not found in cache", "ip", ip)
 		logger.Info("ok")
-		return entry.Bounced, nil
+	}
+	if IsBannedDecision(&decision) {
+		logger.Info("bouncing")
+		b.IncBouncedRequests()
+		return true, nil
 	}
 
-	decisions, err := b.getDecision(ip)
-	if err != nil {
-		logger.Error("error getting decisions", "error", err)
-		return false, err
-	}
-	if decisions == nil {
-		logger.Debug("no decisions found for ip")
-		b.cache.Set(ip, false)
-		return false, nil
-	}
-
-	for _, decision := range *decisions {
-		if decision.Value == nil || decision.Type == nil {
-			logger.Warn("decision has nil value or type", "decision", decision)
-			continue
-		}
-		if isBannedDecision(decision) {
-			logger.Info("bouncing")
-			b.cache.Set(ip, true)
-			b.IncBouncedRequests()
-			return true, nil
-		}
-	}
-
-	b.cache.Set(ip, false)
 	logger.Debug("no ban decisions found")
 	logger.Info("ok")
 	return false, nil
 }
 
 func (b *EnvoyBouncer) Sync(ctx context.Context) error {
-	if b.bouncer == nil {
-		return errors.New("bouncer not initialized")
+	if b.stream == nil {
+		return errors.New("stream not initialized")
 	}
 
 	logger := logger.FromContext(ctx).With(slog.String("method", "sync"))
@@ -284,7 +250,7 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 				if decision == nil || decision.Value == nil {
 					continue
 				}
-
+				logger.Debug("deleting decision", "decision", decision)
 				b.cache.Delete(*decision.Value)
 			}
 
@@ -292,8 +258,8 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 				if decision == nil || decision.Value == nil {
 					continue
 				}
-
-				b.cache.Set(*decision.Value, isBannedDecision(decision))
+				logger.Debug("received new decision", "decision", decision)
+				b.cache.Set(*decision.Value, *decision)
 			}
 		}
 	}
@@ -310,18 +276,10 @@ func (b *EnvoyBouncer) Metrics(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Debug("sync context done")
+			logger.Debug("metrics context done")
 			return nil
 		}
 	}
-}
-
-func (b *EnvoyBouncer) getDecision(ip string) (*models.GetDecisionsResponse, error) {
-	if b.bouncer == nil {
-		return nil, errors.New("bouncer not initialized")
-	}
-
-	return b.bouncer.Get(ip)
 }
 
 func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
@@ -342,8 +300,11 @@ func isValidIP(ip string) bool {
 	return parsedIP != nil
 }
 
-func isBannedDecision(decision *models.Decision) bool {
-	return decision != nil && decision.Type != nil && strings.EqualFold(*decision.Type, "ban")
+func IsBannedDecision(decision *models.Decision) bool {
+	if decision == nil || decision.Type == nil {
+		return false
+	}
+	return strings.EqualFold(*decision.Type, "ban")
 }
 
 func (b *EnvoyBouncer) IncTotalRequests() {
