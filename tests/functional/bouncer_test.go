@@ -1,5 +1,4 @@
 //go:build functional
-// +build functional
 
 package functional
 
@@ -76,7 +75,14 @@ func TestBouncer(t *testing.T) {
 		t.Fatalf("failed to extract api key: %v", err)
 	}
 
-	trustedProxies := []string{"192.168.1.1"}
+	_, _, err = lapiContainer.Exec(ctx, []string{
+		"cscli", "decisions", "add", "--type", "ban", "--value", "192.168.1.100",
+	})
+	if err != nil {
+		t.Fatalf("failed to exec: %v", err)
+	}
+
+	trustedProxies := []string{"10.0.0.1"}
 
 	rootCmd := cmd.ServeCmd.Root()
 	rootCmd.SetArgs([]string{"serve"})
@@ -123,6 +129,56 @@ func TestBouncer(t *testing.T) {
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(0), check.Status.Code)
 	})
+
+	t.Run("Test Bouncer banned", func(t *testing.T) {
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &corev3.Address{
+						Address: &corev3.Address_SocketAddress{
+							SocketAddress: &corev3.SocketAddress{
+								Address: "192.168.1.100",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		check, err := client.Check(context.TODO(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(403), check.Status.Code)
+	})
+
+	t.Run("xff with trusted proxy", func(t *testing.T) {
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &corev3.Address{
+						Address: &corev3.Address_SocketAddress{
+							SocketAddress: &corev3.SocketAddress{
+								Address: "192.168.1.100",
+							},
+						},
+					},
+				},
+				Request: &auth.AttributeContext_Request{
+					Http: &auth.AttributeContext_HttpRequest{
+						Headers: map[string]string{
+							"x-forwarded-for": "192.168.1.100,10.0.0.1",
+						},
+					},
+				},
+			},
+		}
+
+		check, err := client.Check(context.TODO(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(403), check.Status.Code)
+	})
+
 }
 
 func extractAPIKey(output string) (string, error) {
