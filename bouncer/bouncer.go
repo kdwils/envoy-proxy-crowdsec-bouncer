@@ -284,7 +284,7 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 				if decision == nil || decision.Value == nil {
 					continue
 				}
-
+				logger.Debug("deleting decision", "decision", decision)
 				b.cache.Delete(*decision.Value)
 			}
 
@@ -292,7 +292,7 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 				if decision == nil || decision.Value == nil {
 					continue
 				}
-
+				logger.Debug("received new decision", "decision", decision)
 				b.cache.Set(*decision.Value, isBannedDecision(decision))
 			}
 		}
@@ -310,7 +310,7 @@ func (b *EnvoyBouncer) Metrics(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Debug("sync context done")
+			logger.Debug("metrics context done")
 			return nil
 		}
 	}
