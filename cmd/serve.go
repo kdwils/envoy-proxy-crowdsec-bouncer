@@ -18,8 +18,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-// serveCmd represents the serve command
-var serveCmd = &cobra.Command{
+// ServeCmd represents the serve command
+var ServeCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "serve the envoy gateway bouncer",
 	Long:  `serve the envoy gateway bouncer`,
@@ -68,5 +68,5 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(ServeCmd)
 }

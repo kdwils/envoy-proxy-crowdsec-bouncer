@@ -83,7 +83,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	}
 
 	if bounce {
-		logger.Error("bouncing request")
+		logger.Info("bouncing request")
 		return getDeniedResponse(envoy_type.StatusCode_Forbidden, "forbidden"), nil
 	}
 

@@ -206,7 +206,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 	if !ok {
 		logger.Debug("not found in cache", "ip", ip)
 		logger.Info("ok")
-		return true, nil
+		return false, nil
 	}
 	if IsBannedDecision(&decision) {
 		logger.Info("bouncing")
