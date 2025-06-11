@@ -1,12 +1,18 @@
-# Envoy Proxy Bouncer
+# CrowdSec Envoy Proxy Bouncer
 
-A CrowdSec bouncer implementation for Envoy Proxy's external authorization (ext_authz) system. This bouncer validates incoming requests against CrowdSec decisions and blocks malicious traffic.
+A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](https://www.envoyproxy.io/) using the ext_authz (external authorization) filter.
 
-This project works for envoy proxy or envoy gateway in a kubernetes environment.
+This project provides a seamless way to integrate CrowdSec with Envoy to block malicious IP addresses before they reach your internal services. The bouncer uses CrowdSec's Local API (LAPI) to receive ban decisions and respond to Envoy's external authorization calls.
 
-## How it works
+---
 
-The bouncer is deployed as an external authorization service for Envoy Proxy. The bouncer receives decisions from the via stream from the LAPI instance configured. Then, the bouncer determines the client ip of each request while respecting trusted proxies configured, and checks the cache for a ban decision for an ip. If a ban decision is found the bouncer returns a 403 Forbidden response, otherwise it returns a 200 OK response.
+## How It Works
+
+This bouncer:
+1. Subscribes to ban decisions from CrowdSec's LAPI via live stream.
+2. Extracts the client IP from incoming requests.
+3. Validates the IP against the cached ban list.
+4. Returns a `403 Forbidden` to Envoy for banned IPs, or `200 OK` if the IP is clean.
 
 ```mermaid
 sequenceDiagram
@@ -15,17 +21,16 @@ sequenceDiagram
     participant Bouncer as Envoy Bouncer
 
     Client->>Envoy: HTTP Request
-    Envoy->>Bouncer: ExtAuthz Check Request
-    Note over Bouncer: Extract Client IP from request
+    Envoy->>Bouncer: ext_authz Check
+    Note over Bouncer: Extract client IP
 
-    alt Banned IP Found
+    alt IP is banned
         Bouncer->>Envoy: 403 Forbidden
-        Envoy->>Client: 403 Forbidden
-    else No Ban Found
+        Envoy->>Client: Blocked
+    else IP is clean
         Bouncer->>Envoy: 200 OK
-        Envoy->>Client: Process Original Request
+        Envoy->>Client: Allow Request
     end
-```
 
 ## Installation
 
