@@ -31,6 +31,7 @@ sequenceDiagram
         Bouncer->>Envoy: 200 OK
         Envoy->>Client: Allow Request
     end
+```
 
 ## Installation
 
