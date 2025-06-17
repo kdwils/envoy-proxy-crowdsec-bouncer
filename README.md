@@ -223,7 +223,6 @@ nix develop .
 The bouncer reports metrics to CrowdSec's dashboard including:
 - Total requests processed
 - Number of requests bounced
-- Number of unique IPs seen
 
 These are opt-in and can be enabled by setting `metrics: true` in the bouncer config.
 
