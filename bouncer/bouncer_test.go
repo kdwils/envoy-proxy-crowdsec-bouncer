@@ -131,7 +131,7 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 		b.metricsUpdater(metrics, updateInterval)
 
 		assert.Len(t, metrics.Metrics, 1)
-		assert.Len(t, metrics.Metrics[0].Items, 3)
+		assert.Len(t, metrics.Metrics[0].Items, 2)
 
 		assert.NotNil(t, metrics.Metrics[0].Meta.UtcNowTimestamp)
 		assert.Equal(t, int64(10), *metrics.Metrics[0].Meta.WindowSizeSeconds)
@@ -152,48 +152,6 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 
 		assert.Equal(t, int64(0), b.metrics.TotalRequests)
 		assert.Equal(t, int64(0), b.metrics.BouncedRequests)
-		assert.Equal(t, 0, len(b.metrics.HitsByIP))
-	})
-}
-func TestEnvoyBouncer_IncHitsByIP(t *testing.T) {
-	t.Run("first hit", func(t *testing.T) {
-		b := &EnvoyBouncer{
-			metrics: &Metrics{},
-			mu:      new(sync.RWMutex),
-		}
-
-		b.IncHitsByIP("192.168.1.1")
-
-		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
-	})
-
-	t.Run("multiple hits", func(t *testing.T) {
-		b := &EnvoyBouncer{
-			metrics: &Metrics{
-				HitsByIP: map[string]int64{
-					"192.168.1.1": 1,
-				},
-			},
-			mu: new(sync.RWMutex),
-		}
-
-		b.IncHitsByIP("192.168.1.1")
-		b.IncHitsByIP("192.168.1.1")
-
-		assert.Equal(t, int64(3), b.metrics.HitsByIP["192.168.1.1"])
-	})
-
-	t.Run("multiple IPs", func(t *testing.T) {
-		b := &EnvoyBouncer{
-			metrics: &Metrics{},
-			mu:      new(sync.RWMutex),
-		}
-
-		b.IncHitsByIP("192.168.1.1")
-		b.IncHitsByIP("192.168.1.2")
-
-		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.1"])
-		assert.Equal(t, int64(1), b.metrics.HitsByIP["192.168.1.2"])
 	})
 }
 
