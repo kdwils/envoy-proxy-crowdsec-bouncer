@@ -25,10 +25,10 @@ const (
 )
 
 type Metrics struct {
-	TotalRequests   int64            `json:"total_requests"`
-	BouncedRequests int64            `json:"banned_requests"`
-	HitsByIP        map[string]int64 `json:"hits_by_ip"`
+	TotalRequests   int64 `json:"total_requests"`
+	BouncedRequests int64 `json:"banned_requests"`
 }
+
 type EnvoyBouncer struct {
 	stream          *csbouncer.StreamBouncer
 	trustedProxies  []*net.IPNet
@@ -126,11 +126,6 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 		Items: make([]*models.MetricsDetailItem, 0),
 	}
 
-	b.mu.Lock()
-	uniqueIPs := len(b.metrics.HitsByIP)
-	b.metrics.HitsByIP = make(map[string]int64)
-	b.mu.Unlock()
-
 	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
 		Name:  ptr("requests"),
 		Value: ptr(float64(totalRequests)),
@@ -140,11 +135,6 @@ func (b *EnvoyBouncer) metricsUpdater(met *models.RemediationComponentsMetrics, 
 		Name:  ptr("requests"),
 		Value: ptr(float64(bouncedRequests)),
 		Unit:  ptr("bounced"),
-	})
-	metrics.Items = append(metrics.Items, &models.MetricsDetailItem{
-		Name:  ptr("unique"),
-		Value: ptr(float64(uniqueIPs)),
-		Unit:  ptr("ips"),
 	})
 
 	met.Metrics = append(met.Metrics, metrics)
@@ -200,8 +190,6 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 
 	logger = logger.With(slog.String("ip", ip), slog.String("xff", xff))
 	logger.Debug("starting decision check")
-
-	b.IncHitsByIP(ip)
 
 	decision, ok := b.cache.Get(ip)
 	if !ok {
@@ -265,16 +253,8 @@ func (b *EnvoyBouncer) Metrics(ctx context.Context) error {
 		return errors.New("metrics provider not initialized")
 	}
 	go b.metricsProvider.Run(ctx)
-
-	logger := logger.FromContext(ctx).With(slog.String("method", "metrics"))
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Debug("metrics context done")
-			return nil
-		}
-	}
+	<-ctx.Done()
+	return nil
 }
 
 func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
@@ -314,18 +294,4 @@ func (b *EnvoyBouncer) IncBouncedRequests() {
 		return
 	}
 	atomic.AddInt64(&b.metrics.BouncedRequests, 1)
-}
-
-func (b *EnvoyBouncer) IncHitsByIP(ip string) {
-	if b.metrics == nil {
-		return
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if b.metrics.HitsByIP == nil {
-		b.metrics.HitsByIP = make(map[string]int64)
-	}
-
-	b.metrics.HitsByIP[ip]++
 }
