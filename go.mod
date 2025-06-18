@@ -3,7 +3,7 @@ module github.com/kdwils/envoy-proxy-bouncer
 go 1.24.4
 
 require (
-	github.com/crowdsecurity/crowdsec v1.6.9
+	github.com/crowdsecurity/crowdsec v1.6.8
 	github.com/crowdsecurity/go-cs-bouncer v0.0.16
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/sirupsen/logrus v1.9.3
@@ -54,7 +54,7 @@ require (
 	github.com/go-openapi/strfmt v0.23.0 // indirect
 	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/go-openapi/validate v0.24.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
