@@ -245,7 +245,7 @@ An flat yaml example lives [here](examples/deploy/README.md).
 
 Add the Helm repository:
 ```bash
-helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-bouncer
+helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-crowdsec-bouncer
 helm repo update
 ```
 
