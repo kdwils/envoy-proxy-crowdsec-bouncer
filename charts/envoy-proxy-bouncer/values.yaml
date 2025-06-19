@@ -41,9 +41,7 @@ config:
   trustedProxies: [] # @schema default: []
 
 crowdsec:
-  secretKeyRef: 
-    name: envoy-bouncer
-    key: ENVOY_BOUNCER_BOUNCER_APIKEY
+  apiKey: "" # @schema default: ""
   apiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
   tickerInterval: "10s" # @schema default: "10s"
 
@@ -55,6 +53,6 @@ autoscaling:
   targetMemoryUtilizationPercentage: 80 # @schema default: 80
 
 securityPolicy:
-  enabled: true # @schema default: false
-  gatewayName: "homelab" # @schema default: ""
+  enabled: false # @schema default: false
+  gatewayName: "" # @schema default: ""
   gatewayNamespace: "envoy-gateway-system" # @schema default: "envoy-gateway-system"
