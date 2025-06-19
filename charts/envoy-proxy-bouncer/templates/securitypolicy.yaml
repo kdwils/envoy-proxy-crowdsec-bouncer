@@ -1,0 +1,20 @@
+{{- if .Values.serviceAccount.create -}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ include "envoy-proxy-bouncer.fullname" . }}
+  namespace: {{ .Values.securityPolicy.namespace | default "envoy-gateway-system" }}
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: {{.Values.securityPolicy.gatewayName }}
+  extAuth:
+    grpc:
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ include "envoy-proxy-bouncer.fullname" . }}
+          port: {{ .Values.service.port | default 8080 }}
+          namespace: {{ .Release.Namespace | default "default" }}
+{{- end -}}
