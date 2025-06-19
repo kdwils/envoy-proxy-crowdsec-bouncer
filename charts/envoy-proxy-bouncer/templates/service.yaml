@@ -8,8 +8,8 @@ spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: grpc
       protocol: TCP
-      name: http
+      name: grpc
   selector:
     {{- include "envoy-proxy-bouncer.selectorLabels" . | nindent 4 }}

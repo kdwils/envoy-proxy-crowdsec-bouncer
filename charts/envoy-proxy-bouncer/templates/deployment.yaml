@@ -37,16 +37,16 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - name: http
+            - name: grpc
               containerPort: {{ .Values.service.port }}
               protocol: TCP
           env:
-            {{- if and .Values.crowdsec .Values.crowdsec.secretRef }}
+            {{- if and .Values.crowdsec .Values.crowdsec.secretKeyRef }}
             - name: ENVOY_BOUNCER_BOUNCER_APIKEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.crowdsec.secretRef.name }}
-                  key: {{ .Values.crowdsec.secretRef.key }}
+                  name: {{ .Values.crowdsec.secretKeyRef.name }}
+                  key: {{ .Values.crowdsec.secretKeyRef.key }}
             {{- end }}
             {{- if and .Values.crowdsec .Values.crowdsec.apiKey }}
             - name: ENVOY_BOUNCER_BOUNCER_APIKEY
@@ -60,10 +60,6 @@ spec:
               value: {{ .Values.config.server.port | quote }}
             - name: ENVOY_BOUNCER_SERVER_LOGLEVEL
               value: {{ .Values.config.server.logLevel }}
-          livenessProbe:
-            {{- toYaml .Values.livenessProbe | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           {{- with .Values.volumeMounts }}
