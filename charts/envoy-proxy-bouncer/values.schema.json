@@ -203,7 +203,7 @@
                     "type": "string"
                 },
                 "gatewayNamespace": {
-                    "default": "envoy-gateway-system",
+                    "default": "",
                     "type": "string"
                 }
             }

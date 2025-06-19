@@ -1,4 +1,4 @@
-# Kubernetes
+# Kubernetes Manifest
 
 The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. An example manifest is provided at [manifest.yaml](manifest.yaml).
 
@@ -42,4 +42,21 @@ kubectl logs -f deployment/envoy-bouncer
 
 ## Configurating Envoy Gateway
 
-The bouncer can be configured as an external authorization service in Envoy Gateway. An example policy is provided at [policy.yaml](policy.yaml).
+The bouncer can be configured as an external authorization service in Envoy Gateway. An example policy is provided at [policy.yaml](policy.yaml)
+
+# Helm
+
+Add the Helm repository:
+```bash
+helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-bouncer
+helm repo update
+```
+
+Install the chart and create a security policy:
+```bash
+helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
+  --set crowdsec.apiKey=<your-api-key> \
+  --set crowdsec.apiURL=<your-host-url> \
+  --set securityPolicy.create=true \
+  --set securityPolicy.gatewayName=<your-gateway-name>
+  --set securityPolicy.gatewayNamespace=<your-gateway-namespace>
