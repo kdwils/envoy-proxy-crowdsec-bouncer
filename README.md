@@ -239,4 +239,22 @@ I have personally only tested this in a kubernetes cluster with Envoy Gateway in
 ### Kubernetes
 
 The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway:
-An example lives [here](examples/deploy/README.md).
+An flat yaml example lives [here](examples/deploy/README.md).
+
+## Helm Installation
+
+Add the Helm repository:
+```bash
+helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-bouncer
+helm repo update
+```
+
+Install the chart:
+```bash
+helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
+  --set crowdsec.apiKey=<your-api-key> \
+  --set crowdsec.apiURL=<your-crowsdsec-host>:<port>
+```
+
+Acknowledgements:
+* Helms schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)

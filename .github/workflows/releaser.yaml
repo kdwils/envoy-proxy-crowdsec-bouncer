@@ -1,0 +1,27 @@
+name: releaser
+
+on:
+  push:
+    tags:
+        - v*.*.*
+
+concurrency:
+  group: goreleaser
+  cancel-in-progress: true
+
+jobs:
+  tag:
+    uses: kdwils/homelab-workflow/.github/workflows/update-image-tag.yml@main
+    secrets: inherit
+    with:
+      image: kdwils/envoy-proxy-bouncer
+      registry: ghcr.io
+
+  charts:
+    needs: [tag]
+    uses: kdwils/homelab-workflow/.github/workflows/helm-release.yml@main
+
+  goreleaser:
+    needs: [tag]
+    uses: kdwils/homelab-workflow/.github/workflows/go-releaser.yml@main
+    secrets: inherit
