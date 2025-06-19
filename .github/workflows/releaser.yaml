@@ -5,6 +5,9 @@ on:
     tags:
         - v*.*.*
 
+permissions:
+  contents: read
+  packages: write
 concurrency:
   group: goreleaser
   cancel-in-progress: true
