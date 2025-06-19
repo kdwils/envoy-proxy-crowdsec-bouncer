@@ -25,14 +25,8 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | image.repository | string | `"ghcr.io/kdwils/envoy-proxy-bouncer"` |  |
 | image.tag | string | `""` |  |
 | imagePullSecrets | list | `[]` |  |
-| livenessProbe.enabled | bool | `true` |  |
-| livenessProbe.httpGet.path | string | `"/health"` |  |
-| livenessProbe.httpGet.port | int | `8080` |  |
 | nameOverride | string | `""` |  |
 | podSecurityContext | object | `{}` |  |
-| readinessProbe.enabled | bool | `true` |  |
-| readinessProbe.httpGet.path | string | `"/health"` |  |
-| readinessProbe.httpGet.port | int | `8080` |  |
 | replicaCount | int | `1` |  |
 | resources.limits.cpu | string | `"100m"` |  |
 | resources.limits.memory | string | `"128Mi"` |  |

@@ -89,16 +89,6 @@ spec:
                 secretKeyRef:
                   name: crowdsec-api-key-secret
                   key: api-key
-          livenessProbe:
-            enabled: true
-            httpGet:
-              path: /health
-              port: 8080
-          readinessProbe:
-            enabled: true
-            httpGet:
-              path: /health
-              port: 8080
           resources:
             limits:
               cpu: 100m

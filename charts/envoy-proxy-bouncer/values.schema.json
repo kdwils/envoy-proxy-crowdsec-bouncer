@@ -93,55 +93,11 @@
         "imagePullSecrets": {
             "type": "array"
         },
-        "livenessProbe": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "default": true,
-                    "type": "boolean"
-                },
-                "httpGet": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "default": "/health",
-                            "type": "string"
-                        },
-                        "port": {
-                            "default": 8080,
-                            "type": "integer"
-                        }
-                    }
-                }
-            }
-        },
         "nameOverride": {
             "type": "string"
         },
         "podSecurityContext": {
             "type": "object"
-        },
-        "readinessProbe": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "default": true,
-                    "type": "boolean"
-                },
-                "httpGet": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "default": "/health",
-                            "type": "string"
-                        },
-                        "port": {
-                            "default": 8080,
-                            "type": "integer"
-                        }
-                    }
-                }
-            }
         },
         "replicaCount": {
             "default": 1,
@@ -203,7 +159,7 @@
                     "type": "string"
                 },
                 "gatewayNamespace": {
-                    "default": "",
+                    "default": "envoy-gateway-system",
                     "type": "string"
                 }
             }

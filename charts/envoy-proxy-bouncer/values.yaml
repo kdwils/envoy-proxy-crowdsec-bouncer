@@ -52,18 +52,6 @@ autoscaling:
   targetCPUUtilizationPercentage: 80 # @schema default: 80
   targetMemoryUtilizationPercentage: 80 # @schema default: 80
 
-livenessProbe:
-  enabled: true # @schema default: true
-  httpGet:
-    path: /health # @schema default: "/health"
-    port: 8080 # @schema default: 8080
-
-readinessProbe:
-  enabled: true # @schema default: true
-  httpGet:
-    path: /health # @schema default: "/health"
-    port: 8080 # @schema default: 8080
-
 securityPolicy:
   enabled: false # @schema default: false
   gatewayName: "" # @schema default: ""
