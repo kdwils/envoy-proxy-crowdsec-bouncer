@@ -1,0 +1,231 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "autoscaling": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "default": false,
+                    "type": "boolean"
+                },
+                "maxReplicas": {
+                    "default": 10,
+                    "type": "integer"
+                },
+                "minReplicas": {
+                    "default": 1,
+                    "type": "integer"
+                },
+                "targetCPUUtilizationPercentage": {
+                    "default": 80,
+                    "type": "integer"
+                },
+                "targetMemoryUtilizationPercentage": {
+                    "default": 80,
+                    "type": "integer"
+                }
+            }
+        },
+        "config": {
+            "type": "object",
+            "properties": {
+                "metrics": {
+                    "default": true,
+                    "type": "boolean"
+                },
+                "server": {
+                    "type": "object",
+                    "properties": {
+                        "logLevel": {
+                            "default": "info",
+                            "type": "string"
+                        },
+                        "port": {
+                            "default": 8080,
+                            "type": "integer"
+                        }
+                    }
+                },
+                "trustedProxies": {
+                    "default": [],
+                    "type": "array"
+                }
+            }
+        },
+        "crowdsec": {
+            "type": "object",
+            "properties": {
+                "apiKey": {
+                    "default": "",
+                    "type": "string"
+                },
+                "apiURL": {
+                    "default": "http://crowdsec-service:8080",
+                    "type": "string"
+                },
+                "tickerInterval": {
+                    "default": "10s",
+                    "type": "string"
+                }
+            }
+        },
+        "fullnameOverride": {
+            "type": "string"
+        },
+        "image": {
+            "type": "object",
+            "properties": {
+                "pullPolicy": {
+                    "default": "IfNotPresent",
+                    "type": "string"
+                },
+                "repository": {
+                    "default": "ghcr.io/kdwils/envoy-proxy-bouncer",
+                    "type": "string"
+                },
+                "tag": {
+                    "default": ".Chart.AppVersion",
+                    "type": "string"
+                }
+            }
+        },
+        "imagePullSecrets": {
+            "type": "array"
+        },
+        "livenessProbe": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                },
+                "httpGet": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "default": "/health",
+                            "type": "string"
+                        },
+                        "port": {
+                            "default": 8080,
+                            "type": "integer"
+                        }
+                    }
+                }
+            }
+        },
+        "nameOverride": {
+            "type": "string"
+        },
+        "podSecurityContext": {
+            "type": "object"
+        },
+        "readinessProbe": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                },
+                "httpGet": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "default": "/health",
+                            "type": "string"
+                        },
+                        "port": {
+                            "default": 8080,
+                            "type": "integer"
+                        }
+                    }
+                }
+            }
+        },
+        "replicaCount": {
+            "default": 1,
+            "type": "integer"
+        },
+        "resources": {
+            "type": "object",
+            "properties": {
+                "limits": {
+                    "type": "object",
+                    "properties": {
+                        "cpu": {
+                            "type": "string"
+                        },
+                        "memory": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "requests": {
+                    "type": "object",
+                    "properties": {
+                        "cpu": {
+                            "type": "string"
+                        },
+                        "memory": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "securityContext": {
+            "type": "object",
+            "properties": {
+                "allowPrivilegeEscalation": {
+                    "type": "boolean"
+                },
+                "capabilities": {
+                    "type": "object",
+                    "properties": {
+                        "drop": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "readOnlyRootFilesystem": {
+                    "type": "boolean"
+                },
+                "runAsNonRoot": {
+                    "type": "boolean"
+                },
+                "runAsUser": {
+                    "type": "integer"
+                }
+            }
+        },
+        "service": {
+            "type": "object",
+            "properties": {
+                "port": {
+                    "default": 8080,
+                    "type": "integer"
+                },
+                "type": {
+                    "default": "ClusterIP",
+                    "type": "string"
+                }
+            }
+        },
+        "serviceAccount": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "default": true,
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

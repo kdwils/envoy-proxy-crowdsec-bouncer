@@ -1,0 +1,65 @@
+replicaCount: 1 # @schema default: 1
+
+image:
+  repository: ghcr.io/kdwils/envoy-proxy-bouncer # @schema default: "ghcr.io/kdwils/envoy-proxy-bouncer"
+  pullPolicy: IfNotPresent # @schema default: "IfNotPresent"
+  tag: "" # @schema default: ".Chart.AppVersion"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true # @schema default: true
+  name: ""
+
+podSecurityContext: {}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - all
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP # @schema default: ClusterIP
+  port: 8080 # @schema default: 8080
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+config:
+  server:
+    port: 8080 # @schema default: 8080
+    logLevel: "info" # @schema default: "info"
+  metrics: true # @schema default: true
+  trustedProxies: [] # @schema default: []
+
+crowdsec:
+  apiKey: "" # @schema default: ""
+  apiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
+  tickerInterval: "10s" # @schema default: "10s"
+
+autoscaling:
+  enabled: false # @schema default: false
+  minReplicas: 1 # @schema default: 1
+  maxReplicas: 10 # @schema default: 10
+  targetCPUUtilizationPercentage: 80 # @schema default: 80
+  targetMemoryUtilizationPercentage: 80 # @schema default: 80
+
+livenessProbe:
+  enabled: true # @schema default: true
+  httpGet:
+    path: /health # @schema default: "/health"
+    port: 8080 # @schema default: 8080
+
+readinessProbe:
+  enabled: true # @schema default: true
+  httpGet:
+    path: /health # @schema default: "/health"
+    port: 8080 # @schema default: 8080

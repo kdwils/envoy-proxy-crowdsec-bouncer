@@ -13,7 +13,7 @@ You will need to create a secret with your LAPI API key and configure the bounce
 apiVersion: v1
 kind: Secret
 metadata:
-  name: envoy-bouncer
+  name: crowdsec-api-key-secret
   namespace: envoy-gateway-system
 type: Opaque
 data:
