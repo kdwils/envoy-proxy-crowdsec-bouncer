@@ -39,11 +39,8 @@ config:
     logLevel: "info" # @schema default: "info"
   metrics: true # @schema default: true
   trustedProxies: [] # @schema default: []
-
-crowdsec:
   apiKey: "" # @schema default: ""
   apiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
-  tickerInterval: "10s" # @schema default: "10s"
 
 autoscaling:
   enabled: false # @schema default: false

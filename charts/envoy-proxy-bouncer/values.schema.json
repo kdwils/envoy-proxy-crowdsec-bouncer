@@ -30,6 +30,14 @@
         "config": {
             "type": "object",
             "properties": {
+                "apiKey": {
+                    "default": "",
+                    "type": "string"
+                },
+                "apiURL": {
+                    "default": "http://crowdsec-service:8080",
+                    "type": "string"
+                },
                 "metrics": {
                     "default": true,
                     "type": "boolean"
@@ -50,23 +58,6 @@
                 "trustedProxies": {
                     "default": [],
                     "type": "array"
-                }
-            }
-        },
-        "crowdsec": {
-            "type": "object",
-            "properties": {
-                "apiKey": {
-                    "default": "",
-                    "type": "string"
-                },
-                "apiURL": {
-                    "default": "http://crowdsec-service:8080",
-                    "type": "string"
-                },
-                "tickerInterval": {
-                    "default": "10s",
-                    "type": "string"
                 }
             }
         },

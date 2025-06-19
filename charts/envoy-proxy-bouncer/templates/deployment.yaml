@@ -41,20 +41,26 @@ spec:
               containerPort: {{ .Values.service.port }}
               protocol: TCP
           env:
-            {{- if and .Values.crowdsec .Values.crowdsec.secretKeyRef }}
+          {{- with .Values.config }}
+            {{- with .secretKeyRef }}
             - name: ENVOY_BOUNCER_BOUNCER_APIKEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.crowdsec.secretKeyRef.name }}
-                  key: {{ .Values.crowdsec.secretKeyRef.key }}
+                  name: {{ .name }}
+                  key: {{ .key }}
             {{- end }}
-            {{- if and .Values.crowdsec .Values.crowdsec.apiKey }}
+            {{- with .apiKey }}
             - name: ENVOY_BOUNCER_BOUNCER_APIKEY
-              value: {{ .Values.crowdsec.apiKey }}
+              value: {{ . }}
             {{- end }}
-            {{- if and .Values.crowdsec .Values.crowdsec.apiURL }}
+            {{- with .apiURL }}
             - name: ENVOY_BOUNCER_BOUNCER_APIURL
-              value: {{ .Values.crowdsec.apiURL }}
+              value: {{ . }}
+            {{- end }}
+            {{- with .trustedProxies }}
+            - name: ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES
+              value: {{ join "," . }}
+            {{- end }}
             {{- end }}
             - name: ENVOY_BOUNCER_SERVER_PORT
               value: {{ .Values.config.server.port | quote }}

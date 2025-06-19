@@ -13,13 +13,12 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | autoscaling.minReplicas | int | `1` |  |
 | autoscaling.targetCPUUtilizationPercentage | int | `80` |  |
 | autoscaling.targetMemoryUtilizationPercentage | int | `80` |  |
+| config.apiKey | string | `""` |  |
+| config.apiURL | string | `"http://crowdsec-service:8080"` |  |
 | config.metrics | bool | `true` |  |
 | config.server.logLevel | string | `"info"` |  |
 | config.server.port | int | `8080` |  |
 | config.trustedProxies | list | `[]` |  |
-| crowdsec.apiKey | string | `""` |  |
-| crowdsec.apiURL | string | `"http://crowdsec-service:8080"` |  |
-| crowdsec.tickerInterval | string | `"10s"` |  |
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/kdwils/envoy-proxy-bouncer"` |  |
