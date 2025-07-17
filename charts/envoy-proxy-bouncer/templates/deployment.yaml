@@ -61,6 +61,10 @@ spec:
             - name: ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES
               value: {{ join "," . }}
             {{- end }}
+            {{- with .metrics }}
+            - name: ENVOY_BOUNCER_BOUNCER_METRICS
+              value: {{ . | quote }}
+            {{- end }}
             {{- end }}
             - name: ENVOY_BOUNCER_SERVER_PORT
               value: {{ .Values.config.server.port | quote }}
