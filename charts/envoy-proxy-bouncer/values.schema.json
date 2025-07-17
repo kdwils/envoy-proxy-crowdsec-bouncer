@@ -141,7 +141,7 @@
         "securityPolicy": {
             "type": "object",
             "properties": {
-                "enabled": {
+                "create": {
                     "default": false,
                     "type": "boolean"
                 },
