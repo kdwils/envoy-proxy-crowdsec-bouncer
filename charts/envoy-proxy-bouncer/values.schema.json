@@ -39,7 +39,7 @@
                     "type": "string"
                 },
                 "metrics": {
-                    "default": true,
+                    "default": false,
                     "type": "boolean"
                 },
                 "server": {

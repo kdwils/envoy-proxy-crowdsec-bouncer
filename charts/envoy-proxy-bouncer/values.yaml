@@ -37,7 +37,7 @@ config:
   server:
     port: 8080 # @schema default: 8080
     logLevel: "info" # @schema default: "info"
-  metrics: true # @schema default: true
+  metrics: false # @schema default: false
   trustedProxies: [] # @schema default: []
   apiKey: "" # @schema default: ""
   apiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
