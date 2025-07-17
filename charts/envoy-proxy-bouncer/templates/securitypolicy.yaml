@@ -16,5 +16,5 @@ spec:
           kind: Service
           name: {{ include "envoy-proxy-bouncer.fullname" . }}
           port: {{ .Values.service.port | default 8080 }}
-          namespace: {{ .Release.Namespace | default "default" }}
+          namespace: {{ .Values.securityPolicy.gatewayNamespace | default "envoy-gateway-system" }}
 {{- end -}}
