@@ -3,7 +3,7 @@ module github.com/kdwils/envoy-proxy-bouncer
 go 1.24.5
 
 require (
-	github.com/crowdsecurity/crowdsec v1.6.8
+	github.com/crowdsecurity/crowdsec v1.6.11
 	github.com/crowdsecurity/go-cs-bouncer v0.0.16
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/sirupsen/logrus v1.9.3
@@ -24,6 +24,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blackfireio/osinfo v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
