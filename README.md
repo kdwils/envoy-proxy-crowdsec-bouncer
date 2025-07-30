@@ -1,4 +1,38 @@
+
+![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
+![Build](https://img.shields.io/github/actions/workflow/status/kdwils/envoy-proxy-crowdsec-bouncer/ci.yml?branch=main)
+![License](https://img.shields.io/github/license/kdwils/envoy-proxy-crowdsec-bouncer)
+
 # CrowdSec Envoy Proxy Bouncer
+A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](https://www.envoyproxy.io/) using the ext_authz (external authorization) filter.
+
+## Features
+
+- Blocks malicious IPs at the edge using CrowdSec ban decisions
+- Fast, lightweight, and easy to deploy (binary, Docker, Kubernetes, Helm)
+- Flexible configuration (file, env, CLI)
+- Metrics reporting (optional)
+- Designed for production use with Envoy Proxy
+
+## Quickstart
+
+Run locally (requires Go 1.21+):
+
+```bash
+go install github.com/kdwils/envoy-proxy-bouncer@latest
+export ENVOY_BOUNCER_BOUNCER_APIKEY=<your-api-key>
+export ENVOY_BOUNCER_BOUNCER_APIURL=http://crowdsec:8080
+envoy-proxy-bouncer serve
+```
+
+Or with Docker:
+
+```bash
+docker run -p 8080:8080 \
+  -e ENVOY_BOUNCER_BOUNCER_APIKEY=<your-api-key> \
+  -e ENVOY_BOUNCER_BOUNCER_APIURL=http://crowdsec:8080 \
+  kdwils/envoy-proxy-bouncer
+```
 
 A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](https://www.envoyproxy.io/) using the ext_authz (external authorization) filter.
 
@@ -14,33 +48,7 @@ This bouncer:
 3. Validates the IP against the cached ban list.
 4. Returns a `403 Forbidden` to Envoy for banned IPs, or `200 OK` if the IP is clean.
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Envoy as Envoy Proxy
-    participant Bouncer as Envoy Bouncer
-
-    Client->>Envoy: HTTP Request
-    Envoy->>Bouncer: ext_authz Check
-    Note over Bouncer: Extract client IP
-
-    alt IP is banned
-        Bouncer->>Envoy: 403 Forbidden
-        Envoy->>Client: Blocked
-    else IP is clean
-        Bouncer->>Envoy: 200 OK
-        Envoy->>Client: Allow Request
-    end
-```
-
-## Installation
-
-```bash
-go install github.com/kdwils/envoy-proxy-bouncer@latest
-```
-
 ## Configuration
-
 The bouncer can be configured using:
 1. Configuration file (YAML or JSON)
 2. Environment variables
@@ -232,16 +240,17 @@ From `cscli`
 cscli metrics
 ```
 
+
 ## Deploying
 
-I have personally only tested this in a kubernetes cluster with Envoy Gateway installed. If there are other environments that aren't working, feel free to open an issue and i'll try to help.
+This project is tested in Kubernetes clusters with Envoy Gateway. For other environments, please open an issue if you encounter problems.
 
 ### Kubernetes
 
-The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway:
-An flat yaml example lives [here](examples/deploy/README.md).
+The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. See [examples/deploy/README.md](examples/deploy/README.md) for a flat YAML example.
 
-## Helm Installation
+
+### Helm
 
 Add the Helm repository:
 ```bash
@@ -249,12 +258,13 @@ helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-crowdsec-
 helm repo update
 ```
 
+
 Install the chart:
 ```bash
 helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set crowdsec.apiKey=<your-api-key> \
-  --set crowdsec.apiURL=<your-crowsdsec-host>:<port>
+  --set crowdsec.apiURL=<your-crowdsec-host>:<port>
 ```
 
 Acknowledgements:
-* Helms schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
+* Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)

@@ -2,13 +2,18 @@ package config
 
 import (
 	"errors"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Server  Server  `yaml:"server" json:"server"`
-	Bouncer Bouncer `yaml:"bouncer" json:"bouncer"`
+	Server         Server   `yaml:"server" json:"server"`
+	Bouncer        Bouncer  `yaml:"bouncer" json:"bouncer"`
+	WAF            WAF      `yaml:"waf" json:"waf"`
+	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
+	ApiKey         string   `yaml:"apiKey" json:"apiKey"`
+	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
 }
 
 type Server struct {
@@ -17,11 +22,14 @@ type Server struct {
 }
 
 type Bouncer struct {
-	ApiKey         string   `yaml:"apiKey" json:"apiKey"`
-	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
-	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
-	Metrics        bool     `yaml:"metrics" json:"metrics"`
-	TickerInterval string   `yaml:"tickerInterval" json:"tickerInterval"`
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Metrics        bool   `yaml:"metrics" json:"metrics"`
+	TickerInterval string `yaml:"tickerInterval" json:"tickerInterval"`
+}
+
+type WAF struct {
+	Enabled bool          `yaml:"enabled" json:"enabled"`
+	Timeout time.Duration `yaml:"timeout" json:"timeout"`
 }
 
 func New(v *viper.Viper) (Config, error) {

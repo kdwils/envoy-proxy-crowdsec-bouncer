@@ -1,0 +1,2 @@
+name: crowdsecurity/default-deny
+default_remediation: ban

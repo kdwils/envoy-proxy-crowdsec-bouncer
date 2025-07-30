@@ -40,11 +40,18 @@ func initConfig() {
 	viper.SetEnvPrefix("ENVOY_BOUNCER")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", ""))
 	viper.AutomaticEnv()
+
+	viper.SetDefault("apiKey", "")
+	viper.SetDefault("apiURL", "")
+	viper.SetDefault("trustedProxies", []string{"127.0.0.1", "::1"})
+
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.logLevel", slog.LevelInfo)
-	viper.SetDefault("bouncer.apiKey", "")
-	viper.SetDefault("bouncer.apiURL", "")
+
+	viper.SetDefault("bouncer.enabled", false)
 	viper.SetDefault("bouncer.metrics", false)
 	viper.SetDefault("bouncer.tickerInterval", "10s")
-	viper.SetDefault("bouncer.trustedProxies", []string{"127.0.0.1", "::1"})
+
+	viper.SetDefault("waf.enabled", false)
+	viper.SetDefault("waf.timeout", "1s")
 }
