@@ -76,6 +76,8 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		headers = req.Attributes.Request.Http.Headers
 	}
 
+	logger.Debug("request headers", "ip", ip, "headers", headers)
+
 	bounce, err := s.bouncer.Bounce(ctx, ip, headers)
 	if err != nil {
 		logger.Error("bounce check failed", "error", err)
