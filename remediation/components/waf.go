@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/kdwils/envoy-proxy-bouncer/logger"
 )
 
 //go:generate mockgen -destination=mocks/mock_http.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation/components HTTP
@@ -43,16 +46,20 @@ func NewWAF(appsecURL, apiKey string, http *http.Client) WAF {
 
 // Inspect forwards the request to the CrowdSec AppSec component and returns the action.
 func (w WAF) Inspect(ctx context.Context, req *http.Request, realIP string) (WAFResponse, error) {
+	logger := logger.FromContext(ctx).With(slog.String("component", "waf"))
 	var result WAFResponse
 	if req == nil {
+		logger.Debug("request cannot be nil")
 		return result, fmt.Errorf("request cannot be nil")
 	}
 	if req.Header == nil {
+		logger.Debug("request headers cannot be nil")
 		return result, fmt.Errorf("request headers cannot be nil")
 	}
 
 	apiURL, err := url.Parse(w.APIURL)
 	if err != nil {
+		logger.Error("failed to parse API URL", slog.String("url", w.APIURL), slog.Any("error", err))
 		return result, fmt.Errorf("failed to parse API URL: %w", err)
 	}
 
@@ -65,12 +72,13 @@ func (w WAF) Inspect(ctx context.Context, req *http.Request, realIP string) (WAF
 	if err != nil {
 		return result, fmt.Errorf("failed to create request to CrowdSec: %w", err)
 	}
-
 	maps.Copy(forwardReq.Header, req.Header)
 
 	for k, v := range buildAppSecHeaders(req, realIP, w.APIKey) {
 		forwardReq.Header.Set(k, v)
 	}
+
+	logger.Debug("forwarding request to CrowdSec", "url", apiURL.String(), "method", method, "headers", forwardReq.Header)
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
