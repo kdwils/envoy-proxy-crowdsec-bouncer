@@ -8,7 +8,6 @@ import (
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"google.golang.org/genproto/googleapis/rpc/status"
@@ -18,16 +17,16 @@ import (
 
 type Server struct {
 	auth.UnimplementedAuthorizationServer
-	bouncer bouncer.Bouncer
-	config  config.Config
-	logger  *slog.Logger
+	remediator Remediator
+	config     config.Config
+	logger     *slog.Logger
 }
 
-func NewServer(config config.Config, bouncer bouncer.Bouncer, logger *slog.Logger) *Server {
+func NewServer(config config.Config, remediator Remediator, logger *slog.Logger) *Server {
 	return &Server{
-		config:  config,
-		bouncer: bouncer,
-		logger:  logger,
+		config:     config,
+		remediator: remediator,
+		logger:     logger,
 	}
 }
 
@@ -59,41 +58,23 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 }
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
-	logger := logger.FromContext(ctx)
-	if s.bouncer == nil {
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "internal server error"), nil
+	if s.remediator == nil {
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "remediator not initialized"), nil
 	}
-
-	ip := ""
-	if req.Attributes != nil && req.Attributes.Source != nil && req.Attributes.Source.Address != nil {
-		if socketAddress := req.Attributes.Source.Address.GetSocketAddress(); socketAddress != nil {
-			ip = socketAddress.GetAddress()
-		}
+	result := s.remediator.Check(ctx, req)
+	switch result.Action {
+	case "deny":
+		return getDeniedResponse(envoy_type.StatusCode_Forbidden, result.Reason), nil
+	case "error":
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason), nil
+	default:
+		return &auth.CheckResponse{
+			Status: &status.Status{
+				Code: 0,
+			},
+			HttpResponse: &auth.CheckResponse_OkResponse{},
+		}, nil
 	}
-
-	headers := make(map[string]string)
-	if req.Attributes != nil && req.Attributes.Request != nil && req.Attributes.Request.Http != nil {
-		headers = req.Attributes.Request.Http.Headers
-	}
-
-	logger.Debug("request headers", "ip", ip, "headers", headers)
-
-	bounce, err := s.bouncer.Bounce(ctx, ip, headers)
-	if err != nil {
-		logger.Error("bounce check failed", "error", err)
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "internal error"), nil
-	}
-
-	if bounce {
-		logger.Info("request denied by bouncer")
-		return getDeniedResponse(envoy_type.StatusCode_Forbidden, "forbidden"), nil
-	}
-	return &auth.CheckResponse{
-		Status: &status.Status{
-			Code: 0,
-		},
-		HttpResponse: &auth.CheckResponse_OkResponse{},
-	}, nil
 }
 
 func getDeniedResponse(code envoy_type.StatusCode, body string) *auth.CheckResponse {

@@ -2,13 +2,16 @@ package config
 
 import (
 	"errors"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Server  Server  `yaml:"server" json:"server"`
-	Bouncer Bouncer `yaml:"bouncer" json:"bouncer"`
+	Server         Server   `yaml:"server" json:"server"`
+	Bouncer        Bouncer  `yaml:"bouncer" json:"bouncer"`
+	WAF            WAF      `yaml:"waf" json:"waf"`
+	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
 }
 
 type Server struct {
@@ -17,11 +20,18 @@ type Server struct {
 }
 
 type Bouncer struct {
-	ApiKey         string   `yaml:"apiKey" json:"apiKey"`
-	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
-	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
-	Metrics        bool     `yaml:"metrics" json:"metrics"`
-	TickerInterval string   `yaml:"tickerInterval" json:"tickerInterval"`
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Metrics        bool   `yaml:"metrics" json:"metrics"`
+	TickerInterval string `yaml:"tickerInterval" json:"tickerInterval"`
+	ApiKey         string `yaml:"apiKey" json:"apiKey"`
+	LAPIURL        string `yaml:"LAPIURL" json:"LAPIURL"`
+}
+
+type WAF struct {
+	Enabled   bool          `yaml:"enabled" json:"enabled"`
+	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
+	AppSecURL string        `yaml:"appSecURL" json:"appSecURL"`
+	ApiKey    string        `yaml:"apiKey" json:"apiKey"`
 }
 
 func New(v *viper.Viper) (Config, error) {

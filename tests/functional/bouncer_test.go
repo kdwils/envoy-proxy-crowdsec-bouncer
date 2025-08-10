@@ -25,7 +25,7 @@ import (
 
 func TestBouncer(t *testing.T) {
 	ctx := context.Background()
-	req := testcontainers.ContainerRequest{
+	lapiReq := testcontainers.ContainerRequest{
 		Image:        "crowdsecurity/crowdsec:v1.6.8",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
@@ -37,7 +37,7 @@ func TestBouncer(t *testing.T) {
 	}
 
 	lapiContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
+		ContainerRequest: lapiReq,
 		Started:          true,
 	})
 	if err != nil {
@@ -54,7 +54,7 @@ func TestBouncer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lapiURL := url.URL{
+	LAPIURL := url.URL{
 		Scheme: "http",
 		Host:   host + ":" + port.Port(),
 	}
@@ -89,9 +89,11 @@ func TestBouncer(t *testing.T) {
 	viper.Set("server.port", 8080)
 	viper.Set("server.logLevel", "debug")
 	viper.Set("bouncer.apiKey", key)
-	viper.Set("bouncer.apiURL", lapiURL.String())
-	viper.Set("bouncer.trustedProxies", trustedProxies)
+	viper.Set("bouncer.lapiURL", LAPIURL.String())
+	viper.Set("trustedProxies", trustedProxies)
 	viper.Set("bouncer.tickerInterval", "1s")
+	viper.Set("bouncer.enabled", true)
+	viper.Set("waf.enabled", false)
 
 	go func() {
 		err = rootCmd.Execute()

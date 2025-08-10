@@ -1,0 +1,6 @@
+appsec_config: crowdsecurity/default-deny
+labels:
+  type: appsec
+listen_addr: 0.0.0.0:4241
+path: /
+source: appsec

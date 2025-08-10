@@ -30,17 +30,30 @@
         "config": {
             "type": "object",
             "properties": {
-                "apiKey": {
-                    "default": "",
-                    "type": "string"
-                },
-                "apiURL": {
-                    "default": "http://crowdsec-service:8080",
-                    "type": "string"
-                },
-                "metrics": {
-                    "default": false,
-                    "type": "boolean"
+                "bouncer": {
+                    "type": "object",
+                    "properties": {
+                        "apiKey": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "enabled": {
+                            "default": true,
+                            "type": "boolean"
+                        },
+                        "lapiURL": {
+                            "default": "http://crowdsec-service:8080",
+                            "type": "string"
+                        },
+                        "metrics": {
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        "tickerInterval": {
+                            "default": "10s",
+                            "type": "string"
+                        }
+                    }
                 },
                 "server": {
                     "type": "object",
@@ -58,6 +71,27 @@
                 "trustedProxies": {
                     "default": [],
                     "type": "array"
+                },
+                "waf": {
+                    "type": "object",
+                    "properties": {
+                        "apiKey": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "appSecURL": {
+                            "default": "http://crowdsec-appsec-service:7422",
+                            "type": "string"
+                        },
+                        "enabled": {
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        "timeout": {
+                            "default": "1s",
+                            "type": "string"
+                        }
+                    }
                 }
             }
         },

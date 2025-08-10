@@ -1,11 +1,10 @@
-package bouncer
+package components
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +18,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func ptr[T any](v T) *T {
+	return &v
+}
+
 const (
 	maxHeaderLength = 1024
 	maxIPs          = 20
@@ -31,30 +34,23 @@ type Metrics struct {
 
 type EnvoyBouncer struct {
 	stream          *csbouncer.StreamBouncer
-	trustedProxies  []*net.IPNet
 	cache           *cache.Cache
 	metrics         *Metrics
 	metricsProvider *csbouncer.MetricsProvider
 	mu              *sync.RWMutex
 }
 
-func NewEnvoyBouncer(apiKey, apiURL, tickerInterval string, trustedProxies []string) (Bouncer, error) {
+func NewBouncer(apiKey, apiURL, tickerInterval string) (*EnvoyBouncer, error) {
 	stream, err := newStreamBouncer(apiKey, apiURL, tickerInterval)
 	if err != nil {
 		return nil, err
 	}
 
-	addresses, err := parseProxyAddresses(trustedProxies)
-	if err != nil {
-		return nil, err
-	}
-
 	b := &EnvoyBouncer{
-		stream:         stream,
-		trustedProxies: addresses,
-		cache:          cache.New(),
-		metrics:        new(Metrics),
-		mu:             new(sync.RWMutex),
+		stream:  stream,
+		cache:   cache.New(),
+		metrics: new(Metrics),
+		mu:      new(sync.RWMutex),
 	}
 
 	provider, err := csbouncer.NewMetricsProvider(stream.APIClient, stream.UserAgent, b.metricsUpdater, logrus.StandardLogger())
@@ -67,27 +63,6 @@ func NewEnvoyBouncer(apiKey, apiURL, tickerInterval string, trustedProxies []str
 	return b, nil
 }
 
-func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
-	ipNets := make([]*net.IPNet, 0, len(trustedProxies))
-	for _, proxy := range trustedProxies {
-		if !strings.Contains(proxy, "/") {
-			if strings.Contains(proxy, ":") {
-				proxy = proxy + "/128" // IPv6
-			} else {
-				proxy = proxy + "/32" // IPv4
-			}
-		}
-
-		_, ipNet, err := net.ParseCIDR(proxy)
-		if err != nil {
-			return nil, fmt.Errorf("invalid proxy address %s: %v", proxy, err)
-		}
-		ipNets = append(ipNets, ipNet)
-	}
-
-	return ipNets, nil
-}
-
 func newStreamBouncer(apiKey, apiURL, tickerInterval string) (*csbouncer.StreamBouncer, error) {
 	b := &csbouncer.StreamBouncer{
 		APIKey:         apiKey,
@@ -95,6 +70,8 @@ func newStreamBouncer(apiKey, apiURL, tickerInterval string) (*csbouncer.StreamB
 		UserAgent:      "envoy-proxy-bouncer/" + version.Version,
 		TickerInterval: tickerInterval,
 	}
+	// ensure we don't exit on transient startup issues
+	b.RetryInitialConnect = true
 
 	err := b.Init()
 	return b, err
@@ -154,41 +131,7 @@ func (b *EnvoyBouncer) Bounce(ctx context.Context, ip string, headers map[string
 
 	b.IncTotalRequests()
 
-	var xff string
-	for k, v := range headers {
-		if strings.EqualFold(k, "x-forwarded-for") {
-			xff = v
-			break
-		}
-	}
-	if xff != "" {
-		logger.Debug("found xff header", "xff", xff)
-		if len(xff) > maxHeaderLength {
-			logger.Warn("xff header too big", "length", len(xff))
-			return false, errors.New("header too big")
-		}
-		ips := strings.Split(xff, ",")
-		if len(ips) > maxIPs {
-			logger.Warn("too many ips in xff header", "length", len(ips))
-			return false, errors.New("too many ips in chain")
-		}
-
-		for i := len(ips) - 1; i >= 0; i-- {
-			parsedIP := strings.TrimSpace(ips[i])
-			if !b.isTrustedProxy(parsedIP) && isValidIP(parsedIP) {
-				logger.Debug("using ip from xff header", "ip", parsedIP)
-				ip = parsedIP
-				break
-			}
-		}
-	}
-
-	if !isValidIP(ip) {
-		logger.Error("invalid ip address")
-		return false, errors.New("invalid ip address")
-	}
-
-	logger = logger.With(slog.String("ip", ip), slog.String("xff", xff))
+	logger = logger.With(slog.String("ip", ip))
 	logger.Debug("starting decision check")
 
 	decision, ok := b.cache.Get(ip)
@@ -213,7 +156,7 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 		return errors.New("stream not initialized")
 	}
 
-	logger := logger.FromContext(ctx).With(slog.String("method", "sync"))
+	logger := logger.FromContext(ctx).With(slog.String("component", "bouncer"), slog.String("method", "sync"))
 	go func() {
 		b.stream.Run(ctx)
 	}()
@@ -223,9 +166,12 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 		case <-ctx.Done():
 			logger.Debug("sync context done")
 			return nil
-		case d := <-b.stream.Stream:
+		case d, ok := <-b.stream.Stream:
+			if !ok {
+				logger.Warn("decision stream closed; stopping sync")
+				return nil
+			}
 			if d == nil {
-				logger.Debug("received nil decision stream")
 				continue
 			}
 
@@ -255,24 +201,6 @@ func (b *EnvoyBouncer) Metrics(ctx context.Context) error {
 	go b.metricsProvider.Run(ctx)
 	<-ctx.Done()
 	return nil
-}
-
-func (b *EnvoyBouncer) isTrustedProxy(ip string) bool {
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return false
-	}
-	for _, ipNet := range b.trustedProxies {
-		if ipNet.Contains(parsed) {
-			return true
-		}
-	}
-	return false
-}
-
-func isValidIP(ip string) bool {
-	parsedIP := net.ParseIP(ip)
-	return parsedIP != nil
 }
 
 func IsBannedDecision(decision *models.Decision) bool {

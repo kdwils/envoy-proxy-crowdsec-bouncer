@@ -2,15 +2,15 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/remediation"
+	"github.com/kdwils/envoy-proxy-bouncer/server/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -29,28 +29,33 @@ func TestServer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockBouncer := mocks.NewMockBouncer(ctrl)
-		mockBouncer.EXPECT().
-			Bounce(gomock.Any(), "", gomock.Any()).
-			Return(false, fmt.Errorf("test error"))
+		mockRemediator := mocks.NewMockRemediator(ctrl)
+		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
+			Action:     "error",
+			Reason:     "test error",
+			HTTPStatus: 500,
+		})
 
-		s := NewServer(config.Config{}, mockBouncer, log)
+		s := NewServer(config.Config{}, mockRemediator, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(500), resp.Status.Code)
+		assert.Contains(t, resp.GetDeniedResponse().Body, "test error")
 	})
 
 	t.Run("request blocked", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockBouncer := mocks.NewMockBouncer(ctrl)
-		mockBouncer.EXPECT().
-			Bounce(gomock.Any(), "192.0.2.1", gomock.Any()).
-			Return(true, nil)
+		mockRemediator := mocks.NewMockRemediator(ctrl)
+		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
+			Action:     "deny",
+			Reason:     "blocked",
+			HTTPStatus: 403,
+		})
 
-		s := NewServer(config.Config{}, mockBouncer, log)
+		s := NewServer(config.Config{}, mockRemediator, log)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -75,12 +80,14 @@ func TestServer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockBouncer := mocks.NewMockBouncer(ctrl)
-		mockBouncer.EXPECT().
-			Bounce(gomock.Any(), "192.0.2.1", gomock.Any()).
-			Return(false, nil)
+		mockRemediator := mocks.NewMockRemediator(ctrl)
+		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+		})
 
-		s := NewServer(config.Config{}, mockBouncer, log)
+		s := NewServer(config.Config{}, mockRemediator, log)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -99,5 +106,52 @@ func TestServer_Check(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(0), resp.Status.Code) // OK
+		assert.Nil(t, resp.GetDeniedResponse())
+	})
+}
+
+func TestServer_Check_WithRemediator(t *testing.T) {
+	log := logger.FromContext(context.Background())
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockRemediator := mocks.NewMockRemediator(ctrl)
+
+	t.Run("remediator returns error", func(t *testing.T) {
+		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
+			Action:     "error",
+			Reason:     "remediator error",
+			HTTPStatus: 500,
+		})
+		s := NewServer(config.Config{}, mockRemediator, log)
+		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(500), resp.Status.Code)
+		assert.Contains(t, resp.GetDeniedResponse().Body, "remediator error")
+	})
+
+	t.Run("remediator returns deny", func(t *testing.T) {
+		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
+			Action:     "deny",
+			Reason:     "blocked",
+			HTTPStatus: 403,
+		})
+		s := NewServer(config.Config{}, mockRemediator, log)
+		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(403), resp.Status.Code)
+		assert.Contains(t, resp.GetDeniedResponse().Body, "blocked")
+	})
+
+	t.Run("remediator returns allow", func(t *testing.T) {
+		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+		})
+		s := NewServer(config.Config{}, mockRemediator, log)
+		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(0), resp.Status.Code) // OK
+		assert.Nil(t, resp.GetDeniedResponse())
 	})
 }

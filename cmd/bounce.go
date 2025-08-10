@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -31,7 +31,7 @@ var bounceCmd = &cobra.Command{
 		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		logger := slog.New(handler)
 
-		client, err := bouncer.NewLiveBouncer(config.Bouncer.ApiKey, config.Bouncer.ApiURL)
+		client, err := components.NewLiveBouncer(config.Bouncer.ApiKey, config.Bouncer.LAPIURL)
 		if err != nil {
 			return err
 		}
@@ -43,11 +43,12 @@ var bounceCmd = &cobra.Command{
 				continue
 			}
 			for _, d := range *decisions {
-				if bouncer.IsBannedDecision(d) {
+				if components.IsBannedDecision(d) {
 					logger.Info("not allowed", "ip", ip, "type", *d.Type)
 					continue
 				}
 			}
+
 			logger.Info("allowed", "ip", ip)
 		}
 

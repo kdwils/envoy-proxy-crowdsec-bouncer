@@ -1,8 +1,46 @@
-# CrowdSec Envoy Proxy Bouncer
+![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
+![Build](https://img.shields.io/github/actions/workflow/status/kdwils/envoy-proxy-crowdsec-bouncer/ci.yml?branch=main)
+![License](https://img.shields.io/github/license/kdwils/envoy-proxy-crowdsec-bouncer)
 
+# CrowdSec Envoy Proxy Bouncer
 A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](https://www.envoyproxy.io/) using the ext_authz (external authorization) filter.
 
-This project provides a seamless way to integrate CrowdSec with Envoy to block malicious IP addresses before they reach your internal services. The bouncer uses CrowdSec's Local API (LAPI) to receive ban decisions and respond to Envoy's external authorization calls.
+## Features
+
+- Blocks malicious IPs at the edge using CrowdSec ban decisions
+- Optional WAF inspection via CrowdSec AppSec
+- Fast, lightweight, and easy to deploy (binary, Docker, Kubernetes, Helm)
+- Flexible configuration (file, env, CLI)
+- Metrics reporting (optional)
+
+## Quickstart
+
+Run locally (requires Go 1.21+):
+
+```bash
+go install github.com/kdwils/envoy-proxy-bouncer@latest
+export ENVOY_BOUNCER_BOUNCER_APIKEY=<your-lapi-bouncer-api-key>
+export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
+# optional WAF
+export ENVOY_BOUNCER_WAF_ENABLED=true
+export ENVOY_BOUNCER_WAF_APIKEY=<your-appsec-api-key>
+export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:4241
+envoy-proxy-bouncer serve
+```
+
+Or with Docker:
+
+```bash
+docker run -p 8080:8080 \
+  -e ENVOY_BOUNCER_BOUNCER_APIKEY=<your-lapi-bouncer-api-key> \
+  -e ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080 \
+  -e ENVOY_BOUNCER_WAF_ENABLED=true \
+  -e ENVOY_BOUNCER_WAF_APIKEY=<your-appsec-api-key> \
+  -e ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:4241 \
+  kdwils/envoy-proxy-bouncer
+```
+
+This project provides a seamless way to integrate CrowdSec with Envoy to block malicious IP addresses before they reach your internal services. The bouncer uses CrowdSec's Local API (LAPI) to receive ban decisions and (optionally) forwards requests to CrowdSec AppSec (WAF) for inspection.
 
 ---
 
@@ -10,37 +48,13 @@ This project provides a seamless way to integrate CrowdSec with Envoy to block m
 
 This bouncer:
 1. Subscribes to ban decisions from CrowdSec's LAPI via live stream.
-2. Extracts the client IP from incoming requests.
-3. Validates the IP against the cached ban list.
-4. Returns a `403 Forbidden` to Envoy for banned IPs, or `200 OK` if the IP is clean.
+2. Extracts the client IP from incoming requests (supports X-Forwarded-For with trusted proxies).
+3. If bouncer is enabled, denies banned IPs with 403.
+4. If WAF is enabled, forwards the request to CrowdSec AppSec and applies its decision.
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Envoy as Envoy Proxy
-    participant Bouncer as Envoy Bouncer
-
-    Client->>Envoy: HTTP Request
-    Envoy->>Bouncer: ext_authz Check
-    Note over Bouncer: Extract client IP
-
-    alt IP is banned
-        Bouncer->>Envoy: 403 Forbidden
-        Envoy->>Client: Blocked
-    else IP is clean
-        Bouncer->>Envoy: 200 OK
-        Envoy->>Client: Allow Request
-    end
-```
-
-## Installation
-
-```bash
-go install github.com/kdwils/envoy-proxy-bouncer@latest
-```
+WAF forwarding uses the request method (GET if no body, POST if body present), filters out HTTP/2 pseudo headers, and sets the required AppSec headers.
 
 ## Configuration
-
 The bouncer can be configured using:
 1. Configuration file (YAML or JSON)
 2. Environment variables
@@ -52,22 +66,27 @@ Create a `config.yaml` file:
 
 ```yaml
 server:
-  port: 8080                               # optional (defaults to 8080)
-  logLevel: "info"                         # optional (defaults to info)
+  port: 8080                # optional (defaults to 8080)
+  logLevel: "info"          # optional (defaults to info)
+
+trustedProxies:             # optional (defaults to 127.0.0.1, ::1)
+  - 192.168.0.1             # IPv4
+  - 2001:db8::1             # IPv6
+  - 10.0.0.0/8              # CIDR range
+  - 100.64.0.0/10           # CIDR range
 
 bouncer:
-  apiKey: "your-crowdsec-bouncer-api-key"  # required
-  apiURL: "http://crowdsec:8080"           # required
+  enabled: true             # optional (defaults to false)
+  metrics: false            # optional (defaults to false)
+  lapiURL: "http://crowdsec:8080"  # required (LAPI base URL)
+  apiKey: "<lapi-bouncer-api-key>" # required
+  tickerInterval: "10s"     # optional (defaults to 10s)
 
-  metrics: true                            # optional (defaults to false) - report metrics to the LAPI instance
-  
-  trustedProxies:                          # optional (defaults to 127.0.0.1, ::1)
-    - 192.168.0.1                          # IPv4
-    - 2001:db8::1                          # IPv6
-    - 10.0.0.0/8                           # CIDR range
-    - 100.64.0.0/10                        # CIDR range
-  
-  tickerInterval: "10s"                    # optional (defaults to 10s) - how often to check for ban decisions from the LAPI stream
+waf:
+  enabled: true             # optional (defaults to false)
+  timeout: "5s"             # optional (defaults to 1s)
+  appSecURL: "http://appsec:4241" # required when enabled
+  apiKey: "<appsec-api-key>"      # required when enabled
 ```
 
 Run with config file:
@@ -85,10 +104,20 @@ export ENVOY_BOUNCER_SERVER_PORT=8080
 export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
 
 # Bouncer configuration
-export ENVOY_BOUNCER_BOUNCER_APIKEY=your-api-key
-export ENVOY_BOUNCER_BOUNCER_APIURL=http://crowdsec:8080
-export ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
+export ENVOY_BOUNCER_BOUNCER_ENABLED=true
+export ENVOY_BOUNCER_BOUNCER_APIKEY=your-lapi-bouncer-api-key
+export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
 export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=5s
+export ENVOY_BOUNCER_BOUNCER_METRICS=false
+
+# Trusted proxies (comma-separated)
+export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
+
+# WAF configuration
+export ENVOY_BOUNCER_WAF_ENABLED=true
+export ENVOY_BOUNCER_WAF_TIMEOUT=5s
+export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:4241
+export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 ```
 
 ### Configuration Precedence
@@ -101,9 +130,17 @@ The configuration is loaded in the following order (last wins):
 
 ### Required Configuration
 
-The following configuration options are required:
-- `bouncer.apiKey`: CrowdSec bouncer API key
-- `bouncer.apiURL`: CrowdSec API URL
+When bouncer is enabled:
+- `bouncer.apiKey`
+- `bouncer.lapiURL`
+
+When WAF is enabled:
+- `waf.apiKey`
+- `waf.appSecURL`
+
+Note on API keys:
+- The bouncer API key must be generated on your CrowdSec LAPI (for example with `cscli bouncers add <name>`). Use this key for `bouncer.apiKey`.
+- The WAF API key must be generated on your CrowdSec AppSec instance. Do not reuse the LAPI bouncer key; use the AppSec-issued key for `waf.apiKey`.
 
 ### Default Values
 
@@ -113,24 +150,29 @@ server:
   logLevel: "info"
 
 bouncer:
+  enabled: false
   metrics: false
-  trustedProxies:
-    - "127.0.0.1"
-    - "::1"
   tickerInterval: "10s"
+
+waf:
+  enabled: false
+  timeout: "1s"
 ```
 
-### Simple bouncer configuration
-1. Generate an API key from your LAPI instance:
-```bash
-sudo cscli bouncers add envoy-bouncer
-```
+## WAF Details
 
-2. Set the key as an environment variable with your LAPI host:
-```bash
-export ENVOY_BOUNCER_BOUNCER_APIKEY=<your-api-key>
-export ENVOY_BOUNCER_BOUNCER_APIURL=<your-lapi-host>
-```
+When enabled, the bouncer forwards the request to CrowdSec AppSec at `waf.appSecURL` with headers:
+- `X-Crowdsec-Appsec-Ip`: real client IP
+- `X-Crowdsec-Appsec-Uri`: request path
+- `X-Crowdsec-Appsec-Host`: request host
+- `X-Crowdsec-Appsec-Verb`: request method
+- `X-Crowdsec-Appsec-Api-Key`: AppSec API key
+- `X-Crowdsec-Appsec-User-Agent`: original User-Agent
+- `X-Crowdsec-Appsec-Http-Version`: HTTP protocol version
+
+Notes:
+- HTTP/2 pseudo headers (e.g., `:scheme`, `:authority`, `:path`, `:method`) are not forwarded as HTTP headers.
+- Method is GET when the body is empty, POST when a body is present.
 
 ## Usage
 
@@ -140,17 +182,17 @@ export ENVOY_BOUNCER_BOUNCER_APIURL=<your-lapi-host>
 envoy-proxy-bouncer serve
 ```
 
-### Testing ip Decisions
+### Testing IP Decisions
 
 ```bash
-# Test if an ip is banned (multiple IPs can be specified)
+# Test if an IP is banned (multiple IPs can be specified)
 envoy-proxy-bouncer bounce -i 192.168.1.1,10.0.0.1
 
 # Manual gRPC request test
 grpcurl -plaintext -d @ localhost:8080 envoy.service.auth.v3.Authorization/Check < request.json
 ```
 
-An examle request would look like:
+An example request would look like:
 ```json
 {
   "attributes": {
@@ -189,17 +231,18 @@ docker run -p 8080:8080 \
 
 ## Headers
 
-The bouncer checks for ip addresses in the following order:
-1. Configured headers (in order specified in config)
-2. Request's RemoteAddr
+The bouncer determines the client IP in this order:
+1. `X-Forwarded-For` (uses the rightmost non-trusted IP)
+2. `X-Real-Ip`
+3. Socket address
 
-For X-Forwarded-For headers with multiple IPs the bouncer uses the first (rightmost) non-trusted ip. For this reason, it is recommended to configure the bouncer with trusted proxies.
+Configure `trustedProxies` to ensure correct client IP extraction.
 
 ## Response Codes
 
 - 200 OK: Request allowed
-- 403 Forbidden: Request blocked by CrowdSec decision
-- 500 Internal Server Error: Bouncer configuration or runtime error
+- 403 Forbidden: Request blocked by CrowdSec decision or WAF
+- 500 Internal Server Error: Configuration or runtime error
 
 ## Development
 
@@ -220,7 +263,7 @@ nix develop .
 
 ## Metrics
 
-The bouncer reports metrics to CrowdSec's dashboard including:
+The bouncer can report metrics to CrowdSec's dashboard including:
 - Total requests processed
 - Number of requests bounced
 
@@ -234,14 +277,13 @@ cscli metrics
 
 ## Deploying
 
-I have personally only tested this in a kubernetes cluster with Envoy Gateway installed. If there are other environments that aren't working, feel free to open an issue and i'll try to help.
+This project is tested in Kubernetes clusters with Envoy Gateway. For other environments, please open an issue if you encounter problems.
 
 ### Kubernetes
 
-The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway:
-An flat yaml example lives [here](examples/deploy/README.md).
+The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. See [examples/deploy/README.md](examples/deploy/README.md) for a flat YAML example.
 
-## Helm Installation
+### Helm
 
 Add the Helm repository:
 ```bash
@@ -252,9 +294,11 @@ helm repo update
 Install the chart:
 ```bash
 helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
-  --set crowdsec.apiKey=<your-api-key> \
-  --set crowdsec.apiURL=<your-crowsdsec-host>:<port>
+  --set crowdsec.bouncer.enabled=true \
+  --set crowdsec.bouncer.apiKey=<your-api-key> \
+  --set crowdsec.bouncer.lapiURL=<your-crowdsec-host>:<port>
+  --set crowdsec.trustedProxies=<your-trusted-proxies>
 ```
 
 Acknowledgements:
-* Helms schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
+* Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
