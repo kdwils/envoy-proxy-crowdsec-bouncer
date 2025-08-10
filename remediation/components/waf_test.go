@@ -55,7 +55,7 @@ func TestWAF_Inspect(t *testing.T) {
 		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTP(ctrl)
 		// WAF with invalid URL should fail before making HTTP call
-		waf := WAF{Enabled: true, APIURL: ":badurl", http: mockHTTP}
+		waf := WAF{APIURL: ":badurl", http: mockHTTP}
 		ctx := context.Background()
 		req, _ := nethttp.NewRequest("GET", "http://example.com", nil)
 		_, err := waf.Inspect(ctx, req, "192.168.1.1")
@@ -66,7 +66,7 @@ func TestWAF_Inspect(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTP(ctrl)
-		waf := WAF{Enabled: true, APIURL: "http://test", http: mockHTTP}
+		waf := WAF{APIURL: "http://test", http: mockHTTP}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(nil, errors.New("fail")).Times(1)
 		req, _ := nethttp.NewRequest("GET", "http://localhost/test", nil)
 		ctx := context.Background()
@@ -78,7 +78,7 @@ func TestWAF_Inspect(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTP(ctrl)
-		waf := WAF{Enabled: true, APIURL: "http://test", http: mockHTTP}
+		waf := WAF{APIURL: "http://test", http: mockHTTP}
 		response := &nethttp.Response{StatusCode: 500, Status: "500 error", Body: io.NopCloser(strings.NewReader(""))}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(response, nil).Times(1)
 		req, _ := nethttp.NewRequest("GET", "http://localhost/test", nil)
@@ -91,7 +91,7 @@ func TestWAF_Inspect(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTP(ctrl)
-		waf := WAF{Enabled: true, APIURL: "http://test", APIKey: "key", http: mockHTTP}
+		waf := WAF{APIURL: "http://test", APIKey: "key", http: mockHTTP}
 		respBody := `{"action":"ban","http_status":403}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(response, nil).Times(1)
@@ -109,7 +109,7 @@ func TestWAF_Inspect(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTP(ctrl)
-		waf := WAF{Enabled: true, APIURL: "http://test", APIKey: "key", http: mockHTTP}
+		waf := WAF{APIURL: "http://test", APIKey: "key", http: mockHTTP}
 		respBody := `{"action":"captcha"}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(response, nil).Times(1)

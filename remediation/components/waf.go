@@ -23,12 +23,9 @@ type Config struct {
 }
 
 type WAF struct {
-	Enabled bool
-	APIKey  string
-	APIURL  string
-	Timeout time.Duration
-	config  Config
-	http    HTTP
+	APIKey string
+	APIURL string
+	http   HTTP
 }
 
 type WAFResponse struct {
