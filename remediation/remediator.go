@@ -141,7 +141,6 @@ type ParsedRequest struct {
 	Body      []byte
 }
 
-
 func (e *ParseError) Error() string { return e.Reason }
 
 type CheckedRequest struct {
@@ -178,9 +177,9 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 	parsed := r.ParseCheckRequest(ctx, req)
 
 	logger = logger.With(slog.String("ip", parsed.RealIP))
-	logger.Info("checking ip")
 	if r.Bouncer != nil {
-		logger.Debug("running bouncer", "ip", parsed.RealIP, "headers", parsed.Headers)
+		logger.Info("running bouncer")
+		logger.Debug("headers", "headers", parsed.Headers)
 		bounce, err := r.Bouncer.Bounce(ctx, parsed.RealIP, parsed.Headers)
 		if err != nil {
 			logger.Error("bouncer error", "error", err)
@@ -193,8 +192,9 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 	}
 
 	if r.WAF != nil {
-		logger.Debug("running WAF inspection", "uri", parsed.URL.String(), "method", parsed.Method, "userAgent", parsed.UserAgent)
-		// Build http.Request for WAF inspection using the pre-built URL
+		logger.Info("running WAF")
+		logger.Debug("headers", "headers", parsed.Headers)
+
 		var bodyReader io.Reader
 		if len(parsed.Body) > 0 {
 			bodyReader = bytes.NewReader(parsed.Body)
@@ -221,7 +221,6 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 			return CheckedRequest{Action: "error", Reason: "waf error", HTTPStatus: http.StatusInternalServerError}
 		}
 
-		logger.Info("result", "action", wafResult.Action)
 		if wafResult.Action != "allow" {
 			return CheckedRequest{Action: wafResult.Action, Reason: "waf", HTTPStatus: http.StatusForbidden}
 		}
