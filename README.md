@@ -139,8 +139,7 @@ When WAF is enabled:
 - `waf.appSecURL`
 
 Note on API keys:
-- The bouncer API key must be generated on your CrowdSec LAPI (for example with `cscli bouncers add <name>`). Use this key for `bouncer.apiKey`.
-- The WAF API key must be generated on your CrowdSec AppSec instance. Do not reuse the LAPI bouncer key; use the AppSec-issued key for `waf.apiKey`.
+- An key must be generated on your CrowdSec LAPI (with `cscli bouncers add <name>`). You can use this key for both `bouncer.apiKey` and `waf.apiKey`.
 
 ### Default Values
 
