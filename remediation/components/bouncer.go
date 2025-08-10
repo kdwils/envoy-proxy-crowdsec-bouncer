@@ -70,6 +70,8 @@ func newStreamBouncer(apiKey, apiURL, tickerInterval string) (*csbouncer.StreamB
 		UserAgent:      "envoy-proxy-bouncer/" + version.Version,
 		TickerInterval: tickerInterval,
 	}
+	// ensure we don't exit on transient startup issues
+	b.RetryInitialConnect = true
 
 	err := b.Init()
 	return b, err
@@ -164,9 +166,12 @@ func (b *EnvoyBouncer) Sync(ctx context.Context) error {
 		case <-ctx.Done():
 			logger.Debug("sync context done")
 			return nil
-		case d := <-b.stream.Stream:
+		case d, ok := <-b.stream.Stream:
+			if !ok {
+				logger.Warn("decision stream closed; stopping sync")
+				return nil
+			}
 			if d == nil {
-				logger.Debug("received nil decision stream")
 				continue
 			}
 
