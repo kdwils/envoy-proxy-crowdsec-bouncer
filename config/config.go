@@ -12,8 +12,6 @@ type Config struct {
 	Bouncer        Bouncer  `yaml:"bouncer" json:"bouncer"`
 	WAF            WAF      `yaml:"waf" json:"waf"`
 	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
-	ApiKey         string   `yaml:"apiKey" json:"apiKey"`
-	ApiURL         string   `yaml:"apiURL" json:"apiURL"`
 }
 
 type Server struct {
@@ -25,11 +23,15 @@ type Bouncer struct {
 	Enabled        bool   `yaml:"enabled" json:"enabled"`
 	Metrics        bool   `yaml:"metrics" json:"metrics"`
 	TickerInterval string `yaml:"tickerInterval" json:"tickerInterval"`
+	ApiKey         string `yaml:"apiKey" json:"apiKey"`
+	LAPIURL        string `yaml:"LAPIURL" json:"LAPIURL"`
 }
 
 type WAF struct {
-	Enabled bool          `yaml:"enabled" json:"enabled"`
-	Timeout time.Duration `yaml:"timeout" json:"timeout"`
+	Enabled   bool          `yaml:"enabled" json:"enabled"`
+	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
+	AppSecURL string        `yaml:"appSecURL" json:"appSecURL"`
+	ApiKey    string        `yaml:"apiKey" json:"apiKey"`
 }
 
 func New(v *viper.Viper) (Config, error) {

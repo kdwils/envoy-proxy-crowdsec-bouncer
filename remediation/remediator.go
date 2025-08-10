@@ -15,8 +15,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation/crowdsec"
-	"github.com/kdwils/envoy-proxy-bouncer/version"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 )
@@ -45,12 +43,9 @@ func New(cfg config.Config) (*Remediator, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	userAgent := "envoy-proxy-bouncer/" + version.Version
-
 	var b Bouncer
 	if cfg.Bouncer.Enabled {
-		b, err = components.NewBouncer(cfg.ApiKey, cfg.ApiURL, cfg.Bouncer.TickerInterval)
+		b, err = components.NewBouncer(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -58,12 +53,7 @@ func New(cfg config.Config) (*Remediator, error) {
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		apiClient, err := crowdsec.NewClient(cfg.ApiKey, cfg.ApiURL, userAgent)
-		if err != nil {
-			return nil, err
-		}
-
-		w = components.NewWAF(cfg.ApiKey, cfg.ApiURL, apiClient)
+		w = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
 	}
 
 	return &Remediator{
@@ -106,7 +96,6 @@ func extractRealIP(ip string, headers map[string]string, trustedProxies []*net.I
 		}
 	}
 
-	// Look for X-Real-IP header (case-insensitive)
 	for k, v := range headers {
 		if strings.EqualFold(k, "x-real-ip") && v != "" && isValidIP(v) {
 			return v
@@ -143,16 +132,13 @@ type ParseError struct{ Reason string }
 
 // ParsedRequest holds the fields extracted from the gRPC CheckRequest for remediation logic.
 type ParsedRequest struct {
-	IP          string // original socket address
-	RealIP      string // extracted real client IP
-	Headers     map[string]string
-	URI         string
-	URL         *url.URL // complete URL with scheme, host, path, and query
-	Host        string
-	Method      string
-	UserAgent   string
-	HTTPVersion string
-	Body        []byte
+	IP        string
+	RealIP    string
+	Headers   map[string]string
+	URL       url.URL
+	Method    string
+	UserAgent string
+	Body      []byte
 }
 
 // ParseError is returned when parsing the CheckRequest fails.
@@ -195,6 +181,7 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 	logger = logger.With(slog.String("ip", parsed.RealIP))
 	logger.Info("checking ip")
 	if r.Bouncer != nil {
+		logger.Debug("running bouncer", "ip", parsed.RealIP, "headers", parsed.Headers)
 		bounce, err := r.Bouncer.Bounce(ctx, parsed.RealIP, parsed.Headers)
 		if err != nil {
 			logger.Error("bouncer error", "error", err)
@@ -207,8 +194,7 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 	}
 
 	if r.WAF != nil {
-		logger.Info("running WAF inspection", "uri", parsed.URI, "host", parsed.Host, "method", parsed.Method, "userAgent", parsed.UserAgent, "httpVersion", parsed.HTTPVersion)
-
+		logger.Debug("running WAF inspection", "uri", parsed.URL.String(), "method", parsed.Method, "userAgent", parsed.UserAgent)
 		// Build http.Request for WAF inspection using the pre-built URL
 		var bodyReader io.Reader
 		if len(parsed.Body) > 0 {
@@ -221,15 +207,13 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 			return CheckedRequest{Action: "error", Reason: "waf request build error", HTTPStatus: http.StatusInternalServerError}
 		}
 
-		// Set headers from parsed request
 		httpReq.Header = make(http.Header)
 		for k, v := range parsed.Headers {
-			httpReq.Header.Set(k, v)
+			if !strings.HasPrefix(k, ":") {
+				httpReq.Header.Set(k, v)
+			}
 		}
 
-		// Set host and real IP
-		httpReq.Host = parsed.Host
-		httpReq.Header.Set("X-Real-IP", parsed.RealIP)
 		httpReq.RemoteAddr = parsed.RealIP
 
 		wafResult, wafErr := r.WAF.Inspect(ctx, httpReq, parsed.RealIP)
@@ -286,29 +270,17 @@ func (r *Remediator) ParseCheckRequest(ctx context.Context, req *auth.CheckReque
 
 	parsedRequest.RealIP = extractRealIP(parsedRequest.IP, parsedRequest.Headers, r.TrustedProxies)
 
-	parsedRequest.URI = httpRequest.GetPath()
-	parsedRequest.Host = httpRequest.GetHost()
-	parsedRequest.Method = httpRequest.GetMethod()
-	parsedRequest.HTTPVersion = httpRequest.GetProtocol()
+	url := url.URL{
+		Scheme: parsedRequest.Headers[":scheme"],
+		Host:   parsedRequest.Headers[":authority"],
+		Path:   parsedRequest.Headers[":path"],
+	}
+
+	parsedRequest.Method = parsedRequest.Headers[":method"]
 	parsedRequest.Body = []byte(httpRequest.GetBody())
+	parsedRequest.UserAgent = parsedRequest.Headers["user-agent"]
 
-	for _, key := range []string{"user-agent", "User-Agent"} {
-		if ua := parsedRequest.Headers[strings.ToLower(key)]; ua != "" {
-			parsedRequest.UserAgent = ua
-			break
-		}
-	}
-
-	scheme := "http"
-	if strings.Contains(parsedRequest.HTTPVersion, "2") || parsedRequest.Headers["x-forwarded-proto"] == "https" {
-		scheme = "https"
-	}
-
-	parsedRequest.URL = &url.URL{
-		Scheme: scheme,
-		Host:   parsedRequest.Host,
-		Path:   parsedRequest.URI,
-	}
+	parsedRequest.URL = url
 
 	return parsedRequest
 }

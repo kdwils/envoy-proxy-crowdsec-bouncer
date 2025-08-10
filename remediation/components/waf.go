@@ -5,10 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"time"
 )
+
+//go:generate mockgen -destination=mocks/mock_http.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation/components HTTP
+type HTTP interface {
+	Do(req *http.Request) (*http.Response, error)
+}
 
 type Config struct {
 	APIKey  string
@@ -22,7 +29,7 @@ type WAF struct {
 	APIURL  string
 	Timeout time.Duration
 	config  Config
-	http    CrowdsecClient
+	http    HTTP
 }
 
 type WAFResponse struct {
@@ -30,66 +37,58 @@ type WAFResponse struct {
 	HTTPStatus int    `json:"http_status,omitempty"`
 }
 
-func NewWAF(apiKey, apiURL string, http CrowdsecClient) WAF {
+func NewWAF(appsecURL, apiKey string, http *http.Client) WAF {
 	return WAF{
-		APIKey: apiKey,
-		APIURL: apiURL,
+		APIURL: appsecURL,
 		http:   http,
+		APIKey: apiKey,
 	}
 }
 
 // Inspect forwards the request to the CrowdSec AppSec component and returns the action.
 func (w WAF) Inspect(ctx context.Context, req *http.Request, realIP string) (WAFResponse, error) {
 	var result WAFResponse
-
-	// Extract information from the incoming request
-	uri := req.URL.Path
-	if req.URL.RawQuery != "" {
-		uri += "?" + req.URL.RawQuery
+	if req == nil {
+		return result, fmt.Errorf("request cannot be nil")
 	}
-	host := req.Host
-	method := req.Method
-	userAgent := req.Header.Get("User-Agent")
-	httpVersion := req.Proto
+	if req.Header == nil {
+		return result, fmt.Errorf("request headers cannot be nil")
+	}
 
-	// Create request to CrowdSec AppSec component - AppSec runs on a separate port (4241 by default)
-	// Parse the main API URL and change the port to AppSec port 4241
 	apiURL, err := url.Parse(w.APIURL)
 	if err != nil {
 		return result, fmt.Errorf("failed to parse API URL: %w", err)
 	}
 
-	// Extract host without port and use AppSec port 4241
-	hostPart := apiURL.Hostname() // This handles URLs with or without ports
-	appSecURL := fmt.Sprintf("%s://%s:4241", apiURL.Scheme, hostPart)
+	method := http.MethodGet
+	if req.Body != nil {
+		method = http.MethodPost
+	}
 
-	forwardReq, err := http.NewRequest(req.Method, appSecURL, req.Body)
+	forwardReq, err := http.NewRequestWithContext(ctx, method, apiURL.String(), req.Body)
 	if err != nil {
 		return result, fmt.Errorf("failed to create request to CrowdSec: %w", err)
 	}
 
-	// Copy original headers
-	for k, v := range req.Header {
-		forwardReq.Header[k] = v
-	}
+	maps.Copy(forwardReq.Header, req.Header)
 
-	// Add required CrowdSec AppSec headers
-	for k, v := range buildAppSecHeaders(realIP, uri, host, method, w.APIKey, userAgent, httpVersion) {
+	for k, v := range buildAppSecHeaders(req, realIP, w.APIKey) {
 		forwardReq.Header.Set(k, v)
 	}
 
-	resp, err := w.http.Do(ctx, forwardReq, req.Body)
+	log.Println("headers", forwardReq.Header)
+
+	resp, err := w.http.Do(forwardReq)
 	if err != nil {
 		return result, err
 	}
-	response := resp.Response
-	defer response.Body.Close()
+	defer resp.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
-		return result, fmt.Errorf("unexpected status: %v", response.Status)
+	if resp.StatusCode != http.StatusOK {
+		return result, fmt.Errorf("unexpected status: %v", resp.Status)
 	}
 
-	b, err := io.ReadAll(response.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return result, err
 	}
@@ -99,14 +98,14 @@ func (w WAF) Inspect(ctx context.Context, req *http.Request, realIP string) (WAF
 }
 
 // buildAppSecHeaders returns a map of the required CrowdSec AppSec headers for the outgoing request.
-func buildAppSecHeaders(realIP, uri, host, method, apiKey, userAgent, httpVersion string) map[string]string {
+func buildAppSecHeaders(req *http.Request, realIP, apiKey string) map[string]string {
 	return map[string]string{
 		"X-Crowdsec-Appsec-Ip":           realIP,
-		"X-Crowdsec-Appsec-Uri":          uri,
-		"X-Crowdsec-Appsec-Host":         host,
-		"X-Crowdsec-Appsec-Verb":         method,
+		"X-Crowdsec-Appsec-Uri":          req.URL.Path,
+		"X-Crowdsec-Appsec-Host":         req.URL.Host,
+		"X-Crowdsec-Appsec-Verb":         req.Method,
 		"X-Crowdsec-Appsec-Api-Key":      apiKey,
-		"X-Crowdsec-Appsec-User-Agent":   userAgent,
-		"X-Crowdsec-Appsec-Http-Version": httpVersion,
+		"X-Crowdsec-Appsec-User-Agent":   req.Header.Get("User-Agent"),
+		"X-Crowdsec-Appsec-Http-Version": req.Proto,
 	}
 }

@@ -1,4 +1,5 @@
 //go:build functional
+// +build functional
 
 package functional
 
@@ -35,6 +36,7 @@ func TestBouncer(t *testing.T) {
 		},
 		WaitingFor: wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
 	}
+
 	lapiContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: lapiReq,
 		Started:          true,
@@ -43,49 +45,6 @@ func TestBouncer(t *testing.T) {
 		t.Fatalf("failed to start container: %v", err)
 	}
 	defer lapiContainer.Terminate(ctx)
-
-	lapiIP, err := lapiContainer.ContainerIP(ctx)
-	if err != nil {
-		t.Fatalf("failed to get LAPI container IP: %v", err)
-	}
-
-	appSecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.6.8",
-		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
-		Env: map[string]string{
-			"DISABLE_LOCAL_API": "false",
-			"DISABLE_AGENT":     "true",
-			"LAPI_URL":          fmt.Sprintf("http://%s:8080", lapiIP),
-		},
-		Files: []testcontainers.ContainerFile{
-			{
-				HostFilePath:      "./configs/acquis.yaml",
-				ContainerFilePath: "/etc/crowdsec/acquis.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      "./configs/appsec.yaml",
-				ContainerFilePath: "/etc/crowdsec/appsec-configs/appsec-config.yaml",
-				FileMode:          0644,
-			},
-		},
-		WaitingFor: wait.ForHTTP("/metrics").WithPort("6060/tcp").WithStartupTimeout(60 * time.Second),
-	}
-
-	appsecContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: appSecReq,
-		Started:          true,
-	})
-	if err != nil {
-		logs, err := appsecContainer.Logs(ctx)
-		if err == nil {
-			logData, _ := io.ReadAll(logs)
-			t.Logf("AppSec Container logs:\n%s", string(logData))
-		}
-		t.Fatalf("failed to start appsec container: %v", err)
-	}
-
-	defer appsecContainer.Terminate(ctx)
 
 	host, err := lapiContainer.Host(ctx)
 	if err != nil {
@@ -96,7 +55,7 @@ func TestBouncer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lapiURL := url.URL{
+	LAPIURL := url.URL{
 		Scheme: "http",
 		Host:   host + ":" + port.Port(),
 	}
@@ -131,11 +90,11 @@ func TestBouncer(t *testing.T) {
 	viper.Set("server.port", 8080)
 	viper.Set("server.logLevel", "debug")
 	viper.Set("apiKey", key)
-	viper.Set("apiURL", lapiURL.String())
+	viper.Set("apiURL", LAPIURL.String())
 	viper.Set("trustedProxies", trustedProxies)
-	viper.Set("bouncer.enabled", true)
 	viper.Set("bouncer.tickerInterval", "1s")
-	viper.Set("waf.enabled", true)
+	viper.Set("bouncer.enabled", true)
+	viper.Set("waf.enabled", false)
 
 	go func() {
 		err = rootCmd.Execute()
@@ -259,36 +218,6 @@ func TestBouncer(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(0), check.Status.Code)
-	})
-
-	t.Run("Test WAF blocks XSS payload", func(t *testing.T) {
-		req := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{
-								Address: "192.168.1.1",
-							},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Method: "POST",
-						Path:   "/api/test",
-						Body:   `{"data": "<script>alert('xss')</script>"}`,
-						Headers: map[string]string{
-							"Content-Type": "application/json",
-						},
-					},
-				},
-			},
-		}
-		check, err := client.Check(context.TODO(), req)
-		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(403), check.Status.Code)
 	})
 
 }

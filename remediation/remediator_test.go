@@ -330,14 +330,14 @@ func TestParseCheckRequest(t *testing.T) {
 			want: &ParsedRequest{Headers: map[string]string{}},
 		},
 		{
-			name: "full request with headers, x-real-ip, user-agent",
+			name: "full request with Envoy pseudo-headers",
 			req: &auth.CheckRequest{
 				Attributes: &auth.AttributeContext{
 					Source: &auth.AttributeContext_Peer{
 						Address: &core.Address{
 							Address: &core.Address_SocketAddress{
 								SocketAddress: &core.SocketAddress{
-									Address: "1.2.3.4",
+									Address: "5.6.7.8",
 								},
 							},
 						},
@@ -345,13 +345,14 @@ func TestParseCheckRequest(t *testing.T) {
 					Request: &auth.AttributeContext_Request{
 						Http: &auth.AttributeContext_HttpRequest{
 							Headers: map[string]string{
-								"x-real-ip":   "5.6.7.8",
-								"user-agent":  "TestAgent",
-								"some-header": "some-value",
+								":scheme":         "https",
+								":authority":      "example.com",
+								":path":           "/foo/bar",
+								":method":         "GET",
+								"user-agent":      "TestAgent",
+								"Some-Header":     "some-value",
+								"x-forwarded-for": "10.0.0.1,5.6.7.8",
 							},
-							Path:     "/foo/bar",
-							Host:     "example.com",
-							Method:   "GET",
 							Protocol: "HTTP/1.1",
 							Body:     "bodydata",
 						},
@@ -359,16 +360,21 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:          "1.2.3.4",
-				RealIP:      "5.6.7.8",
-				Headers:     map[string]string{"x-real-ip": "5.6.7.8", "user-agent": "TestAgent", "some-header": "some-value"},
-				URI:         "/foo/bar",
-				URL:         &url.URL{Scheme: "http", Host: "example.com", Path: "/foo/bar"},
-				Host:        "example.com",
-				Method:      "GET",
-				UserAgent:   "TestAgent",
-				HTTPVersion: "HTTP/1.1",
-				Body:        []byte("bodydata"),
+				IP:     "5.6.7.8",
+				RealIP: "5.6.7.8",
+				Headers: map[string]string{
+					":scheme":         "https",
+					":authority":      "example.com",
+					":path":           "/foo/bar",
+					":method":         "GET",
+					"user-agent":      "TestAgent",
+					"some-header":     "some-value",
+					"x-forwarded-for": "10.0.0.1,5.6.7.8",
+				},
+				URL:       url.URL{Scheme: "https", Host: "example.com", Path: "/foo/bar"},
+				Method:    "GET",
+				UserAgent: "TestAgent",
+				Body:      []byte("bodydata"),
 			},
 		},
 		{
@@ -387,11 +393,12 @@ func TestParseCheckRequest(t *testing.T) {
 					Request: &auth.AttributeContext_Request{
 						Http: &auth.AttributeContext_HttpRequest{
 							Headers: map[string]string{
+								":scheme":    "http",
+								":authority": "host.com",
+								":path":      "/baz",
+								":method":    "POST",
 								"user-agent": "UA-From-Headers",
 							},
-							Path:     "/baz",
-							Host:     "host.com",
-							Method:   "POST",
 							Protocol: "HTTP/2",
 							Body:     "",
 						},
@@ -399,15 +406,19 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:          "2.2.2.2",
-				RealIP:      "2.2.2.2",
-				Headers:     map[string]string{"user-agent": "UA-From-Headers"},
-				URI:         "/baz",
-				Host:        "host.com",
-				Method:      "POST",
-				UserAgent:   "UA-From-Headers",
-				HTTPVersion: "HTTP/2",
-				Body:        []byte(""),
+				IP:     "2.2.2.2",
+				RealIP: "2.2.2.2",
+				Headers: map[string]string{
+					":scheme":    "http",
+					":authority": "host.com",
+					":path":      "/baz",
+					":method":    "POST",
+					"user-agent": "UA-From-Headers",
+				},
+				URL:       url.URL{Scheme: "http", Host: "host.com", Path: "/baz"},
+				Method:    "POST",
+				UserAgent: "UA-From-Headers",
+				Body:      []byte(""),
 			},
 		},
 		{
@@ -426,11 +437,12 @@ func TestParseCheckRequest(t *testing.T) {
 					Request: &auth.AttributeContext_Request{
 						Http: &auth.AttributeContext_HttpRequest{
 							Headers: map[string]string{
-								"foo": "bar",
+								":scheme":    "http",
+								":authority": "nested.com",
+								":path":      "/nested",
+								":method":    "PUT",
+								"foo":        "bar",
 							},
-							Path:     "/nested",
-							Host:     "nested.com",
-							Method:   "PUT",
 							Protocol: "HTTP/2",
 							Body:     "abc",
 						},
@@ -438,15 +450,19 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:          "3.3.3.3",
-				RealIP:      "3.3.3.3",
-				Headers:     map[string]string{"foo": "bar"},
-				URI:         "/nested",
-				Host:        "nested.com",
-				Method:      "PUT",
-				UserAgent:   "",
-				HTTPVersion: "HTTP/2",
-				Body:        []byte("abc"),
+				IP:     "3.3.3.3",
+				RealIP: "3.3.3.3",
+				Headers: map[string]string{
+					":scheme":    "http",
+					":authority": "nested.com",
+					":path":      "/nested",
+					":method":    "PUT",
+					"foo":        "bar",
+				},
+				URL:       url.URL{Scheme: "http", Host: "nested.com", Path: "/nested"},
+				Method:    "PUT",
+				UserAgent: "",
+				Body:      []byte("abc"),
 			},
 		},
 		{
@@ -465,11 +481,12 @@ func TestParseCheckRequest(t *testing.T) {
 					Request: &auth.AttributeContext_Request{
 						Http: &auth.AttributeContext_HttpRequest{
 							Headers: map[string]string{
-								"X-Forwarded-For": "10.0.0.1, 8.8.8.8",
+								":scheme":         "http",
+								":authority":      "xff.com",
+								":path":           "/xff",
+								":method":         "GET",
+								"x-forwarded-for": "10.0.0.1, 8.8.8.8",
 							},
-							Path:     "/xff",
-							Host:     "xff.com",
-							Method:   "GET",
 							Protocol: "HTTP/1.1",
 							Body:     "",
 						},
@@ -477,16 +494,19 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:          "4.4.4.4",
-				RealIP:      "8.8.8.8",
-				Headers:     map[string]string{"x-forwarded-for": "10.0.0.1, 8.8.8.8"},
-				URI:         "/xff",
-				URL:         &url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
-				Host:        "xff.com",
-				Method:      "GET",
-				UserAgent:   "",
-				HTTPVersion: "HTTP/1.1",
-				Body:        []byte(""),
+				IP:     "4.4.4.4",
+				RealIP: "8.8.8.8",
+				Headers: map[string]string{
+					":scheme":         "http",
+					":authority":      "xff.com",
+					":path":           "/xff",
+					":method":         "GET",
+					"x-forwarded-for": "10.0.0.1, 8.8.8.8",
+				},
+				URL:       url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
+				Method:    "GET",
+				UserAgent: "",
+				Body:      []byte(""),
 			},
 		},
 	}
@@ -496,11 +516,9 @@ func TestParseCheckRequest(t *testing.T) {
 			got := r.ParseCheckRequest(context.Background(), tt.req)
 			if got.IP != tt.want.IP ||
 				got.RealIP != tt.want.RealIP ||
-				got.URI != tt.want.URI ||
-				got.Host != tt.want.Host ||
 				got.Method != tt.want.Method ||
 				got.UserAgent != tt.want.UserAgent ||
-				got.HTTPVersion != tt.want.HTTPVersion ||
+				got.URL != tt.want.URL ||
 				!reflect.DeepEqual(got.Headers, tt.want.Headers) ||
 				!reflect.DeepEqual(got.Body, tt.want.Body) {
 				t.Errorf("ParseCheckRequest() = %+v, want %+v", got, tt.want)
