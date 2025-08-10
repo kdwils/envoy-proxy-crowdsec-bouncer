@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"maps"
 	"net/http"
 	"net/url"
@@ -75,7 +74,6 @@ func (w WAF) Inspect(ctx context.Context, req *http.Request, realIP string) (WAF
 	for k, v := range buildAppSecHeaders(req, realIP, w.APIKey) {
 		forwardReq.Header.Set(k, v)
 	}
-
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
