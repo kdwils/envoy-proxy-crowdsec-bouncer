@@ -42,30 +42,47 @@ spec:
               protocol: TCP
           env:
           {{- with .Values.config }}
-            {{- with .secretKeyRef }}
+            {{- with .bouncer.apiKey }}
             - name: ENVOY_BOUNCER_BOUNCER_APIKEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .name }}
-                  key: {{ .key }}
+              value: {{ . | quote }}
             {{- end }}
-            {{- with .apiKey }}
-            - name: ENVOY_BOUNCER_BOUNCER_APIKEY
-              value: {{ . }}
+            {{- with .bouncer.lapiURL }}
+            - name: ENVOY_BOUNCER_BOUNCER_LAPIURL
+              value: {{ . | quote }}
             {{- end }}
-            {{- with .apiURL }}
-            - name: ENVOY_BOUNCER_BOUNCER_APIURL
-              value: {{ . }}
+            {{- with .bouncer.enabled }}
+            - name: ENVOY_BOUNCER_BOUNCER_ENABLED
+              value: {{ . | quote }}
             {{- end }}
-            {{- with .trustedProxies }}
-            - name: ENVOY_BOUNCER_BOUNCER_TRUSTEDPROXIES
-              value: {{ join "," . }}
-            {{- end }}
-            {{- with .metrics }}
+            {{- with .bouncer.metrics }}
             - name: ENVOY_BOUNCER_BOUNCER_METRICS
               value: {{ . | quote }}
             {{- end }}
+            {{- with .bouncer.tickerInterval }}
+            - name: ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL
+              value: {{ . | quote }}
             {{- end }}
+            {{- with .trustedProxies }}
+            - name: ENVOY_BOUNCER_TRUSTEDPROXIES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .waf.enabled }}
+            - name: ENVOY_BOUNCER_WAF_ENABLED
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .waf.timeout }}
+            - name: ENVOY_BOUNCER_WAF_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .waf.apiKey }}
+            - name: ENVOY_BOUNCER_WAF_APIKEY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .waf.appSecURL }}
+            - name: ENVOY_BOUNCER_WAF_APPSECURL
+              value: {{ . | quote }}
+            {{- end }}
+          {{- end }}
             - name: ENVOY_BOUNCER_SERVER_PORT
               value: {{ .Values.config.server.port | quote }}
             - name: ENVOY_BOUNCER_SERVER_LOGLEVEL

@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.0.3](https://img.shields.io/badge/Version-0.0.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.0.3](https://img.shields.io/badge/AppVersion-v0.0.2-informational?style=flat-square)
+![Version: 0.0.3](https://img.shields.io/badge/Version-0.0.3-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.0.3](https://img.shields.io/badge/AppVersion-v0.0.3-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -13,12 +13,18 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | autoscaling.minReplicas | int | `1` |  |
 | autoscaling.targetCPUUtilizationPercentage | int | `80` |  |
 | autoscaling.targetMemoryUtilizationPercentage | int | `80` |  |
-| config.apiKey | string | `""` |  |
-| config.apiURL | string | `"http://crowdsec-service:8080"` |  |
-| config.metrics | bool | `false` |  |
+| config.bouncer.apiKey | string | `""` |  |
+| config.bouncer.enabled | bool | `true` |  |
+| config.bouncer.lapiURL | string | `"http://crowdsec-service:8080"` |  |
+| config.bouncer.metrics | bool | `false` |  |
+| config.bouncer.tickerInterval | string | `"10s"` |  |
 | config.server.logLevel | string | `"info"` |  |
 | config.server.port | int | `8080` |  |
 | config.trustedProxies | list | `[]` |  |
+| config.waf.apiKey | string | `""` |  |
+| config.waf.appSecURL | string | `"http://crowdsec-appsec-service:7422"` |  |
+| config.waf.enabled | bool | `false` |  |
+| config.waf.timeout | string | `"1s"` |  |
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/kdwils/envoy-proxy-bouncer"` |  |
