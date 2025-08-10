@@ -12,7 +12,6 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 - Fast, lightweight, and easy to deploy (binary, Docker, Kubernetes, Helm)
 - Flexible configuration (file, env, CLI)
 - Metrics reporting (optional)
-- Designed for production use with Envoy Proxy
 
 ## Quickstart
 
