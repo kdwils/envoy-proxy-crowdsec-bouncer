@@ -76,7 +76,6 @@ func (w WAF) Inspect(ctx context.Context, req *http.Request, realIP string) (WAF
 		forwardReq.Header.Set(k, v)
 	}
 
-	log.Println("headers", forwardReq.Header)
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
