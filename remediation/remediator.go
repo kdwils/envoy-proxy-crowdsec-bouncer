@@ -141,7 +141,6 @@ type ParsedRequest struct {
 	Body      []byte
 }
 
-// ParseError is returned when parsing the CheckRequest fails.
 
 func (e *ParseError) Error() string { return e.Reason }
 
