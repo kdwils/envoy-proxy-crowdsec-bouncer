@@ -178,7 +178,7 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 
 	logger = logger.With(slog.String("ip", parsed.RealIP))
 	if r.Bouncer != nil {
-		logger.Info("running bouncer")
+		logger.Debug("running bouncer")
 		logger.Debug("headers", "headers", parsed.Headers)
 		bounce, err := r.Bouncer.Bounce(ctx, parsed.RealIP, parsed.Headers)
 		if err != nil {
@@ -186,13 +186,13 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 			return CheckedRequest{Action: "error", Reason: "bouncer error", HTTPStatus: http.StatusInternalServerError}
 		}
 		if bounce {
-			logger.Info("bouncing")
+			logger.Debug("bouncing")
 			return CheckedRequest{Action: "deny", Reason: "bouncer", HTTPStatus: http.StatusForbidden}
 		}
 	}
 
 	if r.WAF != nil {
-		logger.Info("running WAF")
+		logger.Debug("running WAF")
 		logger.Debug("headers", "headers", parsed.Headers)
 
 		var bodyReader io.Reader

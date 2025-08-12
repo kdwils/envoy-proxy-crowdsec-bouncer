@@ -62,6 +62,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "remediator not initialized"), nil
 	}
 	result := s.remediator.Check(ctx, req)
+	s.logger.Info("remediation result", slog.Any("result", result))
 	switch result.Action {
 	case "allow":
 		return getAllowedResponse(), nil
