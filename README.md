@@ -33,8 +33,8 @@ envoy-proxy-bouncer serve
 This bouncer:
 1. Subscribes to ban decisions from CrowdSec's LAPI via live stream.
 2. Extracts the client IP from incoming requests (supports X-Forwarded-For with trusted proxies).
-3. With bouncer enabled - checks for cached decisions via stream, and if an IP is banned, denies the request with 403.
-4. With WAF enabled, forwards the request to CrowdSec AppSec and applies the decision returned.
+3. With bouncer enabled - checks cached decisions via Crowdsec Local API stream, and if an IP is banned, denies the request with 403.
+4. With WAF enabled - forwards the request to CrowdSec AppSec and applies the decision returned if it has not already been bounced.
 
 ## Configuration
 The bouncer can be configured using:
