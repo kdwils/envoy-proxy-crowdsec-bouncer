@@ -1,5 +1,5 @@
-![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)
-![Build](https://img.shields.io/github/actions/workflow/status/kdwils/envoy-proxy-crowdsec-bouncer/ci.yml?branch=main)
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
+![Build](https://img.shields.io/github/actions/workflow/status/kdwils/envoy-proxy-crowdsec-bouncer/ci.yaml?branch=main)
 ![License](https://img.shields.io/github/license/kdwils/envoy-proxy-crowdsec-bouncer)
 
 # CrowdSec Envoy Proxy Bouncer
