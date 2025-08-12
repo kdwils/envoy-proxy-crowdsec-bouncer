@@ -19,40 +19,22 @@ Run locally (requires Go 1.21+):
 
 ```bash
 go install github.com/kdwils/envoy-proxy-bouncer@latest
-export ENVOY_BOUNCER_BOUNCER_APIKEY=<your-lapi-bouncer-api-key>
+export ENVOY_BOUNCER_BOUNCER_ENABLED=true
+export ENVOY_BOUNCER_BOUNCER_APIKEY=<lapi-key>
 export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
-# optional WAF
 export ENVOY_BOUNCER_WAF_ENABLED=true
-export ENVOY_BOUNCER_WAF_APIKEY=<your-appsec-api-key>
-export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:4241
+export ENVOY_BOUNCER_WAF_APIKEY=<lapi-key>
+export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:7422
 envoy-proxy-bouncer serve
 ```
-
-Or with Docker:
-
-```bash
-docker run -p 8080:8080 \
-  -e ENVOY_BOUNCER_BOUNCER_APIKEY=<your-lapi-bouncer-api-key> \
-  -e ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080 \
-  -e ENVOY_BOUNCER_WAF_ENABLED=true \
-  -e ENVOY_BOUNCER_WAF_APIKEY=<your-appsec-api-key> \
-  -e ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:4241 \
-  kdwils/envoy-proxy-bouncer
-```
-
-This project provides a seamless way to integrate CrowdSec with Envoy to block malicious IP addresses before they reach your internal services. The bouncer uses CrowdSec's Local API (LAPI) to receive ban decisions and (optionally) forwards requests to CrowdSec AppSec (WAF) for inspection.
-
----
 
 ## How It Works
 
 This bouncer:
 1. Subscribes to ban decisions from CrowdSec's LAPI via live stream.
 2. Extracts the client IP from incoming requests (supports X-Forwarded-For with trusted proxies).
-3. If bouncer is enabled, denies banned IPs with 403.
-4. If WAF is enabled, forwards the request to CrowdSec AppSec and applies its decision.
-
-WAF forwarding uses the request method (GET if no body, POST if body present), filters out HTTP/2 pseudo headers, and sets the required AppSec headers.
+3. With bouncer enabled - checks for cached decisions via stream, and if an IP is banned, denies the request with 403.
+4. With WAF enabled, forwards the request to CrowdSec AppSec and applies the decision returned.
 
 ## Configuration
 The bouncer can be configured using:
@@ -66,27 +48,26 @@ Create a `config.yaml` file:
 
 ```yaml
 server:
-  port: 8080                # optional (defaults to 8080)
-  logLevel: "info"          # optional (defaults to info)
+  port: 8080
+  logLevel: "info"
 
-trustedProxies:             # optional (defaults to 127.0.0.1, ::1)
-  - 192.168.0.1             # IPv4
-  - 2001:db8::1             # IPv6
-  - 10.0.0.0/8              # CIDR range
-  - 100.64.0.0/10           # CIDR range
+trustedProxies:
+  - 192.168.0.1
+  - 2001:db8::1
+  - 10.0.0.0/8
+  - 100.64.0.0/10
 
 bouncer:
-  enabled: true             # optional (defaults to false)
-  metrics: false            # optional (defaults to false)
-  lapiURL: "http://crowdsec:8080"  # required (LAPI base URL)
-  apiKey: "<lapi-bouncer-api-key>" # required
-  tickerInterval: "10s"     # optional (defaults to 10s)
+  enabled: true
+  metrics: false
+  lapiURL: "http://crowdsec:8080" # required when enabled
+  apiKey: "<lapi-key>".           # required when enabled
+  tickerInterval: "5m"
 
 waf:
-  enabled: true             # optional (defaults to false)
-  timeout: "5s"             # optional (defaults to 1s)
-  appSecURL: "http://appsec:4241" # required when enabled
-  apiKey: "<appsec-api-key>"      # required when enabled
+  enabled: true 
+  appSecURL: "http://appsec:7422" # required when enabled
+  apiKey: "<lapi-key>"            # required when enabled
 ```
 
 Run with config file:
@@ -115,8 +96,7 @@ export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
 
 # WAF configuration
 export ENVOY_BOUNCER_WAF_ENABLED=true
-export ENVOY_BOUNCER_WAF_TIMEOUT=5s
-export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:4241
+export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:7422
 export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 ```
 
@@ -155,23 +135,7 @@ bouncer:
 
 waf:
   enabled: false
-  timeout: "1s"
 ```
-
-## WAF Details
-
-When enabled, the bouncer forwards the request to CrowdSec AppSec at `waf.appSecURL` with headers:
-- `X-Crowdsec-Appsec-Ip`: real client IP
-- `X-Crowdsec-Appsec-Uri`: request path
-- `X-Crowdsec-Appsec-Host`: request host
-- `X-Crowdsec-Appsec-Verb`: request method
-- `X-Crowdsec-Appsec-Api-Key`: AppSec API key
-- `X-Crowdsec-Appsec-User-Agent`: original User-Agent
-- `X-Crowdsec-Appsec-Http-Version`: HTTP protocol version
-
-Notes:
-- HTTP/2 pseudo headers (e.g., `:scheme`, `:authority`, `:path`, `:method`) are not forwarded as HTTP headers.
-- Method is GET when the body is empty, POST when a body is present.
 
 ## Usage
 
@@ -294,7 +258,7 @@ Install the chart:
 ```bash
 helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set crowdsec.bouncer.enabled=true \
-  --set crowdsec.bouncer.apiKey=<your-api-key> \
+  --set crowdsec.bouncer.apiKey=<lapi-key> \
   --set crowdsec.bouncer.lapiURL=<your-crowdsec-host>:<port>
   --set crowdsec.trustedProxies=<your-trusted-proxies>
 ```
