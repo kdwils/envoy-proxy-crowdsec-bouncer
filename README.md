@@ -7,11 +7,10 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 
 ## Features
 
-- Blocks malicious IPs at the edge using CrowdSec ban decisions
-- Optional WAF inspection via CrowdSec AppSec
-- Fast, lightweight, and easy to deploy (binary, Docker, Kubernetes, Helm)
-- Flexible configuration (file, env, CLI)
-- Metrics reporting (optional)
+- Blocks malicious IPs via streamed CrowdSec decisions
+- WAF inspection via CrowdSec AppSec
+- Fast, lightweight, and easy to deploy
+- Bouncer metrics reporting
 
 ## Quickstart
 
@@ -151,35 +150,7 @@ envoy-proxy-bouncer serve
 # Test if an IP is banned (multiple IPs can be specified)
 envoy-proxy-bouncer bounce -i 192.168.1.1,10.0.0.1
 
-# Manual gRPC request test
-grpcurl -plaintext -d @ localhost:8080 envoy.service.auth.v3.Authorization/Check < request.json
-```
-
-An example request would look like:
-```json
-{
-  "attributes": {
-    "source": {
-      "address": {
-        "socketAddress": {
-          "address": "192.168.1.100",
-          "portValue": 50555
-        }
-      }
-    },
-    "request": {
-      "http": {
-        "headers": {
-          "x-forwarded-for": "192.168.1.100, 10.0.0.1"
-        }
-      }
-    }
-  }
-}
-```
-
 ## Docker
-
 Build and run with Docker:
 
 ```bash
@@ -192,10 +163,10 @@ docker run -p 8080:8080 \
   envoy-proxy-bouncer
 ```
 
-## Headers
+## Real IP Determination
 
 The bouncer determines the client IP in this order:
-1. `X-Forwarded-For` (uses the rightmost non-trusted IP)
+1. `X-Forwarded-For` - uses the rightmost non-trusted IP
 2. `X-Real-Ip`
 3. Socket address
 
@@ -206,23 +177,6 @@ Configure `trustedProxies` to ensure correct client IP extraction.
 - 200 OK: Request allowed
 - 403 Forbidden: Request blocked by CrowdSec decision or WAF
 - 500 Internal Server Error: Configuration or runtime error
-
-## Development
-
-```bash
-# Run tests
-go test ./...
-
-# Build from source
-go build -o envoy-proxy-bouncer
-```
-
-### nix
-
-starting a shell with the project dependencies:
-```bash
-nix develop .
-```
 
 ## Metrics
 

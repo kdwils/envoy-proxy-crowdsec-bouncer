@@ -104,10 +104,6 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return result, fmt.Errorf("unexpected status: %v", resp.Status)
-	}
-
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return result, err

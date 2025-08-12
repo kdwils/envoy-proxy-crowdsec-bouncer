@@ -53,7 +53,6 @@ func initConfig() {
 	viper.SetDefault("bouncer.tickerInterval", "10s")
 
 	viper.SetDefault("waf.enabled", false)
-	viper.SetDefault("waf.timeout", "1s")
 	viper.SetDefault("waf.apiKey", "")
 	viper.SetDefault("waf.appsecURL", "")
 }
