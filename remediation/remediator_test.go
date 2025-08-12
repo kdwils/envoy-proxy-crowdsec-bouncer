@@ -2,6 +2,7 @@ package remediation
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"reflect"
@@ -9,6 +10,9 @@ import (
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
+	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/remediation/mocks"
+	"go.uber.org/mock/gomock"
 )
 
 func parseCIDROrFail(t *testing.T, cidr string) *net.IPNet {
@@ -371,10 +375,12 @@ func TestParseCheckRequest(t *testing.T) {
 					"some-header":     "some-value",
 					"x-forwarded-for": "10.0.0.1,5.6.7.8",
 				},
-				URL:       url.URL{Scheme: "https", Host: "example.com", Path: "/foo/bar"},
-				Method:    "GET",
-				UserAgent: "TestAgent",
-				Body:      []byte("bodydata"),
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/foo/bar"},
+				Method:     "GET",
+				UserAgent:  "TestAgent",
+				Body:       []byte("bodydata"),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		},
 		{
@@ -415,10 +421,12 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":    "POST",
 					"user-agent": "UA-From-Headers",
 				},
-				URL:       url.URL{Scheme: "http", Host: "host.com", Path: "/baz"},
-				Method:    "POST",
-				UserAgent: "UA-From-Headers",
-				Body:      []byte(""),
+				URL:        url.URL{Scheme: "http", Host: "host.com", Path: "/baz"},
+				Method:     "POST",
+				UserAgent:  "UA-From-Headers",
+				Body:       []byte(""),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
 			},
 		},
 		{
@@ -459,10 +467,12 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":    "PUT",
 					"foo":        "bar",
 				},
-				URL:       url.URL{Scheme: "http", Host: "nested.com", Path: "/nested"},
-				Method:    "PUT",
-				UserAgent: "",
-				Body:      []byte("abc"),
+				URL:        url.URL{Scheme: "http", Host: "nested.com", Path: "/nested"},
+				Method:     "PUT",
+				UserAgent:  "",
+				Body:       []byte("abc"),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
 			},
 		},
 		{
@@ -503,10 +513,12 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":         "GET",
 					"x-forwarded-for": "10.0.0.1, 8.8.8.8",
 				},
-				URL:       url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
-				Method:    "GET",
-				UserAgent: "",
-				Body:      []byte(""),
+				URL:        url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		},
 	}
@@ -519,10 +531,133 @@ func TestParseCheckRequest(t *testing.T) {
 				got.Method != tt.want.Method ||
 				got.UserAgent != tt.want.UserAgent ||
 				got.URL != tt.want.URL ||
+				got.ProtoMajor != tt.want.ProtoMajor ||
+				got.ProtoMinor != tt.want.ProtoMinor ||
 				!reflect.DeepEqual(got.Headers, tt.want.Headers) ||
 				!reflect.DeepEqual(got.Body, tt.want.Body) {
 				t.Errorf("ParseCheckRequest() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
+}
+
+func TestRemediator_Check(t *testing.T) {
+	mkReq := func(ip, scheme, authority, path, method, proto, body string) *auth.CheckRequest {
+		return &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{Address: ip}},
+					},
+				},
+				Request: &auth.AttributeContext_Request{
+					Http: &auth.AttributeContext_HttpRequest{
+						Headers: map[string]string{
+							":scheme":    scheme,
+							":authority": authority,
+							":path":      path,
+							":method":    method,
+							"user-agent": "UT",
+						},
+						Protocol: proto,
+						Body:     body,
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("bouncer denies", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockBouncer(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		r := Remediator{Bouncer: mb, WAF: mw}
+
+		req := mkReq("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
+
+		mb.EXPECT().Bounce(gomock.Any(), "1.2.3.4", gomock.Any()).Return(true, nil)
+		// WAF should not be called when bouncer denies
+
+		got := r.Check(context.Background(), req)
+		if got.Action != "deny" || got.Reason != "bouncer" || got.HTTPStatus != 403 || got.IP != "1.2.3.4" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
+	})
+
+	t.Run("bouncer error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockBouncer(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		r := Remediator{Bouncer: mb, WAF: mw}
+
+		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
+
+		mb.EXPECT().Bounce(gomock.Any(), "5.6.7.8", gomock.Any()).Return(false, fmt.Errorf("boom"))
+
+		got := r.Check(context.Background(), req)
+		if got.Action != "error" || got.Reason != "bouncer error" || got.HTTPStatus != 500 || got.IP != "5.6.7.8" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
+	})
+
+	t.Run("waf denies after bouncer allows", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockBouncer(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		r := Remediator{Bouncer: mb, WAF: mw}
+
+		req := mkReq("9.9.9.9", "https", "host", "/bar", "POST", "HTTP/2", "abc")
+
+		mb.EXPECT().Bounce(gomock.Any(), "9.9.9.9", gomock.Any()).Return(false, nil)
+		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
+
+		got := r.Check(context.Background(), req)
+		if got.Action != "ban" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "9.9.9.9" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
+	})
+
+	t.Run("waf error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockBouncer(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		r := Remediator{Bouncer: mb, WAF: mw}
+
+		req := mkReq("10.0.0.1", "http", "h", "/p", "GET", "HTTP/1.0", "")
+
+		mb.EXPECT().Bounce(gomock.Any(), "10.0.0.1", gomock.Any()).Return(false, nil)
+		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf down"))
+
+		got := r.Check(context.Background(), req)
+		if got.Action != "error" || got.Reason != "waf error" || got.HTTPStatus != 500 || got.IP != "10.0.0.1" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
+	})
+
+	t.Run("allow both", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockBouncer(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		r := Remediator{Bouncer: mb, WAF: mw}
+
+		req := mkReq("7.7.7.7", "https", "ex", "/ok", "GET", "HTTP/2", "")
+
+		mb.EXPECT().Bounce(gomock.Any(), "7.7.7.7", gomock.Any()).Return(false, nil)
+		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "allow"}, nil)
+
+		got := r.Check(context.Background(), req)
+		if got.Action != "allow" || got.Reason != "ok" || got.HTTPStatus != 200 || got.IP != "7.7.7.7" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
+	})
 }
