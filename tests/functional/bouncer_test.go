@@ -26,7 +26,7 @@ import (
 func TestBouncer(t *testing.T) {
 	ctx := context.Background()
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.6.11",
+		Image:        "crowdsecurity/crowdsec:v1.6.8",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API": "false",
