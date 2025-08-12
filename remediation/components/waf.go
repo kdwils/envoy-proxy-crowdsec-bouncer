@@ -56,11 +56,10 @@ func NewWAF(appsecURL, apiKey string, http *http.Client) WAF {
 }
 
 // Inspect forwards the request to the CrowdSec AppSec component and returns the action.
-func (w WAF) Inspect(ctx context.Context, areq AppSecRequest) (WAFResponse, error) {
+func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error) {
 	logger := logger.FromContext(ctx).With(slog.String("component", "waf"))
 	var result WAFResponse
-	// validate basics
-	if areq.Method == "" {
+	if req.Method == "" {
 		return result, fmt.Errorf("method cannot be empty")
 	}
 
@@ -71,35 +70,38 @@ func (w WAF) Inspect(ctx context.Context, areq AppSecRequest) (WAFResponse, erro
 	}
 
 	var bodyReader io.Reader
-	if len(areq.Body) > 0 {
-		bodyReader = bytes.NewReader(areq.Body)
+	if len(req.Body) > 0 {
+		bodyReader = bytes.NewReader(req.Body)
 	}
 
-	forwardReq, err := http.NewRequestWithContext(ctx, areq.Method, apiURL.String(), bodyReader)
+	forwardReqMethod := http.MethodGet
+	if req.Body != nil {
+		forwardReqMethod = http.MethodPost
+	}
+
+	forwardReq, err := http.NewRequestWithContext(ctx, forwardReqMethod, apiURL.String(), bodyReader)
 	if err != nil {
 		return result, fmt.Errorf("failed to create request to CrowdSec: %w", err)
 	}
-	// copy headers, excluding any pseudo-headers
+
 	forwardReq.Header = make(http.Header)
-	for k, v := range areq.Headers {
+	for k, v := range req.Headers {
 		if len(k) > 0 && k[0] == ':' {
 			continue
 		}
 		forwardReq.Header.Set(k, v)
 	}
 
-	// set protocol version when available
-	if areq.ProtoMajor > 0 {
-		forwardReq.ProtoMajor = areq.ProtoMajor
-		forwardReq.ProtoMinor = areq.ProtoMinor
+	if req.ProtoMajor > 0 {
+		forwardReq.ProtoMajor = req.ProtoMajor
+		forwardReq.ProtoMinor = req.ProtoMinor
 	}
 
-	// add AppSec specific headers
-	for k, v := range buildAppSecHeaders(forwardReq, areq.RealIP, w.APIKey) {
+	for k, v := range buildAppSecHeaders(forwardReq, req.RealIP, w.APIKey) {
 		forwardReq.Header.Set(k, v)
 	}
 
-	logger.Debug("forwarding request to CrowdSec", "url", apiURL.String(), "method", areq.Method, "headers", forwardReq.Header)
+	logger.Debug("forwarding request to CrowdSec", "url", forwardReq.URL.String(), "method", forwardReq.Method, "headers", forwardReq.Header)
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
