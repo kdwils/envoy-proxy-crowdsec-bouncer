@@ -92,12 +92,7 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 		forwardReq.Header.Set(k, v)
 	}
 
-	if req.ProtoMajor > 0 {
-		forwardReq.ProtoMajor = req.ProtoMajor
-		forwardReq.ProtoMinor = req.ProtoMinor
-	}
-
-	for k, v := range buildAppSecHeaders(forwardReq, req.RealIP, w.APIKey) {
+	for k, v := range buildAppSecHeaders(req, req.RealIP, w.APIKey) {
 		forwardReq.Header.Set(k, v)
 	}
 
@@ -123,14 +118,19 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 }
 
 // buildAppSecHeaders returns a map of the required CrowdSec AppSec headers for the outgoing request.
-func buildAppSecHeaders(req *http.Request, realIP, apiKey string) map[string]string {
-	return map[string]string{
-		"X-Crowdsec-Appsec-Ip":           realIP,
-		"X-Crowdsec-Appsec-Uri":          req.URL.Path,
-		"X-Crowdsec-Appsec-Host":         req.URL.Host,
-		"X-Crowdsec-Appsec-Verb":         req.Method,
-		"X-Crowdsec-Appsec-Api-Key":      apiKey,
-		"X-Crowdsec-Appsec-User-Agent":   req.Header.Get("User-Agent"),
-		"X-Crowdsec-Appsec-Http-Version": fmt.Sprintf("%d%d", req.ProtoMajor, req.ProtoMinor),
+func buildAppSecHeaders(req AppSecRequest, realIP, apiKey string) map[string]string {
+	headers := map[string]string{
+		"X-Crowdsec-Appsec-Ip":         realIP,
+		"X-Crowdsec-Appsec-Uri":        req.URL.Path,
+		"X-Crowdsec-Appsec-Host":       req.URL.Host,
+		"X-Crowdsec-Appsec-Verb":       req.Method,
+		"X-Crowdsec-Appsec-Api-Key":    apiKey,
+		"X-Crowdsec-Appsec-User-Agent": req.Headers["User-Agent"],
 	}
+
+	if req.ProtoMajor > 0 {
+		headers["X-Crowdsec-Appsec-Http-Version"] = fmt.Sprintf("%d%d", req.ProtoMajor, req.ProtoMinor)
+	}
+
+	return headers
 }
