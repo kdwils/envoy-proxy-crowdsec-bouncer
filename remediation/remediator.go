@@ -144,6 +144,7 @@ type ParsedRequest struct {
 func (e *ParseError) Error() string { return e.Reason }
 
 type CheckedRequest struct {
+	IP         string
 	Action     string
 	Reason     string
 	HTTPStatus int
@@ -183,11 +184,11 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 		bounce, err := r.Bouncer.Bounce(ctx, parsed.RealIP, parsed.Headers)
 		if err != nil {
 			logger.Error("bouncer error", "error", err)
-			return CheckedRequest{Action: "error", Reason: "bouncer error", HTTPStatus: http.StatusInternalServerError}
+			return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "bouncer error", HTTPStatus: http.StatusInternalServerError}
 		}
 		if bounce {
 			logger.Debug("bouncing")
-			return CheckedRequest{Action: "deny", Reason: "bouncer", HTTPStatus: http.StatusForbidden}
+			return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "bouncer", HTTPStatus: http.StatusForbidden}
 		}
 	}
 
@@ -203,7 +204,7 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 		httpReq, err := http.NewRequest(parsed.Method, parsed.URL.String(), bodyReader)
 		if err != nil {
 			logger.Error("failed to build http.Request for WAF", "error", err)
-			return CheckedRequest{Action: "error", Reason: "waf request build error", HTTPStatus: http.StatusInternalServerError}
+			return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "waf request build error", HTTPStatus: http.StatusInternalServerError}
 		}
 
 		httpReq.Header = make(http.Header)
@@ -222,11 +223,11 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 		}
 
 		if wafResult.Action != "allow" {
-			return CheckedRequest{Action: wafResult.Action, Reason: "waf", HTTPStatus: http.StatusForbidden}
+			return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "waf", HTTPStatus: http.StatusForbidden}
 		}
 	}
 
-	return CheckedRequest{Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
+	return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.
