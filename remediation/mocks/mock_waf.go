@@ -11,7 +11,6 @@ package mocks
 
 import (
 	context "context"
-	http "net/http"
 	reflect "reflect"
 
 	components "github.com/kdwils/envoy-proxy-bouncer/remediation/components"
@@ -43,16 +42,16 @@ func (m *MockWAF) EXPECT() *MockWAFMockRecorder {
 }
 
 // Inspect mocks base method.
-func (m *MockWAF) Inspect(ctx context.Context, req *http.Request, realIP string) (components.WAFResponse, error) {
+func (m *MockWAF) Inspect(ctx context.Context, req components.AppSecRequest) (components.WAFResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Inspect", ctx, req, realIP)
+	ret := m.ctrl.Call(m, "Inspect", ctx, req)
 	ret0, _ := ret[0].(components.WAFResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Inspect indicates an expected call of Inspect.
-func (mr *MockWAFMockRecorder) Inspect(ctx, req, realIP any) *gomock.Call {
+func (mr *MockWAFMockRecorder) Inspect(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Inspect", reflect.TypeOf((*MockWAF)(nil).Inspect), ctx, req, realIP)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Inspect", reflect.TypeOf((*MockWAF)(nil).Inspect), ctx, req)
 }

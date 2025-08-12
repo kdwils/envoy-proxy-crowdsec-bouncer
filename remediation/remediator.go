@@ -1,15 +1,14 @@
 package remediation
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/kdwils/envoy-proxy-bouncer/config"
@@ -21,7 +20,7 @@ import (
 
 //go:generate mockgen -destination=mocks/mock_waf.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation WAF
 type WAF interface {
-	Inspect(ctx context.Context, req *http.Request, realIP string) (components.WAFResponse, error)
+	Inspect(ctx context.Context, req components.AppSecRequest) (components.WAFResponse, error)
 }
 
 //go:generate mockgen -destination=mocks/mock_bouncer.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation Bouncer
@@ -132,13 +131,15 @@ type ParseError struct{ Reason string }
 
 // ParsedRequest holds the fields extracted from the gRPC CheckRequest for remediation logic.
 type ParsedRequest struct {
-	IP        string
-	RealIP    string
-	Headers   map[string]string
-	URL       url.URL
-	Method    string
-	UserAgent string
-	Body      []byte
+	IP         string
+	RealIP     string
+	Headers    map[string]string
+	URL        url.URL
+	Method     string
+	UserAgent  string
+	Body       []byte
+	ProtoMajor int
+	ProtoMinor int
 }
 
 func (e *ParseError) Error() string { return e.Reason }
@@ -196,30 +197,20 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 		logger.Debug("running WAF")
 		logger.Debug("headers", "headers", parsed.Headers)
 
-		var bodyReader io.Reader
-		if len(parsed.Body) > 0 {
-			bodyReader = bytes.NewReader(parsed.Body)
+		wafReq := components.AppSecRequest{
+			Method:     parsed.Method,
+			URL:        parsed.URL,
+			Headers:    parsed.Headers,
+			Body:       parsed.Body,
+			RealIP:     parsed.RealIP,
+			ProtoMajor: parsed.ProtoMajor,
+			ProtoMinor: parsed.ProtoMinor,
 		}
 
-		httpReq, err := http.NewRequest(parsed.Method, parsed.URL.String(), bodyReader)
-		if err != nil {
-			logger.Error("failed to build http.Request for WAF", "error", err)
-			return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "waf request build error", HTTPStatus: http.StatusInternalServerError}
-		}
-
-		httpReq.Header = make(http.Header)
-		for k, v := range parsed.Headers {
-			if !strings.HasPrefix(k, ":") {
-				httpReq.Header.Set(k, v)
-			}
-		}
-
-		httpReq.RemoteAddr = parsed.RealIP
-
-		wafResult, wafErr := r.WAF.Inspect(ctx, httpReq, parsed.RealIP)
+		wafResult, wafErr := r.WAF.Inspect(ctx, wafReq)
 		if wafErr != nil {
 			logger.Error("waf error", "error", wafErr)
-			return CheckedRequest{Action: "error", Reason: "waf error", HTTPStatus: http.StatusInternalServerError}
+			return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "waf error", HTTPStatus: http.StatusInternalServerError}
 		}
 
 		if wafResult.Action != "allow" {
@@ -279,7 +270,39 @@ func (r *Remediator) ParseCheckRequest(ctx context.Context, req *auth.CheckReque
 	parsedRequest.Body = []byte(httpRequest.GetBody())
 	parsedRequest.UserAgent = parsedRequest.Headers["user-agent"]
 
+	if proto := httpRequest.GetProtocol(); proto != "" {
+		maj, min := parseHTTPVersion(proto)
+		parsedRequest.ProtoMajor = maj
+		parsedRequest.ProtoMinor = min
+	}
+
 	parsedRequest.URL = url
 
 	return parsedRequest
+}
+
+// parseHTTPVersion converts strings like "HTTP/1.1" or "HTTP/2" to (1,1) or (2,0).
+func parseHTTPVersion(proto string) (int, int) {
+	proto = strings.TrimSpace(proto)
+	version, ok := strings.CutPrefix(proto, "HTTP/")
+	if !ok {
+
+		return 0, 0
+	}
+
+	parts := strings.SplitN(version, ".", 2)
+	maj := 0
+	min := 0
+	if len(parts) > 0 {
+		if v, err := strconv.Atoi(parts[0]); err == nil {
+			maj = v
+		}
+	}
+	if len(parts) == 2 {
+		if v, err := strconv.Atoi(parts[1]); err == nil {
+			min = v
+		}
+	}
+
+	return maj, min
 }

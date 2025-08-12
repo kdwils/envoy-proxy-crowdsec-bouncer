@@ -1,7 +1,6 @@
 package components
 
 import (
-	bytes "bytes"
 	"context"
 	errors "errors"
 	io "io"
@@ -25,8 +24,10 @@ func TestBuildAppSecHeaders(t *testing.T) {
 			Path: "/test/uri",
 			Host: "example.com",
 		},
-		Method: "POST",
-		Proto:  "HTTP/1.1",
+		Method:     "POST",
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
 	}
 	realIP := "192.168.1.1"
 	apiKey := "test-api-key"
@@ -39,7 +40,7 @@ func TestBuildAppSecHeaders(t *testing.T) {
 		"X-Crowdsec-Appsec-Verb":         req.Method,
 		"X-Crowdsec-Appsec-Api-Key":      apiKey,
 		"X-Crowdsec-Appsec-User-Agent":   userAgent,
-		"X-Crowdsec-Appsec-Http-Version": req.Proto,
+		"X-Crowdsec-Appsec-Http-Version": "11",
 	}
 
 	got := buildAppSecHeaders(req, realIP, apiKey)
@@ -57,8 +58,8 @@ func TestWAF_Inspect(t *testing.T) {
 		// WAF with invalid URL should fail before making HTTP call
 		waf := WAF{APIURL: ":badurl", http: mockHTTP}
 		ctx := context.Background()
-		req, _ := nethttp.NewRequest("GET", "http://example.com", nil)
-		_, err := waf.Inspect(ctx, req, "192.168.1.1")
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "UA"}, RealIP: "192.168.1.1", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/"}}
+		_, err := waf.Inspect(ctx, areq)
 		assert.Error(t, err)
 	})
 
@@ -68,9 +69,9 @@ func TestWAF_Inspect(t *testing.T) {
 		mockHTTP := mocks.NewMockHTTP(ctrl)
 		waf := WAF{APIURL: "http://test", http: mockHTTP}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(nil, errors.New("fail")).Times(1)
-		req, _ := nethttp.NewRequest("GET", "http://localhost/test", nil)
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "UA"}, RealIP: "192.168.1.1", URL: url.URL{Scheme: "http", Host: "localhost", Path: "/test"}}
 		ctx := context.Background()
-		_, err := waf.Inspect(ctx, req, "192.168.1.1")
+		_, err := waf.Inspect(ctx, areq)
 		assert.Error(t, err)
 	})
 
@@ -81,9 +82,9 @@ func TestWAF_Inspect(t *testing.T) {
 		waf := WAF{APIURL: "http://test", http: mockHTTP}
 		response := &nethttp.Response{StatusCode: 500, Status: "500 error", Body: io.NopCloser(strings.NewReader(""))}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(response, nil).Times(1)
-		req, _ := nethttp.NewRequest("GET", "http://localhost/test", nil)
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "UA"}, RealIP: "192.168.1.1", URL: url.URL{Scheme: "http", Host: "localhost", Path: "/test"}}
 		ctx := context.Background()
-		_, err := waf.Inspect(ctx, req, "192.168.1.1")
+		_, err := waf.Inspect(ctx, areq)
 		assert.Error(t, err)
 	})
 
@@ -95,11 +96,9 @@ func TestWAF_Inspect(t *testing.T) {
 		respBody := `{"action":"ban","http_status":403}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(response, nil).Times(1)
-		req, _ := nethttp.NewRequest("GET", "http://example.com/foo", nil)
-		req.Host = "example.com"
-		req.Header.Set("User-Agent", "test-agent")
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"User-Agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
 		ctx := context.Background()
-		result, err := waf.Inspect(ctx, req, "1.2.3.4")
+		result, err := waf.Inspect(ctx, areq)
 		assert.NoError(t, err)
 		assert.Equal(t, "ban", result.Action)
 		assert.Equal(t, 403, result.HTTPStatus)
@@ -113,12 +112,9 @@ func TestWAF_Inspect(t *testing.T) {
 		respBody := `{"action":"captcha"}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		mockHTTP.EXPECT().Do(gomock.Any()).Return(response, nil).Times(1)
-		req, _ := nethttp.NewRequest("POST", "http://example.com/foo", bytes.NewReader([]byte("test")))
-		req.Host = "example.com"
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", "test-agent")
+		areq := AppSecRequest{Method: "POST", Headers: map[string]string{"Content-Type": "application/json", "User-Agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}, Body: []byte("test")}
 		ctx := context.Background()
-		result, err := waf.Inspect(ctx, req, "1.2.3.4")
+		result, err := waf.Inspect(ctx, areq)
 		assert.NoError(t, err)
 		assert.Equal(t, "captcha", result.Action)
 	})
