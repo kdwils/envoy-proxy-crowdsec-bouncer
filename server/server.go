@@ -63,17 +63,24 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	}
 	result := s.remediator.Check(ctx, req)
 	switch result.Action {
-	case "deny":
+	case "allow":
+		return getAllowedResponse(), nil
+	// TODO: support captcha properly
+	case "deny", "ban", "captcha":
 		return getDeniedResponse(envoy_type.StatusCode_Forbidden, result.Reason), nil
 	case "error":
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason), nil
 	default:
-		return &auth.CheckResponse{
-			Status: &status.Status{
-				Code: 0,
-			},
-			HttpResponse: &auth.CheckResponse_OkResponse{},
-		}, nil
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "unknown action"), nil
+	}
+}
+
+func getAllowedResponse() *auth.CheckResponse {
+	return &auth.CheckResponse{
+		Status: &status.Status{
+			Code: 0,
+		},
+		HttpResponse: &auth.CheckResponse_OkResponse{},
 	}
 }
 
