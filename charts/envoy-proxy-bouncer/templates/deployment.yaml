@@ -42,8 +42,6 @@ spec:
               protocol: TCP
           env:
           {{- with .Values.config }}
-            {{- with .bouncer.apiKey }}
-            {{- end }}
             {{- if and .bouncer.apiKeySecretRef .bouncer.apiKeySecretRef.name .bouncer.apiKeySecretRef.key }}
             - name: ENVOY_BOUNCER_BOUNCER_APIKEY
               valueFrom:
