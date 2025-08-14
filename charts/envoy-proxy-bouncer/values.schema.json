@@ -37,6 +37,9 @@
                             "default": "",
                             "type": "string"
                         },
+                        "apiKeySecretRef": {
+                            "type": "object"
+                        },
                         "enabled": {
                             "default": true,
                             "type": "boolean"
@@ -79,6 +82,9 @@
                             "default": "",
                             "type": "string"
                         },
+                        "apiKeySecretRef": {
+                            "type": "object"
+                        },
                         "appSecURL": {
                             "default": "http://crowdsec-appsec-service:7422",
                             "type": "string"
@@ -86,10 +92,6 @@
                         "enabled": {
                             "default": false,
                             "type": "boolean"
-                        },
-                        "timeout": {
-                            "default": "1s",
-                            "type": "string"
                         }
                     }
                 }

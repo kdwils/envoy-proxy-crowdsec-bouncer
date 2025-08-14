@@ -43,14 +43,18 @@ config:
     enabled: true # @schema default: true
     metrics: false # @schema default: false
     lapiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
-    apiKey: "" # @schema default: ""
     tickerInterval: "10s" # @schema default: "10s"
+    apiKey: "" # @schema default: ""
+    apiKeySecretRef: 
+      name: my-secret
+      key: my-key 
 
   waf:
     enabled: false # @schema default: false
-    timeout: "1s" # @schema default: "1s"
     appSecURL: "http://crowdsec-appsec-service:7422" # @schema default: "http://crowdsec-appsec-service:7422"
     apiKey: "" # @schema default: ""
+    apiKeySecretRef: {} # @schema type: object
+
 autoscaling:
   enabled: false # @schema default: false
   minReplicas: 1 # @schema default: 1
