@@ -42,9 +42,15 @@ spec:
               protocol: TCP
           env:
           {{- with .Values.config }}
-            {{- with .bouncer.apiKey }}
+            {{- if and .bouncer.apiKeySecretRef .bouncer.apiKeySecretRef.name .bouncer.apiKeySecretRef.key }}
             - name: ENVOY_BOUNCER_BOUNCER_APIKEY
-              value: {{ . | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .bouncer.apiKeySecretRef.name | quote }}
+                  key: {{ .bouncer.apiKeySecretRef.key | quote }}
+            {{- else if .bouncer.apiKey }}
+            - name: ENVOY_BOUNCER_BOUNCER_APIKEY
+              value: {{ .bouncer.apiKey | quote }}
             {{- end }}
             {{- with .bouncer.lapiURL }}
             - name: ENVOY_BOUNCER_BOUNCER_LAPIURL
@@ -74,9 +80,15 @@ spec:
             - name: ENVOY_BOUNCER_WAF_TIMEOUT
               value: {{ . | quote }}
             {{- end }}
-            {{- with .waf.apiKey }}
+            {{- if and .waf.apiKeySecretRef .waf.apiKeySecretRef.name .waf.apiKeySecretRef.key }}
             - name: ENVOY_BOUNCER_WAF_APIKEY
-              value: {{ . | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .waf.apiKeySecretRef.name | quote }}
+                  key: {{ .waf.apiKeySecretRef.key | quote }}
+            {{- else if .waf.apiKey }}
+            - name: ENVOY_BOUNCER_WAF_APIKEY
+              value: {{ .waf.apiKey | quote }}
             {{- end }}
             {{- with .waf.appSecURL }}
             - name: ENVOY_BOUNCER_WAF_APPSECURL
