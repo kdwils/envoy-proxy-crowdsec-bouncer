@@ -3,8 +3,8 @@ module github.com/kdwils/envoy-proxy-bouncer
 go 1.24.6
 
 require (
-	github.com/crowdsecurity/crowdsec v1.6.8
-	github.com/crowdsecurity/go-cs-bouncer v0.0.16
+	github.com/crowdsecurity/crowdsec v1.6.11
+	github.com/crowdsecurity/go-cs-bouncer v0.0.17
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
@@ -12,7 +12,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.38.0
 	go.uber.org/mock v0.5.2
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250811230008-5f3141c8851a
 	google.golang.org/grpc v1.74.2
 )
 
@@ -24,6 +24,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blackfireio/osinfo v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -39,7 +40,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
-	github.com/expr-lang/expr v1.17.5 // indirect
+	github.com/expr-lang/expr v1.17.6 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

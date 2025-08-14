@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -36,8 +37,9 @@ var bounceCmd = &cobra.Command{
 			return err
 		}
 
+		ctx := context.Background()
 		for _, ip := range ips {
-			decisions, err := client.Get(ip)
+			decisions, err := client.Get(ctx, ip)
 			if err != nil {
 				logger.Error("error getting decision", "error", err)
 				continue
