@@ -1,0 +1,19 @@
+name: releaser
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  charts:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'charts/')
+    uses: kdwils/homelab-workflow/.github/workflows/helm-release.yml@main
