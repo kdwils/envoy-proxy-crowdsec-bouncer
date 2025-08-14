@@ -1,2 +1,4 @@
-name: crowdsecurity/default-deny
+name: crowdsecurity/appsec-default
 default_remediation: ban
+inband_rules:
+  - crowdsecurity/appsec-generic-test
