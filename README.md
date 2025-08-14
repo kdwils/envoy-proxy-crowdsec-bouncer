@@ -91,6 +91,8 @@ The configuration is loaded in the following order (last wins):
 
 ### Required Configuration
 
+A minimal configuration requires:
+
 When bouncer is enabled:
 - `bouncer.apiKey`
 - `bouncer.lapiURL`
@@ -149,8 +151,7 @@ Use "envoy-proxy-bouncer [command] --help" for more information about a command.
 envoy-proxy-bouncer serve
 ```
 
-### Test IP Decisions
-Test if an ip is currented banned
+### Live check an IP address against LAPI
 ```bash
 envoy-proxy-bouncer bounce -i 192.168.1.1,10.0.0.1
 ```
