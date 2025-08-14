@@ -13,11 +13,11 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 
 ## How It Works
 
-The remediation component subscribes to decisions from Crowdsec via stream api, and on each request:
+The remediation component subscribes to decisions from CrowdSec via the Stream API, and on each request:
 
-1. Determines the real client ip from the forwarded request
-2. With bouncer enabled - check is the IP of the request is banned against cached decisions, and if so, denies the request with 403
-3. With WAF enabled - forwards the request to CrowdSec AppSec and applies the decision returned
+1. Determines the real client IP from the forwarded request.
+2. When the bouncer is enabled, checks if the IP of the request is banned against cached decisions, and if so, denies the request with a 403.
+3. When the WAF is enabled, forwards the request to CrowdSec AppSec and applies the returned decision.
 
 ## Configuration
 The bouncer can be configured using:
@@ -102,7 +102,7 @@ When WAF is enabled:
 - `waf.appSecURL`
 
 Note on API keys:
-- An key must be generated on your CrowdSec LAPI (with `cscli bouncers add <name>`). You can use this key for both `bouncer.apiKey` and `waf.apiKey`.
+- A key must be generated on your CrowdSec LAPI (with `cscli bouncers add <name>`). You can use this key for both `bouncer.apiKey` and `waf.apiKey`.
 ### Default Values
 
 ```yaml
@@ -151,7 +151,7 @@ Use "envoy-proxy-bouncer [command] --help" for more information about a command.
 envoy-proxy-bouncer serve
 ```
 
-### Live check an IP address against LAPI
+### Check an IP address against LAPI
 ```bash
 envoy-proxy-bouncer bounce -i 192.168.1.1,10.0.0.1
 ```
@@ -176,7 +176,7 @@ This project is tested in Kubernetes clusters with Envoy Gateway. For other envi
 
 The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. See [examples/deploy/README.md](examples/deploy/README.md) for a flat YAML example.
 
-There is also manifest that can be referenced in my [homelab](https://github.com/kdwils/homelab/blob/main/monitoring/envoy-proxy-bouncer/bouncer.yaml) repo.
+There is also a manifest that can be referenced in my [homelab](https://github.com/kdwils/homelab/blob/main/monitoring/envoy-proxy-bouncer/bouncer.yaml) repo.
 
 ### Helm
 
