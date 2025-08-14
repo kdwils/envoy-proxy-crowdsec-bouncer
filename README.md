@@ -7,8 +7,9 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 
 ## Features
 
-- Bouncer Bblocks malicious IPs streamed via CrowdSec decisions
-- WAF inspection via CrowdSec AppSec
+- Block malicious IPs streamed via CrowdSec decisions
+- Bouncer metrics reporting
+- Request inspection via CrowdSec AppSec
 
 ## How It Works
 
