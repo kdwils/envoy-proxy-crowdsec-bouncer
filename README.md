@@ -123,7 +123,6 @@ waf:
 go install github.com/kdwils/envoy-proxy-bouncer@latest
 ```
 
-The binary ships with a few commands
 ```shell
 Usage:
   envoy-proxy-bouncer [command]
