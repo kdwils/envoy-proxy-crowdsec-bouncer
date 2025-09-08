@@ -3,7 +3,7 @@ module github.com/kdwils/envoy-proxy-bouncer
 go 1.25
 
 require (
-	github.com/crowdsecurity/crowdsec v1.6.11
+	github.com/crowdsecurity/crowdsec v1.7.0
 	github.com/crowdsecurity/go-cs-bouncer v0.0.17
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/sirupsen/logrus v1.9.3
@@ -32,6 +32,7 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
+	github.com/corazawaf/coraza/v3 v3.3.3 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/crowdsecurity/go-cs-lib v0.0.21 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -91,7 +92,7 @@ require (
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/sagikazarmark/locafero v0.10.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.25.5 // indirect
+	github.com/shirou/gopsutil/v4 v4.25.7 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.9.2 // indirect

@@ -40,11 +40,12 @@ func TestBouncer(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.6.11",
+		Image:        "crowdsecurity/crowdsec:v1.7.0",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
-			"DISABLE_LOCAL_API": "false",
-			"DISABLE_AGENT":     "true",
+			"DISABLE_LOCAL_API":               "false",
+			"DISABLE_AGENT":                   "true",
+			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
 		},
 		Networks:       []string{network.Name},
 		NetworkAliases: map[string][]string{network.Name: {"lapi"}},
@@ -138,12 +139,13 @@ func TestBouncer(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.6.11",
+		Image:        "crowdsecurity/crowdsec:v1.7.0",
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{
-			"LOCAL_API_URL":     appsecLAPI.String(),
-			"DISABLE_LOCAL_API": "true",
+			"LOCAL_API_URL":                   appsecLAPI.String(),
+			"DISABLE_LOCAL_API":               "true",
+			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
 		},
 		Files: []testcontainers.ContainerFile{
 			{
