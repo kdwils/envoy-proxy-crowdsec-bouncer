@@ -49,6 +49,15 @@ func TestBouncer(t *testing.T) {
 		Networks:       []string{network.Name},
 		NetworkAliases: map[string][]string{network.Name: {"lapi"}},
 		WaitingFor:     wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
+		Mounts: testcontainers.ContainerMounts{
+			{
+				Source: testcontainers.GenericVolumeMountSource{
+					Name: "my-test-volume",
+				},
+				Target:   testcontainers.ContainerMountTarget("/var/lib/crowdsec/data"),
+				ReadOnly: false,
+			},
+		},
 	}
 
 	lapiContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
@@ -138,7 +147,7 @@ func TestBouncer(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.6.11",
+		Image:        "crowdsecurity/crowdsec:v1.7.0",
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{
