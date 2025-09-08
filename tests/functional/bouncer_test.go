@@ -40,7 +40,7 @@ func TestBouncer(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.6.11",
+		Image:        "crowdsecurity/crowdsec:v1.7.0",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API": "false",
