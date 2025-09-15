@@ -13,7 +13,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.38.0
 	go.uber.org/mock v0.6.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250811230008-5f3141c8851a
-	google.golang.org/grpc v1.75.0
+	google.golang.org/grpc v1.75.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
