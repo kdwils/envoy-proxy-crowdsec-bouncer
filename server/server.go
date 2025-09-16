@@ -229,7 +229,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 	}
 
 	callbackURL := s.config.Captcha.Hostname + "/captcha"
-	html, err := remediator.CaptchaService.Provider.RenderChallenge(
+	html, err := remediator.CaptchaService.RenderChallenge(
 		s.config.Captcha.SiteKey,
 		callbackURL,
 		session.OriginalURL,

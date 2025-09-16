@@ -16,6 +16,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/remediation"
 	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
+	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/remediation/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/server/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -42,7 +43,7 @@ func TestServer_Check(t *testing.T) {
 			HTTPStatus: 500,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
@@ -63,7 +64,7 @@ func TestServer_Check(t *testing.T) {
 			HTTPStatus: 403,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		req := &auth.CheckRequest{
@@ -97,7 +98,7 @@ func TestServer_Check(t *testing.T) {
 			HTTPStatus: 200,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		req := &auth.CheckRequest{
@@ -135,7 +136,7 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 			HTTPStatus: 500,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
@@ -156,7 +157,7 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 			HTTPStatus: 403,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
@@ -177,7 +178,7 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 			HTTPStatus: 200,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
@@ -199,7 +200,7 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 			HTTPStatus:  302,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
@@ -232,7 +233,7 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 			HTTPStatus: 403,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
@@ -253,7 +254,7 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 			HTTPStatus: 500,
 		})
 
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
 		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
@@ -270,7 +271,7 @@ func TestServer_NewServer(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		cfg := config.Config{
 			Server: config.Server{
 				Port: 8080,
@@ -301,7 +302,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		
 		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
 		
@@ -325,7 +326,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		
 		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
 		
@@ -351,7 +352,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 		
 		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
@@ -380,7 +381,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		
 		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
@@ -410,7 +411,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetProviderName().Return("turnstile")
 		
 		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
@@ -439,7 +440,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("invalid-session").Return(nil, false)
 		
@@ -475,7 +476,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), components.VerificationRequest{
@@ -520,7 +521,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), components.VerificationRequest{
@@ -564,7 +565,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), components.VerificationRequest{
@@ -604,7 +605,7 @@ func TestServer_handleCaptchaChallenge(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		
 		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
 		
@@ -628,7 +629,7 @@ func TestServer_handleCaptchaChallenge(t *testing.T) {
 		}
 		
 		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		
 		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
 		

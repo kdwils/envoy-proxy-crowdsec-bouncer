@@ -30,10 +30,22 @@ type Bouncer interface {
 	Metrics(ctx context.Context) error
 }
 
+//go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation CaptchaService
+type CaptchaService interface {
+	IsEnabled() bool
+	GenerateChallengeURL(ip, originalURL string) (string, error)
+	GetProviderName() string
+	GetSession(sessionID string) (*components.CaptchaSession, bool)
+	VerifyResponse(ctx context.Context, req components.VerificationRequest) (*components.VerificationResult, error)
+	DeleteSession(sessionID string)
+	StartCleanup(ctx context.Context)
+	RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error)
+}
+
 type Remediator struct {
 	Bouncer        Bouncer
 	WAF            WAF
-	CaptchaService *components.CaptchaService
+	CaptchaService CaptchaService
 	TrustedProxies []*net.IPNet
 }
 
@@ -193,17 +205,17 @@ func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRe
 		return result
 	}
 
-	result = r.checkCaptcha(ctx, parsed)
-	if result.Action != "allow" {
-		return result
-	}
-
 	result = r.checkWAF(ctx, parsed)
-	if result.Action != "allow" {
+	switch result.Action {
+	case "allow":
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
+	case "captcha":
+		return r.checkCaptcha(ctx, parsed)
+	case "deny", "ban", "error":
 		return result
+	default:
+		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
 	}
-
-	return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 }
 
 func (r Remediator) checkBouncer(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
@@ -228,37 +240,21 @@ func (r Remediator) checkBouncer(ctx context.Context, parsed *ParsedRequest) Che
 
 func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
-	if r.CaptchaService == nil || !r.CaptchaService.Config.Enabled {
+	if r.CaptchaService == nil || !r.CaptchaService.IsEnabled() {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}
 	}
 
 	logger.Debug("running captcha")
-
-	verifiedSession := r.CaptchaService.GetVerifiedSessionForIP(parsed.RealIP)
-	if verifiedSession != nil {
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha verified", HTTPStatus: http.StatusOK}
-	}
-
-	logger.Debug("no verified captcha session")
-	if !r.CaptchaService.RequiresCaptcha(parsed.RealIP) {
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
-	}
-
-	logger.Debug("captcha challenge required")
 	originalURL := parsed.URL.String()
 
-	sessionID, err := r.CaptchaService.CreateSession(parsed.RealIP, originalURL)
+	challengeURL, err := r.CaptchaService.GenerateChallengeURL(parsed.RealIP, originalURL)
 	if err != nil {
-		logger.Error("failed to create captcha session", "error", err)
-		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "captcha session creation failed", HTTPStatus: http.StatusInternalServerError}
+		logger.Error("failed to generate captcha challenge", "error", err)
+		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "captcha error", HTTPStatus: http.StatusInternalServerError}
 	}
 
-	redirectParams := make(url.Values)
-	redirectParams.Set("session", sessionID)
-
-	redirectURL := url.URL{
-		Path:     "/captcha/challenge",
-		RawQuery: redirectParams.Encode(),
+	if challengeURL == "" {
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
 	}
 
 	return CheckedRequest{
@@ -266,7 +262,7 @@ func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Che
 		Action:      "captcha",
 		Reason:      "captcha required",
 		HTTPStatus:  http.StatusFound,
-		RedirectURL: redirectURL.String(),
+		RedirectURL: challengeURL,
 	}
 }
 
@@ -299,7 +295,7 @@ func (r Remediator) checkWAF(ctx context.Context, parsed *ParsedRequest) Checked
 		return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "waf", HTTPStatus: http.StatusForbidden}
 	}
 
-	return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "waf passed", HTTPStatus: http.StatusOK}
+	return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "ok", HTTPStatus: http.StatusOK}
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.
