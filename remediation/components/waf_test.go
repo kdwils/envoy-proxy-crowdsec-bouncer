@@ -76,7 +76,7 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("error on request build", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		mockHTTP := mocks.NewMockHTTP(ctrl)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		// WAF with invalid URL should fail before making HTTP call
 		waf := WAF{APIURL: ":badurl", http: mockHTTP}
 		ctx := context.Background()
@@ -88,7 +88,7 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		mockHTTP := mocks.NewMockHTTP(ctrl)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf := WAF{APIURL: "http://test", http: mockHTTP}
 		expectedHeaders := map[string]string{
 			"User-Agent":             "UA",
@@ -107,7 +107,7 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		mockHTTP := mocks.NewMockHTTP(ctrl)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf := WAF{APIURL: "http://test", http: mockHTTP}
 		response := &nethttp.Response{StatusCode: 500, Status: "500 error", Body: io.NopCloser(strings.NewReader(""))}
 		expectedHeaders := map[string]string{
@@ -127,7 +127,7 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		mockHTTP := mocks.NewMockHTTP(ctrl)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf := WAF{APIURL: "http://test", APIKey: "key", http: mockHTTP}
 		respBody := `{"action":"ban","http_status":403}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
@@ -152,7 +152,7 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("with body", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		mockHTTP := mocks.NewMockHTTP(ctrl)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf := WAF{APIURL: "http://test", APIKey: "key", http: mockHTTP}
 		respBody := `{"action":"captcha"}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}

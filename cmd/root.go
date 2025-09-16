@@ -55,4 +55,9 @@ func initConfig() {
 	viper.SetDefault("waf.enabled", false)
 	viper.SetDefault("waf.apiKey", "")
 	viper.SetDefault("waf.appsecURL", "")
+
+	viper.SetDefault("captcha.enabled", false)
+	viper.SetDefault("captcha.siteKey", "")
+	viper.SetDefault("captcha.secretKey", "")
+	viper.SetDefault("captcha.cacheDuration", "15m")
 }

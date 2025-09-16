@@ -11,12 +11,26 @@ type Config struct {
 	Server         Server   `yaml:"server" json:"server"`
 	Bouncer        Bouncer  `yaml:"bouncer" json:"bouncer"`
 	WAF            WAF      `yaml:"waf" json:"waf"`
+	Captcha        Captcha  `yaml:"captcha" json:"captcha"`
 	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
 }
 
 type Server struct {
-	Port     int    `yaml:"port" json:"port"`
+	GRPCPort int    `yaml:"grpcPort" json:"grpcPort"`
+	HTTPPort int    `yaml:"httpPort" json:"httpPort"`
 	LogLevel string `yaml:"logLevel" json:"logLevel"`
+	// Deprecated: Use GRPCPort instead
+	Port int `yaml:"port" json:"port"`
+}
+
+type Captcha struct {
+	Enabled       bool          `yaml:"enabled" json:"enabled"`
+	Provider      string        `yaml:"provider" json:"provider"` // recaptcha, hcaptcha, turnstile
+	SiteKey       string        `yaml:"siteKey" json:"siteKey"`
+	SecretKey     string        `yaml:"secretKey" json:"secretKey"`
+	TemplatePath  string        `yaml:"templatePath" json:"templatePath"`
+	CacheDuration time.Duration `yaml:"cacheDuration" json:"cacheDuration"`
+	Hostname      string        `yaml:"hostname" json:"hostname"` // e.g., "https://yourdomain.com" or "http://localhost:8081"
 }
 
 type Bouncer struct {

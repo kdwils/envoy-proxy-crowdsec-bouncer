@@ -61,7 +61,11 @@ var ServeCmd = &cobra.Command{
 			cancel()
 		}()
 
-		err = server.Serve(ctx, config.Server.Port)
+		err = server.ServeDual(ctx)
+		if err == context.Canceled {
+			slogger.Info("server shutdown complete")
+			return nil
+		}
 		return err
 	},
 }
