@@ -193,24 +193,23 @@ func (s *CaptchaService) MarkSessionVerified(sessionID string) bool {
 
 // GetVerifiedSessionForIP returns a verified session for the given IP
 func (s *CaptchaService) GetVerifiedSessionForIP(ip string) *CaptchaSession {
-	// Simple implementation - we could optimize this with an IP->sessionID index
-	// For now, we'll check the cache periodically or when specifically needed
-	// This is called during gRPC Check, so we'll use a different approach:
-	// Check if the IP has a recent successful captcha verification in the main cache
-	_, exists := s.Cache.Get(ip)
-	if exists {
-		// IP already verified via captcha, return a dummy session to indicate success
-		return &CaptchaSession{
-			IP:       ip,
-			Verified: true,
-		}
+	_, ok := s.Cache.Get(ip)
+	if !ok {
+		return nil
 	}
-	return nil
+	return &CaptchaSession{
+		IP:       ip,
+		Verified: true,
+	}
 }
 
 // DeleteSession removes a session
 func (s *CaptchaService) DeleteSession(sessionID string) {
 	s.SessionCache.Delete(sessionID)
+}
+
+func (s *CaptchaService) GetProviderName() string {
+	return s.Provider.GetProviderName()
 }
 
 // CaptchaTemplateData contains data for rendering captcha templates

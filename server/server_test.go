@@ -18,7 +18,7 @@ import (
 func TestServer_Check(t *testing.T) {
 	log := logger.FromContext(context.Background())
 	t.Run("bouncer not initialized", func(t *testing.T) {
-		s := NewServer(config.Config{}, nil, log)
+		s := NewServer(config.Config{}, nil, nil, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
@@ -36,7 +36,9 @@ func TestServer_Check(t *testing.T) {
 			HTTPStatus: 500,
 		})
 
-		s := NewServer(config.Config{}, mockRemediator, log)
+		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+
+		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
@@ -55,7 +57,9 @@ func TestServer_Check(t *testing.T) {
 			HTTPStatus: 403,
 		})
 
-		s := NewServer(config.Config{}, mockRemediator, log)
+		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+
+		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -87,7 +91,9 @@ func TestServer_Check(t *testing.T) {
 			HTTPStatus: 200,
 		})
 
-		s := NewServer(config.Config{}, mockRemediator, log)
+		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+
+		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -111,18 +117,21 @@ func TestServer_Check(t *testing.T) {
 }
 
 func TestServer_Check_WithRemediator(t *testing.T) {
-	log := logger.FromContext(context.Background())
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	mockRemediator := mocks.NewMockRemediator(ctrl)
-
 	t.Run("remediator returns error", func(t *testing.T) {
+		log := logger.FromContext(context.Background())
+		ctrl := gomock.NewController(t)
+
+		defer ctrl.Finish()
+		mockRemediator := mocks.NewMockRemediator(ctrl)
 		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
 			Action:     "error",
 			Reason:     "remediator error",
 			HTTPStatus: 500,
 		})
-		s := NewServer(config.Config{}, mockRemediator, log)
+
+		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+
+		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(500), resp.Status.Code)
@@ -130,12 +139,20 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 	})
 
 	t.Run("remediator returns deny", func(t *testing.T) {
+		log := logger.FromContext(context.Background())
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockRemediator := mocks.NewMockRemediator(ctrl)
 		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
 			Action:     "deny",
 			Reason:     "blocked",
 			HTTPStatus: 403,
 		})
-		s := NewServer(config.Config{}, mockRemediator, log)
+
+		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+
+		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
@@ -143,15 +160,23 @@ func TestServer_Check_WithRemediator(t *testing.T) {
 	})
 
 	t.Run("remediator returns allow", func(t *testing.T) {
+		log := logger.FromContext(context.Background())
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockRemediator := mocks.NewMockRemediator(ctrl)
 		mockRemediator.EXPECT().Check(gomock.Any(), gomock.Any()).Return(remediation.CheckedRequest{
 			Action:     "allow",
 			Reason:     "ok",
 			HTTPStatus: 200,
 		})
-		s := NewServer(config.Config{}, mockRemediator, log)
+
+		mockCaptcha := mocks.NewMockCaptcha(ctrl)
+
+		s := NewServer(config.Config{}, mockRemediator, mockCaptcha, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
-		assert.Equal(t, int32(0), resp.Status.Code) // OK
+		assert.Equal(t, int32(0), resp.Status.Code)
 		assert.Nil(t, resp.GetDeniedResponse())
 	})
 }

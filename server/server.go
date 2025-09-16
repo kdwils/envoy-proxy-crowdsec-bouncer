@@ -25,15 +25,17 @@ import (
 type Server struct {
 	auth.UnimplementedAuthorizationServer
 	remediator Remediator
+	captcha    Captcha
 	config     config.Config
 	logger     *slog.Logger
 }
 
-func NewServer(config config.Config, remediator Remediator, logger *slog.Logger) *Server {
+func NewServer(config config.Config, remediator Remediator, captcha Captcha, logger *slog.Logger) *Server {
 	return &Server{
 		config:     config,
 		remediator: remediator,
 		logger:     logger,
+		captcha:    captcha,
 	}
 }
 
@@ -64,7 +66,6 @@ func (s *Server) ServeDual(ctx context.Context) error {
 		}
 	}()
 
-	// Start HTTP server if captcha is enabled
 	if s.config.Captcha.Enabled {
 		wg.Add(1)
 		go func() {
@@ -76,7 +77,6 @@ func (s *Server) ServeDual(ctx context.Context) error {
 		}()
 	}
 
-	// Wait for either server to fail or context cancellation
 	go func() {
 		wg.Wait()
 		close(errChan)
@@ -159,16 +159,9 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionID := r.FormValue("session")
-	
-	remediator, ok := s.remediator.(*remediation.Remediator)
-	if !ok || remediator.CaptchaService == nil {
-		http.Error(w, "Captcha service not available", http.StatusInternalServerError)
-		return
-	}
 
-	// Get the response field name based on the provider
 	var captchaResponse string
-	switch remediator.CaptchaService.Provider.GetProviderName() {
+	switch s.captcha.GetProviderName() {
 	case "recaptcha":
 		captchaResponse = r.FormValue("g-recaptcha-response")
 	case "hcaptcha":
@@ -177,18 +170,22 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		captchaResponse = r.FormValue("cf-turnstile-response")
 	}
 
-	if sessionID == "" || captchaResponse == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
+	if sessionID == "" {
+		http.Error(w, "session id is required", http.StatusBadRequest)
+	}
+
+	if captchaResponse == "" {
+		http.Error(w, "captcha response is required", http.StatusBadRequest)
 		return
 	}
 
-	session, exists := remediator.CaptchaService.GetSession(sessionID)
-	if !exists {
+	session, ok := s.captcha.GetSession(sessionID)
+	if !ok {
 		http.Error(w, "Invalid or expired session", http.StatusForbidden)
 		return
 	}
 
-	verificationResult, err := remediator.CaptchaService.VerifyResponse(r.Context(), components.VerificationRequest{
+	verificationResult, err := s.captcha.VerifyResponse(r.Context(), components.VerificationRequest{
 		Response: captchaResponse,
 		IP:       session.IP,
 	})
@@ -203,7 +200,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remediator.CaptchaService.DeleteSession(sessionID)
+	s.captcha.DeleteSession(sessionID)
 
 	http.Redirect(w, r, session.OriginalURL, http.StatusFound)
 }
