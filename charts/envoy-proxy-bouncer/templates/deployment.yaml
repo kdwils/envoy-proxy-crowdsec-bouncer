@@ -132,7 +132,7 @@ spec:
           {{- end }}
             - name: ENVOY_BOUNCER_SERVER_GRPCPORT
               value: {{ .Values.config.server.grpcPort | default (.Values.config.server.port | default .Values.service.port) | quote }}
-            {{- if .Values.config.server.httpPort }}
+            {{- if .Values.config.captcha.enabled }}
             - name: ENVOY_BOUNCER_SERVER_HTTPPORT
               value: {{ .Values.config.server.httpPort | quote }}
             {{- end }}
