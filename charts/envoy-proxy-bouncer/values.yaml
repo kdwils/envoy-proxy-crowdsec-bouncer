@@ -45,21 +45,27 @@ config:
     lapiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
     tickerInterval: "10s" # @schema default: "10s"
     apiKey: "" # @schema default: ""
-    apiKeySecretRef: {} # @schema type: object
+    apiKeySecretRef: # @schema type: object
+      name: "" # @schema default: ""
+      key: "" # @schema default: ""
 
   waf:
     enabled: false # @schema default: false
     appSecURL: "http://crowdsec-appsec-service:7422" # @schema default: "http://crowdsec-appsec-service:7422"
     apiKey: "" # @schema default: ""
-    apiKeySecretRef: {} # @schema type: object
+    apiKeySecretRef: # @schema type: object
+      name: "" # @schema default: ""
+      key: "" # @schema default: ""
 
   captcha:
     enabled: false # @schema default: false
-    provider: "recaptcha" # @schema default: "recaptcha"
+    provider: "" # @schema default: ""
     siteKey: "" # @schema default: ""
     secretKey: "" # @schema default: ""
-    secretKeySecretRef: {} # @schema type: object
-    cacheDuration: "15m" # @schema default: "15m"
+    secretKeySecretRef: # @schema type: object
+      name: "" # @schema default: ""
+      key: "" # @schema default: ""
+    cacheDuration: "" # @schema default: ""
     hostname: "" # @schema default: ""
 
 autoscaling:
