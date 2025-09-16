@@ -38,7 +38,17 @@
                             "type": "string"
                         },
                         "apiKeySecretRef": {
-                            "type": "object"
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "default": "",
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "default": "",
+                                    "type": "string"
+                                }
+                            }
                         },
                         "enabled": {
                             "default": true,
@@ -62,7 +72,7 @@
                     "type": "object",
                     "properties": {
                         "cacheDuration": {
-                            "default": "15m",
+                            "default": "",
                             "type": "string"
                         },
                         "enabled": {
@@ -74,7 +84,7 @@
                             "type": "string"
                         },
                         "provider": {
-                            "default": "recaptcha",
+                            "default": "",
                             "type": "string"
                         },
                         "secretKey": {
@@ -82,7 +92,17 @@
                             "type": "string"
                         },
                         "secretKeySecretRef": {
-                            "type": "object"
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "default": "",
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "default": "",
+                                    "type": "string"
+                                }
+                            }
                         },
                         "siteKey": {
                             "default": "",
@@ -115,7 +135,17 @@
                             "type": "string"
                         },
                         "apiKeySecretRef": {
-                            "type": "object"
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "default": "",
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "default": "",
+                                    "type": "string"
+                                }
+                            }
                         },
                         "appSecURL": {
                             "default": "http://crowdsec-appsec-service:7422",
