@@ -37,8 +37,6 @@ server:
   grpcPort: 8080          # Port for gRPC (Envoy ext_authz)
   httpPort: 8081          # Port for HTTP (CAPTCHA endpoints)
   logLevel: "info"
-  # Deprecated: Use grpcPort instead
-  port: 8080
 
 trustedProxies:
   - 192.168.0.1
@@ -51,7 +49,6 @@ bouncer:
   metrics: false
   lapiURL: "http://crowdsec:8080"
   apiKey: "<lapi-key>"
-  tickerInterval: "5m"
 
 waf:
   enabled: true 
@@ -64,7 +61,7 @@ captcha:
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
   hostname: "https://yourdomain.com"       # Base URL for captcha callbacks
-  cacheDuration: "1h"                      # How long to cache sessions
+  cacheDuration: "15m"                     # How long to cache sessions
 ```
 
 Run with config file:
@@ -153,7 +150,7 @@ waf:
 
 captcha:
   enabled: false
-  cacheDuration: "1h"
+  cacheDuration: "15m"
 ```
 
 ## CAPTCHA Configuration
