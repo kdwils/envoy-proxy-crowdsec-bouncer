@@ -34,7 +34,7 @@ type Metrics struct {
 
 type EnvoyBouncer struct {
 	stream          *csbouncer.StreamBouncer
-	cache           *cache.Cache
+	cache           *cache.Cache[models.Decision]
 	metrics         *Metrics
 	metricsProvider *csbouncer.MetricsProvider
 	mu              *sync.RWMutex
@@ -48,7 +48,7 @@ func NewBouncer(apiKey, apiURL, tickerInterval string) (*EnvoyBouncer, error) {
 
 	b := &EnvoyBouncer{
 		stream:  stream,
-		cache:   cache.New(),
+		cache:   cache.New[models.Decision](),
 		metrics: new(Metrics),
 		mu:      new(sync.RWMutex),
 	}

@@ -33,6 +33,7 @@ type Bouncer interface {
 type Remediator struct {
 	Bouncer        Bouncer
 	WAF            WAF
+	CaptchaService *components.CaptchaService
 	TrustedProxies []*net.IPNet
 }
 
@@ -55,9 +56,18 @@ func New(cfg config.Config) (*Remediator, error) {
 		w = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
 	}
 
+	var c *components.CaptchaService
+	if cfg.Captcha.Enabled {
+		c, err = components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Remediator{
 		Bouncer:        b,
 		WAF:            w,
+		CaptchaService: c,
 		TrustedProxies: trustedProxies,
 	}, nil
 }
@@ -145,10 +155,11 @@ type ParsedRequest struct {
 func (e *ParseError) Error() string { return e.Reason }
 
 type CheckedRequest struct {
-	IP         string
-	Action     string
-	Reason     string
-	HTTPStatus int
+	IP          string
+	Action      string
+	Reason      string
+	HTTPStatus  int
+	RedirectURL string
 }
 
 func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
@@ -172,53 +183,123 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 	return ipNets, nil
 }
 
-// Check runs bouncer first, then WAF if enabled, and returns the result.
-// Check parses the gRPC CheckRequest, runs bouncer first, then WAF if enabled, and returns the result.
+// Check runs bouncer first, then captcha if enabled, then WAF if enabled, and returns the result.
 func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
-	logger := logger.FromContext(ctx).With(slog.String("component", "remediator"), slog.String("method", "check"))
 	parsed := r.ParseCheckRequest(ctx, req)
+	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
 
-	logger = logger.With(slog.String("ip", parsed.RealIP))
-	if r.Bouncer != nil {
-		logger.Debug("running bouncer")
-		logger.Debug("headers", "headers", parsed.Headers)
-		bounce, err := r.Bouncer.Bounce(ctx, parsed.RealIP, parsed.Headers)
-		if err != nil {
-			logger.Error("bouncer error", "error", err)
-			return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "bouncer error", HTTPStatus: http.StatusInternalServerError}
-		}
-		if bounce {
-			logger.Debug("bouncing")
-			return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "bouncer", HTTPStatus: http.StatusForbidden}
-		}
+	result := r.checkBouncer(ctx, parsed)
+	if result.Action != "allow" {
+		return result
 	}
 
-	if r.WAF != nil {
-		logger.Debug("running WAF")
-		logger.Debug("headers", "headers", parsed.Headers)
+	result = r.checkCaptcha(ctx, parsed)
+	if result.Action != "allow" {
+		return result
+	}
 
-		wafReq := components.AppSecRequest{
-			Method:     parsed.Method,
-			URL:        parsed.URL,
-			Headers:    parsed.Headers,
-			Body:       parsed.Body,
-			RealIP:     parsed.RealIP,
-			ProtoMajor: parsed.ProtoMajor,
-			ProtoMinor: parsed.ProtoMinor,
-		}
-
-		wafResult, wafErr := r.WAF.Inspect(ctx, wafReq)
-		if wafErr != nil {
-			logger.Error("waf error", "error", wafErr)
-			return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "waf error", HTTPStatus: http.StatusInternalServerError}
-		}
-
-		if wafResult.Action != "allow" {
-			return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "waf", HTTPStatus: http.StatusForbidden}
-		}
+	result = r.checkWAF(ctx, parsed)
+	if result.Action != "allow" {
+		return result
 	}
 
 	return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
+}
+
+func (r Remediator) checkBouncer(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+	logger := logger.FromContext(ctx)
+	if r.Bouncer == nil {
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "bouncer disabled", HTTPStatus: http.StatusOK}
+	}
+
+	logger.Debug("running bouncer")
+	logger.Debug("headers", "headers", parsed.Headers)
+	bounce, err := r.Bouncer.Bounce(ctx, parsed.RealIP, parsed.Headers)
+	if err != nil {
+		logger.Error("bouncer error", "error", err)
+		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "bouncer error", HTTPStatus: http.StatusInternalServerError}
+	}
+	if bounce {
+		logger.Debug("bouncing")
+		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "bouncer", HTTPStatus: http.StatusForbidden}
+	}
+	return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "bouncer passed", HTTPStatus: http.StatusOK}
+}
+
+func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+	logger := logger.FromContext(ctx)
+	if r.CaptchaService == nil || !r.CaptchaService.Config.Enabled {
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}
+	}
+
+	logger.Debug("running captcha")
+
+	verifiedSession := r.CaptchaService.GetVerifiedSessionForIP(parsed.RealIP)
+	if verifiedSession != nil {
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha verified", HTTPStatus: http.StatusOK}
+	}
+
+	logger.Debug("no verified captcha session")
+	if !r.CaptchaService.RequiresCaptcha(parsed.RealIP) {
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
+	}
+
+	logger.Debug("captcha challenge required")
+	originalURL := parsed.URL.String()
+
+	sessionID, err := r.CaptchaService.CreateSession(parsed.RealIP, originalURL)
+	if err != nil {
+		logger.Error("failed to create captcha session", "error", err)
+		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "captcha session creation failed", HTTPStatus: http.StatusInternalServerError}
+	}
+
+	redirectParams := make(url.Values)
+	redirectParams.Set("session", sessionID)
+
+	redirectURL := url.URL{
+		Path:     "/captcha/challenge",
+		RawQuery: redirectParams.Encode(),
+	}
+
+	return CheckedRequest{
+		IP:          parsed.RealIP,
+		Action:      "captcha",
+		Reason:      "captcha required",
+		HTTPStatus:  http.StatusFound,
+		RedirectURL: redirectURL.String(),
+	}
+}
+
+func (r Remediator) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+	logger := logger.FromContext(ctx)
+	if r.WAF == nil {
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "waf disabled", HTTPStatus: http.StatusOK}
+	}
+
+	logger.Debug("running WAF")
+	logger.Debug("headers", "headers", parsed.Headers)
+
+	wafReq := components.AppSecRequest{
+		Method:     parsed.Method,
+		URL:        parsed.URL,
+		Headers:    parsed.Headers,
+		Body:       parsed.Body,
+		RealIP:     parsed.RealIP,
+		ProtoMajor: parsed.ProtoMajor,
+		ProtoMinor: parsed.ProtoMinor,
+	}
+
+	wafResult, wafErr := r.WAF.Inspect(ctx, wafReq)
+	if wafErr != nil {
+		logger.Error("waf error", "error", wafErr)
+		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "waf error", HTTPStatus: http.StatusInternalServerError}
+	}
+
+	if wafResult.Action != "allow" {
+		return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "waf", HTTPStatus: http.StatusForbidden}
+	}
+
+	return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "waf passed", HTTPStatus: http.StatusOK}
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.

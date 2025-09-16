@@ -51,8 +51,12 @@ var ServeCmd = &cobra.Command{
 			}()
 		}
 
+		if config.Captcha.Enabled && remediator.CaptchaService != nil {
+			go remediator.CaptchaService.StartCleanup(ctx)
+		}
+
 		ctx, cancel := context.WithCancel(ctx)
-		server := server.NewServer(config, remediator, slogger)
+		server := server.NewServer(config, remediator, remediator.CaptchaService, slogger)
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
@@ -61,7 +65,11 @@ var ServeCmd = &cobra.Command{
 			cancel()
 		}()
 
-		err = server.Serve(ctx, config.Server.Port)
+		err = server.ServeDual(ctx)
+		if err == context.Canceled {
+			slogger.Info("server shutdown complete")
+			return nil
+		}
 		return err
 	},
 }

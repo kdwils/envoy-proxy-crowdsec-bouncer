@@ -10,14 +10,18 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 - Block malicious IPs streamed via CrowdSec decisions
 - Bouncer metrics reporting
 - Request inspection via CrowdSec AppSec
+- CAPTCHA challenges for suspicious IPs with support for:
+  - Google reCAPTCHA v2
+  - Cloudflare Turnstile
 
 ## How It Works
 
 The remediation component subscribes to decisions from CrowdSec via the Stream API, and on each request:
 
 1. Determines the real client IP from the forwarded request.
-2. When the bouncer is enabled, checks if the IP of the request is banned against cached decisions, and if so, denies the request with a 403.
-3. When the WAF is enabled, forwards the request to CrowdSec AppSec and applies the returned decision.
+2. When the Bouncer is enabled, the IP of the request is checked against cached banned decisions, and if the IP banned, returns a 403.
+3. When WAF is enabled, the request is forwarded to a CrowdSec AppSec instance and the returned decision is applied.
+4. When CAPTCHA is enabled, suspicious IPs are redirected to a CAPTCHA challenge page instead of being immediately blocked when a captcha decision is returned by the WAF component.
 
 ## Configuration
 The bouncer can be configured using:
@@ -30,8 +34,11 @@ Create a `config.yaml` file:
 
 ```yaml
 server:
-  port: 8080
+  grpcPort: 8080          # Port for gRPC (Envoy ext_authz)
+  httpPort: 8081          # Port for HTTP (CAPTCHA endpoints)
   logLevel: "info"
+  # Deprecated: Use grpcPort instead
+  port: 8080
 
 trustedProxies:
   - 192.168.0.1
@@ -50,6 +57,14 @@ waf:
   enabled: true 
   appSecURL: "http://appsec:7422"
   apiKey: "<lapi-key>"
+
+captcha:
+  enabled: true
+  provider: "recaptcha"                    # Options: recaptcha, turnstile
+  siteKey: "<your-captcha-site-key>"
+  secretKey: "<your-captcha-secret-key>"
+  hostname: "https://yourdomain.com"       # Base URL for captcha callbacks
+  cacheDuration: "1h"                      # How long to cache sessions
 ```
 
 Run with config file:
@@ -63,8 +78,11 @@ All configuration options can be set via environment variables using the prefix 
 
 ```bash
 # Server configuration
-export ENVOY_BOUNCER_SERVER_PORT=8080
+export ENVOY_BOUNCER_SERVER_GRPCPORT=8080
+export ENVOY_BOUNCER_SERVER_HTTPPORT=8081
 export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
+# Deprecated - use GRPCPORT instead
+export ENVOY_BOUNCER_SERVER_PORT=8080
 
 # Bouncer configuration
 export ENVOY_BOUNCER_BOUNCER_ENABLED=true
@@ -80,6 +98,14 @@ export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
 export ENVOY_BOUNCER_WAF_ENABLED=true
 export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:7422
 export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
+
+# CAPTCHA configuration
+export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
+export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
+export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
+export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
+export ENVOY_BOUNCER_CAPTCHA_HOSTNAME=https://yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_CACHEDURATION=1h
 ```
 
 ### Configuration Precedence
@@ -101,13 +127,20 @@ When WAF is enabled:
 - `waf.apiKey`
 - `waf.appSecURL`
 
+When CAPTCHA is enabled:
+- `captcha.provider`
+- `captcha.siteKey`
+- `captcha.secretKey`
+- `captcha.hostname`
+
 Note on API keys:
 - A key must be generated on your CrowdSec LAPI (with `cscli bouncers add <name>`). You can use this key for both `bouncer.apiKey` and `waf.apiKey`.
 ### Default Values
 
 ```yaml
 server:
-  port: 8080
+  grpcPort: 8080  # ext_authz grpc port
+  httpPort: 8081  # Only used when captcha is enabled
   logLevel: "info"
 
 bouncer:
@@ -117,7 +150,46 @@ bouncer:
 
 waf:
   enabled: false
+
+captcha:
+  enabled: false
+  cacheDuration: "1h"
 ```
+
+## CAPTCHA Configuration
+
+The bouncer supports CAPTCHA challenges as an alternative to immediately blocking suspicious IPs. When enabled, the bouncer runs dual servers:
+- gRPC server (default port 8080): Handles Envoy ext_authz requests
+- HTTP server (default port 8081): Serves CAPTCHA challenge and verification endpoints
+
+### Supported Providers
+
+| Provider | Configuration Value | Documentation |
+|----------|-------------------|---------------|
+| Google reCAPTCHA v2 | `recaptcha` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
+| Cloudflare Turnstile | `turnstile` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
+
+### CAPTCHA Flow
+
+1. Detection: CrowdSec identifies a suspicious IP that should be challenged rather than blocked
+2. Redirect: The bouncer redirects the request to `/captcha/challenge?session=<session-id>`
+3. Challenge: User is presented with a CAPTCHA challenge page
+4. Verification: User completes CAPTCHA and submits to `/captcha/verify`
+5. Access: Upon successful verification, user is redirected to original URL
+
+### CAPTCHA Endpoints
+
+When CAPTCHA is enabled, the HTTP server exposes these endpoints:
+
+- `GET` `/captcha/challenge?session=<id>`: Displays the CAPTCHA challenge page
+- `POST` `/captcha/verify`: Verifies CAPTCHA response and redirects user
+
+### Setup Instructions
+
+1. Register with CAPTCHA provider and obtain site key and secret key
+2. Configure the bouncer with your CAPTCHA credentials
+3. Update Envoy configuration to allow access to the HTTP server endpoints
+4. Set up CrowdSec scenarios to use `captcha` remediation instead of `ban`
 
 ## Usage
 
@@ -191,7 +263,7 @@ Install the chart:
 helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set crowdsec.bouncer.enabled=true \
   --set crowdsec.bouncer.apiKey=<lapi-key> \
-  --set crowdsec.bouncer.lapiURL=<your-crowdsec-host>:<port>
+  --set crowdsec.bouncer.lapiURL=<your-crowdsec-host>:<port> \
   --set crowdsec.trustedProxies=<your-trusted-proxies>
 ```
 

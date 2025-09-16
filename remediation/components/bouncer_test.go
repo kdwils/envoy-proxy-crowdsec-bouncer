@@ -15,7 +15,7 @@ import (
 
 func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 	t.Run("metrics update", func(t *testing.T) {
-		cache := cache.New()
+		cache := cache.New[models.Decision]()
 		b := &EnvoyBouncer{
 			cache:   cache,
 			metrics: &Metrics{},
@@ -61,7 +61,7 @@ func TestEnvoyBouncer_metricsUpdater(t *testing.T) {
 }
 
 func TestEnvoyBouncer_Bounce(t *testing.T) {
-	testCache := cache.New()
+	testCache := cache.New[models.Decision]()
 	decision := models.Decision{
 		Value: ptr("192.168.1.100"),
 		Type:  ptr("ban"),
@@ -70,7 +70,7 @@ func TestEnvoyBouncer_Bounce(t *testing.T) {
 
 	type fields struct {
 		stream  *csbouncer.StreamBouncer
-		cache   *cache.Cache
+		cache   *cache.Cache[models.Decision]
 		metrics *Metrics
 		mu      *sync.RWMutex
 	}

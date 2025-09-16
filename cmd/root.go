@@ -43,7 +43,8 @@ func initConfig() {
 
 	viper.SetDefault("trustedProxies", []string{"127.0.0.1", "::1"})
 
-	viper.SetDefault("server.port", 8080)
+	viper.SetDefault("server.grpcPort", 8080)
+	viper.SetDefault("server.httpPort", 8081)
 	viper.SetDefault("server.logLevel", slog.LevelInfo)
 
 	viper.SetDefault("bouncer.apiKey", "")
@@ -55,4 +56,9 @@ func initConfig() {
 	viper.SetDefault("waf.enabled", false)
 	viper.SetDefault("waf.apiKey", "")
 	viper.SetDefault("waf.appsecURL", "")
+
+	viper.SetDefault("captcha.enabled", false)
+	viper.SetDefault("captcha.siteKey", "")
+	viper.SetDefault("captcha.secretKey", "")
+	viper.SetDefault("captcha.cacheDuration", "15m")
 }

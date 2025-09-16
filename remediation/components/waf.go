@@ -14,11 +14,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 )
 
-//go:generate mockgen -destination=mocks/mock_http.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation/components HTTP
-type HTTP interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
 type Config struct {
 	APIKey  string
 	APIURL  string
@@ -28,7 +23,7 @@ type Config struct {
 type WAF struct {
 	APIKey string
 	APIURL string
-	http   HTTP
+	http   HTTPClient
 }
 
 type WAFResponse struct {
