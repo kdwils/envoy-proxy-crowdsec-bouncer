@@ -58,7 +58,9 @@ func initConfig() {
 	viper.SetDefault("waf.appsecURL", "")
 
 	viper.SetDefault("captcha.enabled", false)
+	viper.SetDefault("captcha.provider", "")
 	viper.SetDefault("captcha.siteKey", "")
 	viper.SetDefault("captcha.secretKey", "")
 	viper.SetDefault("captcha.cacheDuration", "15m")
+	viper.SetDefault("captcha.hostname", "")
 }

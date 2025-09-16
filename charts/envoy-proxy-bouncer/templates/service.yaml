@@ -7,9 +7,15 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.service.port }}
+    - port: {{ .Values.config.server.grpcPort | default (.Values.config.server.port | default .Values.service.port) }}
       targetPort: grpc
       protocol: TCP
       name: grpc
+    {{- if .Values.config.server.httpPort }}
+    - port: {{ .Values.config.server.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    {{- end }}
   selector:
     {{- include "envoy-proxy-bouncer.selectorLabels" . | nindent 4 }}
