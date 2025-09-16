@@ -172,6 +172,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 
 	if sessionID == "" {
 		http.Error(w, "session id is required", http.StatusBadRequest)
+		return
 	}
 
 	if captchaResponse == "" {
