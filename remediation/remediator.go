@@ -232,6 +232,8 @@ func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Che
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}
 	}
 
+	logger.Debug("running captcha")
+
 	verifiedSession := r.CaptchaService.GetVerifiedSessionForIP(parsed.RealIP)
 	if verifiedSession != nil {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha verified", HTTPStatus: http.StatusOK}
@@ -261,7 +263,7 @@ func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Che
 
 	return CheckedRequest{
 		IP:          parsed.RealIP,
-		Action:      "captcha_redirect",
+		Action:      "captcha",
 		Reason:      "captcha required",
 		HTTPStatus:  http.StatusFound,
 		RedirectURL: redirectURL.String(),

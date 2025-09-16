@@ -261,7 +261,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	switch result.Action {
 	case "allow":
 		return getAllowedResponse(), nil
-	case "captcha_redirect":
+	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
 	case "deny", "ban":
 		return getDeniedResponse(envoy_type.StatusCode_Forbidden, result.Reason), nil
