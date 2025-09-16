@@ -267,20 +267,6 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set crowdsec.trustedProxies=<your-trusted-proxies>
 ```
 
-With CAPTCHA enabled:
-```bash
-helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
-  --set crowdsec.bouncer.enabled=true \
-  --set crowdsec.bouncer.apiKey=<lapi-key> \
-  --set crowdsec.bouncer.lapiURL=<your-crowdsec-host>:<port> \
-  --set crowdsec.captcha.enabled=true \
-  --set crowdsec.captcha.provider=recaptcha \
-  --set crowdsec.captcha.siteKey=<your-site-key> \
-  --set crowdsec.captcha.secretKey=<your-secret-key> \
-  --set crowdsec.captcha.hostname=https://yourdomain.com \
-  --set crowdsec.trustedProxies=<your-trusted-proxies>
-```
-
 Acknowledgements:
 * Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
 * Helm docs generated with [helm-docs](https://github.com/norwoodj/helm-docs)
