@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"strings"
 	"text/template"
 	"time"
@@ -208,6 +209,39 @@ func (s *CaptchaService) DeleteSession(sessionID string) {
 
 func (s *CaptchaService) GetProviderName() string {
 	return s.Provider.GetProviderName()
+}
+
+func (s *CaptchaService) IsEnabled() bool {
+	return s.Config.Enabled
+}
+
+func (s *CaptchaService) GenerateChallengeURL(ip, originalURL string) (string, error) {
+	if !s.Config.Enabled {
+		return "", nil
+	}
+
+	verifiedSession := s.GetVerifiedSessionForIP(ip)
+	if verifiedSession != nil {
+		return "", nil
+	}
+
+	if !s.RequiresCaptcha(ip) {
+		return "", nil
+	}
+
+	sessionID, err := s.CreateSession(ip, originalURL)
+	if err != nil {
+		return "", err
+	}
+
+	redirectParams := make(url.Values)
+	redirectParams.Set("session", sessionID)
+
+	return s.Config.Hostname + "/captcha/challenge?" + redirectParams.Encode(), nil
+}
+
+func (s *CaptchaService) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {
+	return s.Provider.RenderChallenge(siteKey, callbackURL, redirectURL, sessionID)
 }
 
 // CaptchaTemplateData contains data for rendering captcha templates
