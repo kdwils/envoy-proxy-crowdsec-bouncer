@@ -1,15 +1,17 @@
-replicaCount: 1
+replicaCount: 1 # @schema default: 1
 
 image:
-  repository: ghcr.io/kdwils/envoy-proxy-bouncer
-  pullPolicy: IfNotPresent
+  repository: ghcr.io/kdwils/envoy-proxy-bouncer # @schema default: "ghcr.io/kdwils/envoy-proxy-bouncer"
+  pullPolicy: IfNotPresent # @schema default: "IfNotPresent"
+  tag: "" # @schema default: ".Chart.AppVersion"
 
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
 serviceAccount:
-  create: true
+  create: true # @schema default: true
+  name: ""
 
 podSecurityContext: {}
 
@@ -23,8 +25,8 @@ securityContext:
   runAsUser: 1000
 
 service:
-  type: ClusterIP
-  port: 8080
+  type: ClusterIP # @schema default: ClusterIP
+  port: 8080 # @schema default: 8080
 
 resources:
   limits:
@@ -33,43 +35,41 @@ resources:
 
 config:
   server:
-    grpcPort: 8080
-    httpPort: 8081
-    logLevel: "info"
-
-  trustedProxies: ["10.43.0.0/16", "10.42.0.0/16"]
+    port: 8080 # @schema default: 8080
+    logLevel: "info" # @schema default: "info"
+  trustedProxies: [] # @schema default: []
 
   bouncer:
-    enabled: true
-    metrics: true
-    lapiURL: "http://crowdsec-service:8080"
-    tickerInterval: "10s"
-    apiKeySecretRef:
-      name: "envoy-bouncer"
-      key: apiKey
+    enabled: true # @schema default: true
+    metrics: false # @schema default: false
+    lapiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
+    tickerInterval: "10s" # @schema default: "10s"
+    apiKey: "" # @schema default: ""
+    apiKeySecretRef: {} # @schema type: object
 
   waf:
-    enabled: true
-    appSecURL: "http://crowdsec-appsec-service:7422"
-    apiKeySecretRef:
-      name: "envoy-bouncer"
-      key: apiKey
+    enabled: false # @schema default: false
+    appSecURL: "http://crowdsec-appsec-service:7422" # @schema default: "http://crowdsec-appsec-service:7422"
+    apiKey: "" # @schema default: ""
+    apiKeySecretRef: {} # @schema type: object
 
   captcha:
-    enabled: true # @schema default: false
-    provider: "turnstile" # @schema default: ""
-    siteKey: "0x4AAAAAAB1bbQbIpIhvAYwl" # @schema default: ""
+    enabled: false # @schema default: false
+    provider: "recaptcha" # @schema default: "recaptcha"
+    siteKey: "" # @schema default: ""
     secretKey: "" # @schema default: ""
-    secretKeySecretRef: # @schema type: object
-      name: "envoy-bouncer" # @schema default: ""
-      key: "secretKey" # @schema default: ""
-    cacheDuration: "" # @schema default: ""
-    hostname: "https://bouncer.int.kyledev.co" # @schema default: ""
-
-securityPolicy:
-  create: true
-  gatewayName: "homelab"
-  gatewayNamespace: "envoy-gateway-system"
+    secretKeySecretRef: {} # @schema type: object
+    cacheDuration: "15m" # @schema default: "15m"
+    hostname: "" # @schema default: ""
 
 autoscaling:
-  enabled: false
+  enabled: false # @schema default: false
+  minReplicas: 1 # @schema default: 1
+  maxReplicas: 10 # @schema default: 10
+  targetCPUUtilizationPercentage: 80 # @schema default: 80
+  targetMemoryUtilizationPercentage: 80 # @schema default: 80
+
+securityPolicy:
+  create: false # @schema default: false
+  gatewayName: "" # @schema default: ""
+  gatewayNamespace: "envoy-gateway-system" # @schema default: "envoy-gateway-system"
