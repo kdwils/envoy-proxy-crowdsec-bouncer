@@ -164,8 +164,6 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	switch s.captcha.GetProviderName() {
 	case "recaptcha":
 		captchaResponse = r.FormValue("g-recaptcha-response")
-	case "hcaptcha":
-		captchaResponse = r.FormValue("h-captcha-response")
 	case "turnstile":
 		captchaResponse = r.FormValue("cf-turnstile-response")
 	}

@@ -25,7 +25,7 @@ type Server struct {
 
 type Captcha struct {
 	Enabled       bool          `yaml:"enabled" json:"enabled"`
-	Provider      string        `yaml:"provider" json:"provider"` // recaptcha, hcaptcha, turnstile
+	Provider      string        `yaml:"provider" json:"provider"` // recaptcha, turnstile
 	SiteKey       string        `yaml:"siteKey" json:"siteKey"`
 	SecretKey     string        `yaml:"secretKey" json:"secretKey"`
 	CacheDuration time.Duration `yaml:"cacheDuration" json:"cacheDuration"`

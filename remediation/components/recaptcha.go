@@ -44,7 +44,7 @@ func (r *RecaptchaProvider) Verify(ctx context.Context, response, remoteIP strin
 	url := url.URL{
 		Scheme: "https",
 		Host:   "www.google.com",
-		Path:   "/api/siteverify",
+		Path:   "/recaptcha/api/siteverify",
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,

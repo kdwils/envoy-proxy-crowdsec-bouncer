@@ -398,34 +398,6 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "captcha response is required")
 	})
 
-	t.Run("missing captcha response - hcaptcha", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		cfg := config.Config{
-			Captcha: config.Captcha{
-				Enabled: true,
-			},
-		}
-		
-		mockRemediator := mocks.NewMockRemediator(ctrl)
-		mockCaptcha := mocks.NewMockCaptcha(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("hcaptcha")
-		
-		s := NewServer(cfg, mockRemediator, mockCaptcha, log)
-		
-		form := url.Values{}
-		form.Add("session", "test-session")
-		
-		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-		
-		s.handleCaptchaVerify(w, req)
-		
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "captcha response is required")
-	})
 
 	t.Run("missing captcha response - turnstile", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

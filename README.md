@@ -12,7 +12,6 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 - Request inspection via CrowdSec AppSec
 - CAPTCHA challenges for suspicious IPs with support for:
   - Google reCAPTCHA v2
-  - hCaptcha
   - Cloudflare Turnstile
 
 ## How It Works
@@ -61,7 +60,7 @@ waf:
 
 captcha:
   enabled: true
-  provider: "recaptcha"                    # Options: recaptcha, hcaptcha, turnstile
+  provider: "recaptcha"                    # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
   hostname: "https://yourdomain.com"       # Base URL for captcha callbacks
@@ -168,7 +167,6 @@ The bouncer supports CAPTCHA challenges as an alternative to immediately blockin
 | Provider | Configuration Value | Documentation |
 |----------|-------------------|---------------|
 | Google reCAPTCHA v2 | `recaptcha` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
-| hCaptcha | `hcaptcha` | [hCaptcha Documentation](https://docs.hcaptcha.com/) |
 | Cloudflare Turnstile | `turnstile` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
 
 ### CAPTCHA Flow

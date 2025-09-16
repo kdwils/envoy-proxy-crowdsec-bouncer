@@ -104,27 +104,6 @@
             });
         };
     </script>
-    {{else if eq .Provider "hcaptcha"}}
-    <script src="https://js.hcaptcha.com/1/api.js" defer></script>
-    <script>
-        function onCaptchaSuccess(token) {
-            document.getElementById('submit-btn').disabled = false;
-            document.getElementById('error-message').style.display = 'none';
-        }
-
-        function onCaptchaError() {
-            document.getElementById('submit-btn').disabled = true;
-            showError('Verification failed. Please try again.');
-        }
-
-        window.onload = function () {
-            hcaptcha.render('captcha-container', {
-                'sitekey': '{{.SiteKey}}',
-                'callback': onCaptchaSuccess,
-                'error-callback': onCaptchaError
-            });
-        };
-    </script>
     {{else if eq .Provider "turnstile"}}
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
     <script>

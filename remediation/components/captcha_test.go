@@ -42,22 +42,6 @@ func TestNewCaptchaService(t *testing.T) {
 		assert.Equal(t, "recaptcha", service.Provider.GetProviderName())
 	})
 
-	t.Run("hcaptcha provider", func(t *testing.T) {
-		cfg := config.Captcha{
-			Enabled:   true,
-			Provider:  "hcaptcha",
-			SecretKey: "test-secret",
-		}
-		
-		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
-		
-		assert.NoError(t, err)
-		assert.NotNil(t, service)
-		assert.True(t, service.Config.Enabled)
-		assert.NotNil(t, service.Provider)
-		assert.Equal(t, "hcaptcha", service.Provider.GetProviderName())
-	})
 
 	t.Run("turnstile provider", func(t *testing.T) {
 		cfg := config.Captcha{
@@ -359,16 +343,6 @@ func TestRenderCaptchaTemplate(t *testing.T) {
 		assert.Contains(t, html, "www.google.com/recaptcha/api.js")
 	})
 
-	t.Run("hcaptcha template", func(t *testing.T) {
-		html, err := RenderCaptchaTemplate("hcaptcha", "site-key", "http://localhost/callback", "http://localhost/redirect", "session-123")
-
-		assert.NoError(t, err)
-		assert.Contains(t, html, "site-key")
-		assert.Contains(t, html, "http://localhost/callback")
-		assert.Contains(t, html, "session-123")
-		assert.Contains(t, html, "hcaptcha")
-		assert.Contains(t, html, "js.hcaptcha.com")
-	})
 
 	t.Run("turnstile template", func(t *testing.T) {
 		html, err := RenderCaptchaTemplate("turnstile", "site-key", "http://localhost/callback", "http://localhost/redirect", "session-123")

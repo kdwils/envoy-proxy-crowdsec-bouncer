@@ -73,8 +73,6 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 	switch cfg.Provider {
 	case "recaptcha":
 		provider, err = NewRecaptchaProvider(cfg.SecretKey, httpClient)
-	case "hcaptcha":
-		provider, err = NewHCaptchaProvider(cfg.SecretKey, httpClient)
 	case "turnstile":
 		provider, err = NewTurnstileProvider(cfg.SecretKey, httpClient)
 	default:

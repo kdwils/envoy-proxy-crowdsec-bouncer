@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,7 +10,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/remediation"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 
@@ -53,13 +51,12 @@ var ServeCmd = &cobra.Command{
 			}()
 		}
 
-		captcha, err := components.NewCaptchaService(config.Captcha, http.DefaultClient)
-		if err != nil {
-			return err
+		if config.Captcha.Enabled && remediator.CaptchaService != nil {
+			go remediator.CaptchaService.StartCleanup(ctx)
 		}
 
 		ctx, cancel := context.WithCancel(ctx)
-		server := server.NewServer(config, remediator, captcha, slogger)
+		server := server.NewServer(config, remediator, remediator.CaptchaService, slogger)
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
