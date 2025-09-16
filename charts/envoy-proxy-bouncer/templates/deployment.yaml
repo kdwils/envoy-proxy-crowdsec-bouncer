@@ -94,6 +94,36 @@ spec:
             - name: ENVOY_BOUNCER_WAF_APPSECURL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .captcha.enabled }}
+            - name: ENVOY_BOUNCER_CAPTCHA_ENABLED
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .captcha.provider }}
+            - name: ENVOY_BOUNCER_CAPTCHA_PROVIDER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .captcha.siteKey }}
+            - name: ENVOY_BOUNCER_CAPTCHA_SITEKEY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if and .captcha.secretKeySecretRef .captcha.secretKeySecretRef.name .captcha.secretKeySecretRef.key }}
+            - name: ENVOY_BOUNCER_CAPTCHA_SECRETKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .captcha.secretKeySecretRef.name | quote }}
+                  key: {{ .captcha.secretKeySecretRef.key | quote }}
+            {{- else if .captcha.secretKey }}
+            - name: ENVOY_BOUNCER_CAPTCHA_SECRETKEY
+              value: {{ .captcha.secretKey | quote }}
+            {{- end }}
+            {{- with .captcha.cacheDuration }}
+            - name: ENVOY_BOUNCER_CAPTCHA_CACHEDURATION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .captcha.hostname }}
+            - name: ENVOY_BOUNCER_CAPTCHA_HOSTNAME
+              value: {{ . | quote }}
+            {{- end }}
           {{- end }}
             - name: ENVOY_BOUNCER_SERVER_PORT
               value: {{ .Values.config.server.port | quote }}

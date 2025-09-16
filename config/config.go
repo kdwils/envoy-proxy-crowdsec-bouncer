@@ -28,7 +28,6 @@ type Captcha struct {
 	Provider      string        `yaml:"provider" json:"provider"` // recaptcha, hcaptcha, turnstile
 	SiteKey       string        `yaml:"siteKey" json:"siteKey"`
 	SecretKey     string        `yaml:"secretKey" json:"secretKey"`
-	TemplatePath  string        `yaml:"templatePath" json:"templatePath"`
 	CacheDuration time.Duration `yaml:"cacheDuration" json:"cacheDuration"`
 	Hostname      string        `yaml:"hostname" json:"hostname"` // e.g., "https://yourdomain.com" or "http://localhost:8081"
 }
