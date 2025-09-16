@@ -48,7 +48,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 		
 		expectedMatcher := httpReqMatcher{
 			method: "POST",
-			urlStr: "https://www.google.com/api/siteverify",
+			urlStr: "https://www.google.com/recaptcha/api/siteverify",
 			headers: map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
@@ -77,7 +77,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 		
 		expectedMatcher := httpReqMatcher{
 			method: "POST",
-			urlStr: "https://www.google.com/api/siteverify",
+			urlStr: "https://www.google.com/recaptcha/api/siteverify",
 			headers: map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
@@ -106,7 +106,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 		
 		expectedMatcher := httpReqMatcher{
 			method: "POST",
-			urlStr: "https://www.google.com/api/siteverify",
+			urlStr: "https://www.google.com/recaptcha/api/siteverify",
 			headers: map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
@@ -136,7 +136,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 		
 		expectedMatcher := httpReqMatcher{
 			method: "POST",
-			urlStr: "https://www.google.com/api/siteverify",
+			urlStr: "https://www.google.com/recaptcha/api/siteverify",
 			headers: map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
@@ -167,7 +167,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 		
 		expectedMatcher := httpReqMatcher{
 			method: "POST",
-			urlStr: "https://www.google.com/api/siteverify",
+			urlStr: "https://www.google.com/recaptcha/api/siteverify",
 			headers: map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
