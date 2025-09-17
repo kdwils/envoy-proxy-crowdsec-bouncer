@@ -1,0 +1,4 @@
+name: crowdsecurity/appsec-default
+default_remediation: captcha
+inband_rules:
+  - crowdsecurity/appsec-generic-test

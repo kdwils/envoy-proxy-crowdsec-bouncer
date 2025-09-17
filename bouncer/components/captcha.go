@@ -237,7 +237,7 @@ func (s *CaptchaService) GenerateChallengeURL(ip, originalURL string) (string, e
 	redirectParams := make(url.Values)
 	redirectParams.Set("session", sessionID)
 
-	return s.Config.Hostname + "/captcha/challenge?" + redirectParams.Encode(), nil
+	return s.Config.URL + "/captcha/challenge?" + redirectParams.Encode(), nil
 }
 
 func (s *CaptchaService) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {

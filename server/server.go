@@ -228,7 +228,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	callbackURL := s.config.Captcha.Hostname + "/captcha"
+	callbackURL := s.config.Captcha.URL + "/captcha"
 	html, err := bouncer.CaptchaService.RenderChallenge(
 		s.config.Captcha.SiteKey,
 		callbackURL,

@@ -34,7 +34,21 @@ var ServeCmd = &cobra.Command{
 		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		slogger := slog.New(handler)
 		slogger.Info("starting envoy-proxy-bouncer", "version", version.Version, "logLevel", level)
-		ctx := logger.WithContext(context.Background(), slogger)
+
+		ctx := cmd.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		
+		// Debug: Check if context is already cancelled
+		select {
+		case <-ctx.Done():
+			slogger.Error("Parent context already cancelled!", "error", ctx.Err())
+		default:
+			slogger.Info("Parent context is active")
+		}
+		
+		ctx = logger.WithContext(ctx, slogger)
 
 		bouncer, err := bouncer.New(config)
 		if err != nil {
@@ -55,8 +69,11 @@ var ServeCmd = &cobra.Command{
 			go bouncer.CaptchaService.StartCleanup(ctx)
 		}
 
-		ctx, cancel := context.WithCancel(ctx)
 		server := server.NewServer(config, bouncer, bouncer.CaptchaService, slogger)
+
+		sigCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
@@ -65,7 +82,7 @@ var ServeCmd = &cobra.Command{
 			cancel()
 		}()
 
-		err = server.ServeDual(ctx)
+		err = server.ServeDual(sigCtx)
 		if err == context.Canceled {
 			slogger.Info("server shutdown complete")
 			return nil
