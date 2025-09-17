@@ -29,7 +29,7 @@ type Captcha struct {
 	SiteKey       string        `yaml:"siteKey" json:"siteKey"`
 	SecretKey     string        `yaml:"secretKey" json:"secretKey"`
 	CacheDuration time.Duration `yaml:"cacheDuration" json:"cacheDuration"`
-	URL           string        `yaml:"url" json:"url"` // e.g., "https://yourdomain.com" or "http://localhost:8081"
+	CallbackURL   string        `yaml:"callbackURL" json:"callbackURL"` // e.g., "https://yourdomain.com" or "http://localhost:8081"
 }
 
 type Bouncer struct {

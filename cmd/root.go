@@ -62,5 +62,5 @@ func initConfig() {
 	viper.SetDefault("captcha.siteKey", "")
 	viper.SetDefault("captcha.secretKey", "")
 	viper.SetDefault("captcha.cacheDuration", "15m")
-	viper.SetDefault("captcha.hostname", "")
+	viper.SetDefault("captcha.callbackURL", "")
 }

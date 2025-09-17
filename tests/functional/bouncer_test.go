@@ -550,7 +550,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")
 	v.Set("captcha.secretKey", "test-secret-key")
-	v.Set("captcha.url", "http://localhost")
+	v.Set("captcha.callbackURL", "http://localhost")
 
 	config, err := config.New(v)
 	require.NoError(t, err)

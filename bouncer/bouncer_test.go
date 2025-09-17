@@ -1183,7 +1183,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		}
 	}
 
-	t.Run("captcha redirect with hostname", func(t *testing.T) {
+	t.Run("captcha redirect with callbackURL", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
