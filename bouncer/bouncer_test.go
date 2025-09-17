@@ -1,4 +1,4 @@
-package remediation
+package bouncer
 
 import (
 	"context"
@@ -8,12 +8,17 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/crowdsecurity/crowdsec/pkg/models"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
-	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/remediation/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
+	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"go.uber.org/mock/gomock"
 )
+
+func ptr[T any](v T) *T {
+	return &v
+}
 
 func parseCIDROrFail(t *testing.T, cidr string) *net.IPNet {
 	_, ipnet, err := net.ParseCIDR(cidr)
@@ -316,7 +321,7 @@ func TestParseCheckRequest(t *testing.T) {
 	trusted := []*net.IPNet{
 		parseCIDROrFail(t, "10.0.0.0/8"),
 	}
-	r := &Remediator{TrustedProxies: trusted}
+	r := &Bouncer{TrustedProxies: trusted}
 
 	tests := []struct {
 		name string
@@ -541,7 +546,7 @@ func TestParseCheckRequest(t *testing.T) {
 	}
 }
 
-func TestRemediator_Check(t *testing.T) {
+func TestBouncer_Check(t *testing.T) {
 	mkReq := func(ip, scheme, authority, path, method, proto, body string) *auth.CheckRequest {
 		return &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
@@ -571,18 +576,31 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
 
 		req := mkReq("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "1.2.3.4", gomock.Any()).Return(true, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(&models.Decision{Type: ptr("ban")}, nil)
 		// WAF should not be called when bouncer denies
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "deny" || got.Reason != "bouncer" || got.HTTPStatus != 403 || got.IP != "1.2.3.4" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{IP: "1.2.3.4", Action: "deny", Reason: "crowdsec ban", HTTPStatus: 403}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v, want %+v", got, want)
+		}
+
+		// Verify metrics: 1 total request, 1 bounced request, 0 captchas
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 1 {
+			t.Errorf("expected 1 bounced request, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 0 {
+			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
 		}
 	})
 
@@ -590,17 +608,30 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
 
 		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "5.6.7.8", gomock.Any()).Return(false, fmt.Errorf("boom"))
+		mb.EXPECT().GetDecision(gomock.Any(), "5.6.7.8").Return(nil, fmt.Errorf("boom"))
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "bouncer error" || got.HTTPStatus != 500 || got.IP != "5.6.7.8" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{IP: "5.6.7.8", Action: "deny", Reason: "decision cache error", HTTPStatus: 403}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v, want %+v", got, want)
+		}
+
+		// Verify metrics: 1 total request, 1 bounced request (due to error), 0 captchas
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 1 {
+			t.Errorf("expected 1 bounced request, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 0 {
+			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
 		}
 	})
 
@@ -608,18 +639,30 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
 
 		req := mkReq("9.9.9.9", "https", "host", "/bar", "POST", "HTTP/2", "abc")
 
-		mb.EXPECT().Bounce(gomock.Any(), "9.9.9.9", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "9.9.9.9").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "ban" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "9.9.9.9" {
 			t.Fatalf("unexpected result: %+v", got)
+		}
+
+		// Verify metrics: 1 total request, 1 bounced request (from WAF), 0 captchas
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 1 {
+			t.Errorf("expected 1 bounced request, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 0 {
+			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
 		}
 	})
 
@@ -627,13 +670,13 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw}
 
 		req := mkReq("10.0.0.1", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "10.0.0.1", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "10.0.0.1").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(context.Background(), req)
@@ -646,18 +689,30 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
 
 		req := mkReq("7.7.7.7", "https", "ex", "/ok", "GET", "HTTP/2", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "7.7.7.7", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "7.7.7.7").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "allow"}, nil)
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "allow" || got.Reason != "ok" || got.HTTPStatus != 200 || got.IP != "7.7.7.7" {
 			t.Fatalf("unexpected result: %+v", got)
+		}
+
+		// Verify metrics: 1 total request, 0 bounced requests, 0 captchas (allowed through)
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 0 {
+			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 0 {
+			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
 		}
 	})
 
@@ -665,13 +720,13 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw}
 
 		req := mkReq("8.8.8.8", "https", "host", "/bar", "POST", "HTTP/2", "abc")
 
-		mb.EXPECT().Bounce(gomock.Any(), "8.8.8.8", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "8.8.8.8").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "deny"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -684,13 +739,13 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw}
 
 		req := mkReq("11.11.11.11", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "11.11.11.11", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "11.11.11.11").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -703,13 +758,13 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw}
 
 		req := mkReq("12.12.12.12", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "12.12.12.12", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "unknown"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -722,12 +777,12 @@ func TestRemediator_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
-		r := Remediator{Bouncer: mb, WAF: nil}
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		r := Bouncer{DecisionCache: mb, WAF: nil}
 
 		req := mkReq("13.13.13.13", "https", "ex", "/ok", "GET", "HTTP/2", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "13.13.13.13", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "allow" || got.Reason != "ok" || got.HTTPStatus != 200 || got.IP != "13.13.13.13" {
@@ -736,7 +791,7 @@ func TestRemediator_Check(t *testing.T) {
 	})
 }
 
-func TestRemediator_Check_AllScenarios(t *testing.T) {
+func TestBouncer_Check_AllScenarios(t *testing.T) {
 	mkReq := func(ip, scheme, authority, path, method, proto, body string) *auth.CheckRequest {
 		return &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
@@ -762,12 +817,24 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 	}
 
 	t.Run("bouncer disabled - waf disabled - captcha disabled", func(t *testing.T) {
-		r := Remediator{Bouncer: nil, WAF: nil, CaptchaService: nil}
+		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, metrics: new(Metrics)}
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "allow" || got.Reason != "ok" || got.HTTPStatus != 200 || got.IP != "1.1.1.1" {
 			t.Fatalf("unexpected result: %+v", got)
+		}
+
+		// Verify metrics: 1 total request, 0 bounced requests, 0 captchas (everything disabled)
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 0 {
+			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 0 {
+			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
 		}
 	})
 
@@ -775,18 +842,19 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("2.2.2.2", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "2.2.2.2", gomock.Any()).Return(true, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban")}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "deny" || got.Reason != "bouncer" || got.HTTPStatus != 403 || got.IP != "2.2.2.2" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{IP: "2.2.2.2", Action: "deny", Reason: "crowdsec ban", HTTPStatus: 403}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v, want %+v", got, want)
 		}
 	})
 
@@ -794,18 +862,19 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("3.3.3.3", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "3.3.3.3", gomock.Any()).Return(false, fmt.Errorf("bouncer failed"))
+		mb.EXPECT().GetDecision(gomock.Any(), "3.3.3.3").Return(nil, fmt.Errorf("bouncer failed"))
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "bouncer error" || got.HTTPStatus != 500 || got.IP != "3.3.3.3" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{IP: "3.3.3.3", Action: "deny", Reason: "decision cache error", HTTPStatus: 403}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v, want %+v", got, want)
 		}
 	})
 
@@ -813,14 +882,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("4.4.4.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "4.4.4.4", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "4.4.4.4").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "deny"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -833,14 +902,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("5.5.5.5", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "5.5.5.5", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "5.5.5.5").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -853,14 +922,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("6.6.6.6", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "6.6.6.6", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "6.6.6.6").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf connection failed"))
 
 		got := r.Check(context.Background(), req)
@@ -873,14 +942,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("7.7.7.7", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "7.7.7.7", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "7.7.7.7").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -893,14 +962,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("8.8.8.8", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "8.8.8.8", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "8.8.8.8").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "mystery"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -913,14 +982,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("9.9.9.9", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "9.9.9.9", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "9.9.9.9").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "allow"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -933,14 +1002,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("10.10.10.10", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "10.10.10.10", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "10.10.10.10").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(false)
 
@@ -954,13 +1023,13 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: nil}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: nil}
 
 		req := mkReq("11.11.11.11", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "11.11.11.11", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "11.11.11.11").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 
 		got := r.Check(context.Background(), req)
@@ -973,14 +1042,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("12.12.12.12", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "12.12.12.12", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
 		mc.EXPECT().GenerateChallengeURL("12.12.12.12", "https://example.com/test").Return("", nil)
@@ -995,14 +1064,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
 
 		req := mkReq("13.13.13.13", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "13.13.13.13", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
 		mc.EXPECT().GenerateChallengeURL("13.13.13.13", "https://example.com/test").Return("", fmt.Errorf("session creation failed"))
@@ -1017,14 +1086,14 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: new(Metrics)}
 
 		req := mkReq("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "14.14.14.14", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "14.14.14.14").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
 		mc.EXPECT().GenerateChallengeURL("14.14.14.14", "https://example.com/test").Return("https://bouncer.example.com/captcha/challenge?session=abc123", nil)
@@ -1033,10 +1102,63 @@ func TestRemediator_Check_AllScenarios(t *testing.T) {
 		if got.Action != "captcha" || got.Reason != "captcha required" || got.HTTPStatus != 302 || got.IP != "14.14.14.14" || got.RedirectURL != "https://bouncer.example.com/captcha/challenge?session=abc123" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
+
+		// Verify metrics: 1 total request, 0 bounced requests, 1 captcha served
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 0 {
+			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 1 {
+			t.Errorf("expected 1 captcha served, got %d", metrics.CaptchasServed)
+		}
+	})
+
+	t.Run("bouncer captcha - direct to captcha flow", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		mc := remediationmocks.NewMockCaptchaService(ctrl)
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: new(Metrics)}
+
+		req := mkReq("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
+
+		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: ptr("captcha")}, nil)
+		// WAF should not be called when bouncer returns captcha
+		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().GenerateChallengeURL("15.15.15.15", "https://example.com/test").Return("https://bouncer.example.com/captcha/challenge?session=crowdsec123", nil)
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:          "15.15.15.15",
+			Action:      "captcha",
+			Reason:      "captcha required",
+			HTTPStatus:  302,
+			RedirectURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v, want %+v", got, want)
+		}
+
+		// Verify metrics: 1 total request, 0 bounced requests, 1 captcha served
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 0 {
+			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 1 {
+			t.Errorf("expected 1 captcha served, got %d", metrics.CaptchasServed)
+		}
 	})
 }
 
-func TestRemediator_CaptchaRedirectURL(t *testing.T) {
+func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 	mkReq := func(ip, scheme, authority, path, method, proto, body string) *auth.CheckRequest {
 		return &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
@@ -1065,15 +1187,15 @@ func TestRemediator_CaptchaRedirectURL(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mb := remediationmocks.NewMockBouncer(ctrl)
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
 
-		r := Remediator{Bouncer: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: new(Metrics)}
 
 		req := mkReq("1.2.3.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().Bounce(gomock.Any(), "1.2.3.4", gomock.Any()).Return(false, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
 		mc.EXPECT().GenerateChallengeURL("1.2.3.4", "https://example.com/test").Return("https://bouncer.example.com/captcha/challenge?session=session123", nil)
@@ -1090,6 +1212,18 @@ func TestRemediator_CaptchaRedirectURL(t *testing.T) {
 		expectedURL := "https://bouncer.example.com/captcha/challenge?session=session123"
 		if got.RedirectURL != expectedURL {
 			t.Fatalf("expected redirect URL %s, got %s", expectedURL, got.RedirectURL)
+		}
+
+		// Verify metrics: 1 total request, 0 bounced requests, 1 captcha served
+		metrics := r.GetMetrics()
+		if metrics.TotalRequests != 1 {
+			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		}
+		if metrics.BouncedRequests != 0 {
+			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
+		}
+		if metrics.CaptchasServed != 1 {
+			t.Errorf("expected 1 captcha served, got %d", metrics.CaptchasServed)
 		}
 	})
 }

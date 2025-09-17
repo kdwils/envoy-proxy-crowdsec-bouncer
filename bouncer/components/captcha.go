@@ -18,7 +18,7 @@ import (
 //go:embed templates/captcha.html
 var captchaTemplate string
 
-//go:generate mockgen -destination=mocks/mock_captcha_provider.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation/components CaptchaProvider
+//go:generate mockgen -destination=mocks/mock_captcha_provider.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer/components CaptchaProvider
 
 // CaptchaProvider defines the interface for captcha verification providers
 type CaptchaProvider interface {
@@ -237,7 +237,7 @@ func (s *CaptchaService) GenerateChallengeURL(ip, originalURL string) (string, e
 	redirectParams := make(url.Values)
 	redirectParams.Set("session", sessionID)
 
-	return s.Config.Hostname + "/captcha/challenge?" + redirectParams.Encode(), nil
+	return s.Config.URL + "/captcha/challenge?" + redirectParams.Encode(), nil
 }
 
 func (s *CaptchaService) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {

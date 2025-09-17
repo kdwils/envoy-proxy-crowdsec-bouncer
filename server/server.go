@@ -13,10 +13,10 @@ import (
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -24,18 +24,18 @@ import (
 
 type Server struct {
 	auth.UnimplementedAuthorizationServer
-	remediator Remediator
-	captcha    Captcha
-	config     config.Config
-	logger     *slog.Logger
+	bouncer Bouncer
+	captcha Captcha
+	config  config.Config
+	logger  *slog.Logger
 }
 
-func NewServer(config config.Config, remediator Remediator, captcha Captcha, logger *slog.Logger) *Server {
+func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, logger *slog.Logger) *Server {
 	return &Server{
-		config:     config,
-		remediator: remediator,
-		logger:     logger,
-		captcha:    captcha,
+		config:  config,
+		bouncer: bouncer,
+		logger:  logger,
+		captcha: captcha,
 	}
 }
 
@@ -216,20 +216,20 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	remediator, ok := s.remediator.(*remediation.Remediator)
-	if !ok || remediator.CaptchaService == nil {
+	bouncer, ok := s.bouncer.(*bouncer.Bouncer)
+	if !ok || bouncer.CaptchaService == nil {
 		http.Error(w, "Captcha service not available", http.StatusInternalServerError)
 		return
 	}
 
-	session, exists := remediator.CaptchaService.GetSession(sessionID)
+	session, exists := bouncer.CaptchaService.GetSession(sessionID)
 	if !exists {
 		http.Error(w, "Invalid or expired session", http.StatusForbidden)
 		return
 	}
 
-	callbackURL := s.config.Captcha.Hostname + "/captcha"
-	html, err := remediator.CaptchaService.RenderChallenge(
+	callbackURL := s.config.Captcha.URL + "/captcha"
+	html, err := bouncer.CaptchaService.RenderChallenge(
 		s.config.Captcha.SiteKey,
 		callbackURL,
 		session.OriginalURL,
@@ -252,10 +252,10 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 }
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
-	if s.remediator == nil {
+	if s.bouncer == nil {
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "remediator not initialized"), nil
 	}
-	result := s.remediator.Check(ctx, req)
+	result := s.bouncer.Check(ctx, req)
 	s.logger.Info("remediation result", slog.Any("result", result))
 	switch result.Action {
 	case "allow":

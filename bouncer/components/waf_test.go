@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	mocks "github.com/kdwils/envoy-proxy-bouncer/remediation/components/mocks"
+	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
