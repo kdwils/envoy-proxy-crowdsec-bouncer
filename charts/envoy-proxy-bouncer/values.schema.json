@@ -75,13 +75,13 @@
                             "default": "",
                             "type": "string"
                         },
+                        "callbackURL": {
+                            "default": "",
+                            "type": "string"
+                        },
                         "enabled": {
                             "default": false,
                             "type": "boolean"
-                        },
-                        "hostname": {
-                            "default": "",
-                            "type": "string"
                         },
                         "provider": {
                             "default": "",
@@ -161,6 +161,56 @@
         },
         "fullnameOverride": {
             "type": "string"
+        },
+        "httproute": {
+            "type": "object",
+            "properties": {
+                "annotations": {
+                    "default": {},
+                    "type": "object"
+                },
+                "enabled": {
+                    "default": false,
+                    "type": "boolean"
+                },
+                "hostnames": {
+                    "default": [],
+                    "type": "array"
+                },
+                "parentRefs": {
+                    "default": [],
+                    "type": "array"
+                },
+                "rules": {
+                    "default": [
+                        {
+                            "path": {
+                                "type": "PathPrefix",
+                                "value": "/"
+                            }
+                        }
+                    ],
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "default": "PathPrefix",
+                                        "type": "string"
+                                    },
+                                    "value": {
+                                        "default": "/",
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         },
         "image": {
             "type": "object",

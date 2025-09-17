@@ -60,7 +60,7 @@ captcha:
   provider: "recaptcha"                    # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
-  hostname: "https://yourdomain.com"       # Base URL for captcha callbacks
+  url: "https://yourdomain.com"            # Base URL for captcha callbacks
   cacheDuration: "15m"                     # How long to cache sessions
 ```
 
@@ -101,7 +101,7 @@ export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
-export ENVOY_BOUNCER_CAPTCHA_HOSTNAME=https://yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_URL=https://yourdomain.com
 export ENVOY_BOUNCER_CAPTCHA_CACHEDURATION=1h
 ```
 
@@ -128,7 +128,7 @@ When CAPTCHA is enabled:
 - `captcha.provider`
 - `captcha.siteKey`
 - `captcha.secretKey`
-- `captcha.hostname`
+- `captcha.url`
 
 Note on API keys:
 - A key must be generated on your CrowdSec LAPI (with `cscli bouncers add <name>`). You can use this key for both `bouncer.apiKey` and `waf.apiKey`.
