@@ -92,5 +92,5 @@ func (t *TurnstileProvider) GetProviderName() string {
 
 // RenderChallenge renders the Turnstile challenge HTML
 func (t *TurnstileProvider) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {
-	return RenderCaptchaTemplate("turnstile", siteKey, callbackURL, redirectURL, sessionID)
+	return RenderCaptchaTemplate(t.GetProviderName(), siteKey, callbackURL, redirectURL, sessionID)
 }

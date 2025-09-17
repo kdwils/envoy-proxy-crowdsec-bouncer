@@ -63,4 +63,5 @@ func initConfig() {
 	viper.SetDefault("captcha.secretKey", "")
 	viper.SetDefault("captcha.cacheDuration", "15m")
 	viper.SetDefault("captcha.callbackURL", "")
+	viper.SetDefault("captcha.timeout", "10s")
 }

@@ -30,6 +30,7 @@ type Captcha struct {
 	SecretKey     string        `yaml:"secretKey" json:"secretKey"`
 	CacheDuration time.Duration `yaml:"cacheDuration" json:"cacheDuration"`
 	CallbackURL   string        `yaml:"callbackURL" json:"callbackURL"` // e.g., "https://yourdomain.com" or "http://localhost:8081"
+	Timeout       time.Duration `yaml:"timeout" json:"timeout"`           // HTTP timeout for provider API calls
 }
 
 type Bouncer struct {

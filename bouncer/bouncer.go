@@ -21,9 +21,23 @@ import (
 )
 
 type Metrics struct {
-	TotalRequests   int64 `json:"total_requests"`
-	BouncedRequests int64 `json:"banned_requests"`
-	CaptchasServed  int64 `json:"captchas_served"`
+	TotalRequests   int64                         `json:"total_requests"`
+	BouncedRequests int64                         `json:"banned_requests"`
+	CaptchasServed  int64                         `json:"captchas_served"`
+	CaptchaAttempts int64                         `json:"captcha_attempts"`
+	CaptchaFailures int64                         `json:"captcha_failures"`
+	Remediation     map[string]RemediationMetrics `json:"remediation"`
+}
+
+type RemediationMetrics struct {
+	Origin          string `json:"origin"`
+	RemediationType string `json:"remediation_type"`
+	Count           int64  `json:"count"`
+}
+
+type MetricLabels struct {
+	Origin          string
+	RemediationType string
 }
 
 //go:generate mockgen -destination=mocks/mock_waf.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer WAF
@@ -89,7 +103,9 @@ func New(cfg config.Config) (*Bouncer, error) {
 		WAF:            w,
 		CaptchaService: c,
 		TrustedProxies: trustedProxies,
-		metrics:        new(Metrics),
+		metrics: &Metrics{
+			Remediation: make(map[string]RemediationMetrics),
+		},
 	}, nil
 }
 
@@ -106,13 +122,27 @@ func (b *Bouncer) Metrics(ctx context.Context) error {
 
 func (b *Bouncer) GetMetrics() Metrics {
 	if b.metrics == nil {
-		return Metrics{}
+		return Metrics{Remediation: make(map[string]RemediationMetrics)}
 	}
-	return Metrics{
+
+	metrics := Metrics{
 		TotalRequests:   atomic.LoadInt64(&b.metrics.TotalRequests),
 		BouncedRequests: atomic.LoadInt64(&b.metrics.BouncedRequests),
 		CaptchasServed:  atomic.LoadInt64(&b.metrics.CaptchasServed),
+		CaptchaAttempts: atomic.LoadInt64(&b.metrics.CaptchaAttempts),
+		CaptchaFailures: atomic.LoadInt64(&b.metrics.CaptchaFailures),
+		Remediation:     make(map[string]RemediationMetrics),
 	}
+
+	for key, value := range b.metrics.Remediation {
+		metrics.Remediation[key] = RemediationMetrics{
+			Origin:          value.Origin,
+			RemediationType: value.RemediationType,
+			Count:           atomic.LoadInt64(&value.Count),
+		}
+	}
+
+	return metrics
 }
 
 func (b *Bouncer) IncTotalRequests() {
@@ -136,10 +166,58 @@ func (b *Bouncer) IncCaptchasServed() {
 	atomic.AddInt64(&b.metrics.CaptchasServed, 1)
 }
 
+// IncRemediationMetric increments a remediation metric with origin and remediation_type labels
+func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
+	if b.metrics == nil {
+		return
+	}
+
+	key := labels.Origin + ":" + labels.RemediationType
+	metric, exists := b.metrics.Remediation[key]
+	if exists {
+		atomic.AddInt64(&metric.Count, 1)
+		b.metrics.Remediation[key] = metric
+		return
+	}
+
+	b.metrics.Remediation[key] = RemediationMetrics{
+		Origin:          labels.Origin,
+		RemediationType: labels.RemediationType,
+		Count:           1,
+	}
+}
+
+// IncBouncedRequestsWithLabels increments bounced requests with CrowdSec-compliant labels
+func (b *Bouncer) IncBouncedRequestsWithLabels(labels MetricLabels) {
+	b.IncBouncedRequests()
+	b.IncRemediationMetric(labels)
+}
+
+// IncCaptchasServedWithLabels increments captchas served with CrowdSec-compliant labels
+func (b *Bouncer) IncCaptchasServedWithLabels(labels MetricLabels) {
+	b.IncCaptchasServed()
+	b.IncRemediationMetric(labels)
+}
+
+// IncCaptchaAttempts increments the captcha verification attempts counter
+func (b *Bouncer) IncCaptchaAttempts() {
+	if b.metrics == nil {
+		return
+	}
+	atomic.AddInt64(&b.metrics.CaptchaAttempts, 1)
+}
+
+// IncCaptchaFailures increments the captcha verification failures counter
+func (b *Bouncer) IncCaptchaFailures() {
+	if b.metrics == nil {
+		return
+	}
+	atomic.AddInt64(&b.metrics.CaptchaFailures, 1)
+}
+
 // extractRealIP determines the real client IP from headers and socket address, matching bouncer logic.
 // Headers are checked case-insensitively to handle both normalized and original casing.
 func extractRealIP(ip string, headers map[string]string, trustedProxies []*net.IPNet) string {
-	// Look for X-Forwarded-For header (case-insensitive)
 	for k, v := range headers {
 		if strings.EqualFold(k, "x-forwarded-for") && v != "" {
 			ips := strings.Split(v, ",")
@@ -243,16 +321,13 @@ func (b Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedReque
 	result := b.checkDecisionCache(ctx, parsed)
 	switch result.Action {
 	case "allow":
-		// Continue to WAF check
 	case "captcha":
-		// Decision cache wants captcha, go directly to captcha challenge
-		return b.checkCaptcha(ctx, parsed)
+		return b.checkCaptcha(ctx, parsed, "crowdsec")
 	case "deny", "error":
-		// Decision cache denies/errors, return 403
-		b.IncBouncedRequests()
+		b.IncBouncedRequestsWithLabels(MetricLabels{Origin: "crowdsec", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	default:
-		b.IncBouncedRequests()
+		b.IncBouncedRequestsWithLabels(MetricLabels{Origin: "crowdsec", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
 	}
 
@@ -261,9 +336,9 @@ func (b Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedReque
 	case "allow":
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 	case "captcha":
-		return b.checkCaptcha(ctx, parsed)
+		return b.checkCaptcha(ctx, parsed, "waf")
 	case "deny", "ban", "error":
-		b.IncBouncedRequests()
+		b.IncBouncedRequestsWithLabels(MetricLabels{Origin: "waf", RemediationType: "ban"})
 		return result
 	default:
 		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
@@ -306,7 +381,7 @@ func (b Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) 
 	}
 }
 
-func (b Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+func (b Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, origin string) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}
@@ -325,7 +400,7 @@ func (b Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Checke
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
 	}
 
-	b.IncCaptchasServed()
+	b.IncCaptchasServedWithLabels(MetricLabels{Origin: origin, RemediationType: "captcha"})
 	return CheckedRequest{
 		IP:          parsed.RealIP,
 		Action:      "captcha",
