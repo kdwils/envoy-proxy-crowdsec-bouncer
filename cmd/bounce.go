@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,7 +45,14 @@ var bounceCmd = &cobra.Command{
 				continue
 			}
 			for _, d := range *decisions {
-				if components.IsBannedDecision(d) {
+				if d == nil {
+					continue
+				}
+				if d.Type == nil {
+					continue
+				}
+
+				if *d.Type == "ban" {
 					logger.Info("not allowed", "ip", ip, "type", *d.Type)
 					continue
 				}

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
-	mocks "github.com/kdwils/envoy-proxy-bouncer/remediation/components/mocks"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -15,10 +15,10 @@ import (
 func TestNewCaptchaService(t *testing.T) {
 	t.Run("disabled captcha", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: false}
-		
+
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
-		
+
 		assert.NoError(t, err)
 		assert.NotNil(t, service)
 		assert.False(t, service.Config.Enabled)
@@ -31,10 +31,10 @@ func TestNewCaptchaService(t *testing.T) {
 			Provider:  "recaptcha",
 			SecretKey: "test-secret",
 		}
-		
+
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
-		
+
 		assert.NoError(t, err)
 		assert.NotNil(t, service)
 		assert.True(t, service.Config.Enabled)
@@ -42,17 +42,16 @@ func TestNewCaptchaService(t *testing.T) {
 		assert.Equal(t, "recaptcha", service.Provider.GetProviderName())
 	})
 
-
 	t.Run("turnstile provider", func(t *testing.T) {
 		cfg := config.Captcha{
 			Enabled:   true,
 			Provider:  "turnstile",
 			SecretKey: "test-secret",
 		}
-		
+
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
-		
+
 		assert.NoError(t, err)
 		assert.NotNil(t, service)
 		assert.True(t, service.Config.Enabled)
@@ -65,9 +64,9 @@ func TestNewCaptchaService(t *testing.T) {
 			Enabled:  true,
 			Provider: "unsupported",
 		}
-		
+
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		
+
 		assert.Error(t, err)
 		assert.Nil(t, service)
 		assert.Contains(t, err.Error(), "unsupported captcha provider")
@@ -79,9 +78,9 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 		service := &CaptchaService{
 			Config: config.Captcha{Enabled: false},
 		}
-		
+
 		requires := service.RequiresCaptcha("192.168.1.1")
-		
+
 		assert.False(t, requires)
 	})
 
@@ -89,10 +88,10 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
-		
+
 		assert.NoError(t, err)
 		requires := service.RequiresCaptcha("192.168.1.1")
-		
+
 		assert.True(t, requires)
 	})
 
@@ -100,12 +99,12 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
-		
+
 		// Add expired entry
 		service.Cache.Set("192.168.1.1", time.Now().Add(-1*time.Hour))
-		
+
 		requires := service.RequiresCaptcha("192.168.1.1")
-		
+
 		assert.True(t, requires)
 	})
 
@@ -113,12 +112,12 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
-		
+
 		// Add valid entry
 		service.Cache.Set("192.168.1.1", time.Now().Add(1*time.Hour))
-		
+
 		requires := service.RequiresCaptcha("192.168.1.1")
-		
+
 		assert.False(t, requires)
 	})
 }
@@ -128,14 +127,14 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		service := &CaptchaService{
 			Config: config.Captcha{Enabled: false},
 		}
-		
+
 		req := VerificationRequest{
 			Response: "test-token",
 			IP:       "192.168.1.1",
 		}
-		
+
 		result, err := service.VerifyResponse(context.Background(), req)
-		
+
 		assert.NoError(t, err)
 		assert.True(t, result.Success)
 		assert.Equal(t, "Captcha verification disabled", result.Message)
@@ -342,7 +341,6 @@ func TestRenderCaptchaTemplate(t *testing.T) {
 		assert.Contains(t, html, "recaptcha")
 		assert.Contains(t, html, "www.google.com/recaptcha/api.js")
 	})
-
 
 	t.Run("turnstile template", func(t *testing.T) {
 		html, err := RenderCaptchaTemplate("turnstile", "site-key", "http://localhost/callback", "http://localhost/redirect", "session-123")

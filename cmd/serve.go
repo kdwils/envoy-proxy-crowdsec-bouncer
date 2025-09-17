@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 
@@ -36,27 +36,27 @@ var ServeCmd = &cobra.Command{
 		slogger.Info("starting envoy-proxy-bouncer", "version", version.Version, "logLevel", level)
 		ctx := logger.WithContext(context.Background(), slogger)
 
-		remediator, err := remediation.New(config)
+		bouncer, err := bouncer.New(config)
 		if err != nil {
 			return err
 		}
-		go remediator.Sync(ctx)
+		go bouncer.Sync(ctx)
 
 		if config.Bouncer.Metrics {
 			slogger.Info("metrics enabled, starting bouncer metrics")
 			go func() {
-				if err := remediator.Metrics(ctx); err != nil {
+				if err := bouncer.Metrics(ctx); err != nil {
 					slogger.Error("metrics error", "error", err)
 				}
 			}()
 		}
 
-		if config.Captcha.Enabled && remediator.CaptchaService != nil {
-			go remediator.CaptchaService.StartCleanup(ctx)
+		if config.Captcha.Enabled && bouncer.CaptchaService != nil {
+			go bouncer.CaptchaService.StartCleanup(ctx)
 		}
 
 		ctx, cancel := context.WithCancel(ctx)
-		server := server.NewServer(config, remediator, remediator.CaptchaService, slogger)
+		server := server.NewServer(config, bouncer, bouncer.CaptchaService, slogger)
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {

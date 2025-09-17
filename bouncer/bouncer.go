@@ -1,4 +1,4 @@
-package remediation
+package bouncer
 
 import (
 	"context"
@@ -10,27 +10,34 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
+	"github.com/crowdsecurity/crowdsec/pkg/models"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/remediation/components"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 )
 
-//go:generate mockgen -destination=mocks/mock_waf.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation WAF
+type Metrics struct {
+	TotalRequests   int64 `json:"total_requests"`
+	BouncedRequests int64 `json:"banned_requests"`
+	CaptchasServed  int64 `json:"captchas_served"`
+}
+
+//go:generate mockgen -destination=mocks/mock_waf.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer WAF
 type WAF interface {
 	Inspect(ctx context.Context, req components.AppSecRequest) (components.WAFResponse, error)
 }
 
-//go:generate mockgen -destination=mocks/mock_bouncer.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation Bouncer
-type Bouncer interface {
-	Bounce(ctx context.Context, ip string, headers map[string]string) (bool, error)
+//go:generate mockgen -destination=mocks/mock_decision_cache.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer DecisionCache
+type DecisionCache interface {
+	GetDecision(ctx context.Context, ip string) (*models.Decision, error)
 	Sync(ctx context.Context) error
-	Metrics(ctx context.Context) error
 }
 
-//go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/remediation CaptchaService
+//go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
 type CaptchaService interface {
 	IsEnabled() bool
 	GenerateChallengeURL(ip, originalURL string) (string, error)
@@ -42,22 +49,23 @@ type CaptchaService interface {
 	RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error)
 }
 
-type Remediator struct {
-	Bouncer        Bouncer
+type Bouncer struct {
+	DecisionCache  DecisionCache
 	WAF            WAF
 	CaptchaService CaptchaService
 	TrustedProxies []*net.IPNet
+	metrics        *Metrics
 }
 
-// New creates a Remediator from config.Config, instantiating bouncer and WAF only if enabled.
-func New(cfg config.Config) (*Remediator, error) {
+// New creates a Bouncer from config.Config, instantiating decision cache and WAF only if enabled.
+func New(cfg config.Config) (*Bouncer, error) {
 	trustedProxies, err := parseProxyAddresses(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
 	}
-	var b Bouncer
+	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		b, err = components.NewBouncer(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval)
+		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -76,26 +84,56 @@ func New(cfg config.Config) (*Remediator, error) {
 		}
 	}
 
-	return &Remediator{
-		Bouncer:        b,
+	return &Bouncer{
+		DecisionCache:  dc,
 		WAF:            w,
 		CaptchaService: c,
 		TrustedProxies: trustedProxies,
+		metrics:        new(Metrics),
 	}, nil
 }
 
-func (r *Remediator) Sync(ctx context.Context) error {
-	if r.Bouncer == nil {
-		return errors.New("bouncer not initialized")
+func (b *Bouncer) Sync(ctx context.Context) error {
+	if b.DecisionCache == nil {
+		return errors.New("decision cache not initialized")
 	}
-	return r.Bouncer.Sync(ctx)
+	return b.DecisionCache.Sync(ctx)
 }
 
-func (r *Remediator) Metrics(ctx context.Context) error {
-	if r.Bouncer == nil {
-		return errors.New("bouncer not initialized")
+func (b *Bouncer) Metrics(ctx context.Context) error {
+	return errors.New("metrics tracking moved to bouncer level - use GetMetrics() for current values")
+}
+
+func (b *Bouncer) GetMetrics() Metrics {
+	if b.metrics == nil {
+		return Metrics{}
 	}
-	return r.Bouncer.Metrics(ctx)
+	return Metrics{
+		TotalRequests:   atomic.LoadInt64(&b.metrics.TotalRequests),
+		BouncedRequests: atomic.LoadInt64(&b.metrics.BouncedRequests),
+		CaptchasServed:  atomic.LoadInt64(&b.metrics.CaptchasServed),
+	}
+}
+
+func (b *Bouncer) IncTotalRequests() {
+	if b.metrics == nil {
+		return
+	}
+	atomic.AddInt64(&b.metrics.TotalRequests, 1)
+}
+
+func (b *Bouncer) IncBouncedRequests() {
+	if b.metrics == nil {
+		return
+	}
+	atomic.AddInt64(&b.metrics.BouncedRequests, 1)
+}
+
+func (b *Bouncer) IncCaptchasServed() {
+	if b.metrics == nil {
+		return
+	}
+	atomic.AddInt64(&b.metrics.CaptchasServed, 1)
 }
 
 // extractRealIP determines the real client IP from headers and socket address, matching bouncer logic.
@@ -196,58 +234,88 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 }
 
 // Check runs bouncer first, then captcha if enabled, then WAF if enabled, and returns the result.
-func (r Remediator) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
-	parsed := r.ParseCheckRequest(ctx, req)
+func (b Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
+	b.IncTotalRequests()
+
+	parsed := b.ParseCheckRequest(ctx, req)
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
 
-	result := r.checkBouncer(ctx, parsed)
-	if result.Action != "allow" {
-		return result
+	result := b.checkDecisionCache(ctx, parsed)
+	switch result.Action {
+	case "allow":
+		// Continue to WAF check
+	case "captcha":
+		// Decision cache wants captcha, go directly to captcha challenge
+		return b.checkCaptcha(ctx, parsed)
+	case "deny", "error":
+		// Decision cache denies/errors, return 403
+		b.IncBouncedRequests()
+		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
+	default:
+		b.IncBouncedRequests()
+		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
 	}
 
-	result = r.checkWAF(ctx, parsed)
+	result = b.checkWAF(ctx, parsed)
 	switch result.Action {
 	case "allow":
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 	case "captcha":
-		return r.checkCaptcha(ctx, parsed)
+		return b.checkCaptcha(ctx, parsed)
 	case "deny", "ban", "error":
+		b.IncBouncedRequests()
 		return result
 	default:
 		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
 	}
 }
 
-func (r Remediator) checkBouncer(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+func (b Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
-	if r.Bouncer == nil {
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "bouncer disabled", HTTPStatus: http.StatusOK}
+	if b.DecisionCache == nil {
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "decision cache disabled", HTTPStatus: http.StatusOK}
 	}
 
-	logger.Debug("running bouncer")
-	logger.Debug("headers", "headers", parsed.Headers)
-	bounce, err := r.Bouncer.Bounce(ctx, parsed.RealIP, parsed.Headers)
+	logger.Debug("running decision cache")
+	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
-		logger.Error("bouncer error", "error", err)
-		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "bouncer error", HTTPStatus: http.StatusInternalServerError}
+		logger.Error("decision cache error", "error", err)
+		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "decision cache error", HTTPStatus: http.StatusInternalServerError}
 	}
-	if bounce {
-		logger.Debug("bouncing")
-		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "bouncer", HTTPStatus: http.StatusForbidden}
+
+	if decision == nil {
+		logger.Debug("no decision found")
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "no decision", HTTPStatus: http.StatusOK}
 	}
-	return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "bouncer passed", HTTPStatus: http.StatusOK}
+
+	if decision.Type == nil {
+		logger.Debug("decision has no type")
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "no decision type", HTTPStatus: http.StatusOK}
+	}
+
+	decisionType := strings.ToLower(*decision.Type)
+	logger.Debug("decision found", "type", decisionType)
+
+	switch decisionType {
+	case "ban":
+		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "crowdsec ban", HTTPStatus: http.StatusForbidden}
+	case "captcha":
+		return CheckedRequest{IP: parsed.RealIP, Action: "captcha", Reason: "crowdsec captcha", HTTPStatus: http.StatusFound}
+	default:
+		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "decision allows", HTTPStatus: http.StatusOK}
+	}
 }
 
-func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+func (b Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
-	if r.CaptchaService == nil || !r.CaptchaService.IsEnabled() {
+	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}
 	}
 
 	logger.Debug("running captcha")
 	originalURL := parsed.URL.String()
 
-	challengeURL, err := r.CaptchaService.GenerateChallengeURL(parsed.RealIP, originalURL)
+	challengeURL, err := b.CaptchaService.GenerateChallengeURL(parsed.RealIP, originalURL)
 	if err != nil {
 		logger.Error("failed to generate captcha challenge", "error", err)
 		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "captcha error", HTTPStatus: http.StatusInternalServerError}
@@ -257,6 +325,7 @@ func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Che
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
 	}
 
+	b.IncCaptchasServed()
 	return CheckedRequest{
 		IP:          parsed.RealIP,
 		Action:      "captcha",
@@ -266,9 +335,9 @@ func (r Remediator) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Che
 	}
 }
 
-func (r Remediator) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+func (b Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
-	if r.WAF == nil {
+	if b.WAF == nil {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "waf disabled", HTTPStatus: http.StatusOK}
 	}
 
@@ -285,7 +354,7 @@ func (r Remediator) checkWAF(ctx context.Context, parsed *ParsedRequest) Checked
 		ProtoMinor: parsed.ProtoMinor,
 	}
 
-	wafResult, wafErr := r.WAF.Inspect(ctx, wafReq)
+	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
 		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "waf error", HTTPStatus: http.StatusInternalServerError}
@@ -299,7 +368,7 @@ func (r Remediator) checkWAF(ctx context.Context, parsed *ParsedRequest) Checked
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.
-func (r *Remediator) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest) *ParsedRequest {
+func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest) *ParsedRequest {
 	parsedRequest := &ParsedRequest{Headers: make(map[string]string)}
 	if req == nil {
 		return parsedRequest
@@ -335,7 +404,7 @@ func (r *Remediator) ParseCheckRequest(ctx context.Context, req *auth.CheckReque
 		}
 	}
 
-	parsedRequest.RealIP = extractRealIP(parsedRequest.IP, parsedRequest.Headers, r.TrustedProxies)
+	parsedRequest.RealIP = extractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies)
 
 	url := url.URL{
 		Scheme: parsedRequest.Headers[":scheme"],

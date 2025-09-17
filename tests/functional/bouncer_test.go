@@ -105,6 +105,13 @@ func TestBouncer(t *testing.T) {
 		t.Fatalf("failed to exec: %v", err)
 	}
 
+	_, _, err = lapiContainer.Exec(t.Context(), []string{
+		"cscli", "decisions", "add", "--type", "captcha", "--value", "192.168.2.100",
+	})
+	if err != nil {
+		t.Fatalf("failed to exec: %v", err)
+	}
+
 	agentUser := "appsec-agent"
 	agentPass := "appsec-pass"
 	_, out, err = lapiContainer.Exec(t.Context(), []string{
@@ -210,6 +217,7 @@ func TestBouncer(t *testing.T) {
 	viper.Set("waf.enabled", true)
 	viper.Set("waf.apiKey", key)
 	viper.Set("waf.appsecURL", appsecURL.String())
+	viper.Set("captcha.enabled", false)
 
 	go func() {
 		err = rootCmd.Execute()
@@ -261,7 +269,7 @@ func TestBouncer(t *testing.T) {
 		require.Equal(t, int32(0), check.Status.Code)
 	})
 
-	t.Run("Test Bouncer banned", func(t *testing.T) {
+	t.Run("Test banned decision", func(t *testing.T) {
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
