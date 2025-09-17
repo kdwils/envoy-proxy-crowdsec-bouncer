@@ -59,6 +59,25 @@ func createCheckRequest(ip string, httpRequest *auth.AttributeContext_HttpReques
 	}
 }
 
+func createHttpRequest(method, path, authority string, extraHeaders map[string]string) *auth.AttributeContext_HttpRequest {
+	headers := map[string]string{
+		":method":    method,
+		":path":      path,
+		":authority": authority,
+		":scheme":    "http",
+		"User-Agent": "test-agent",
+	}
+	
+	for k, v := range extraHeaders {
+		headers[k] = v
+	}
+	
+	return &auth.AttributeContext_HttpRequest{
+		Headers:  headers,
+		Protocol: "HTTP/1.1",
+	}
+}
+
 func TestBouncer(t *testing.T) {
 	network, err := network.New(t.Context(), network.WithDriver("bridge"))
 	if err != nil {
@@ -281,31 +300,7 @@ func TestBouncer(t *testing.T) {
 	client := auth.NewAuthorizationClient(conn)
 
 	t.Run("Test Bouncer non-banned", func(t *testing.T) {
-		req := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{
-								Address: "192.168.1.1",
-							},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Headers: map[string]string{
-							":method":    "GET",
-							":path":      "/testing",
-							":authority": "my-host.com",
-							":scheme":    "http",
-							"User-Agent": "test-agent",
-						},
-						Protocol: "HTTP/1.1",
-					},
-				},
-			},
-		}
+		req := createCheckRequest("192.168.1.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
@@ -314,31 +309,7 @@ func TestBouncer(t *testing.T) {
 	})
 
 	t.Run("Test banned decision", func(t *testing.T) {
-		req := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{
-								Address: "192.168.1.100",
-							},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Headers: map[string]string{
-							":method":    "GET",
-							":path":      "/testing",
-							":authority": "my-host.com",
-							":scheme":    "http",
-							"User-Agent": "test-agent",
-						},
-						Protocol: "HTTP/1.1",
-					},
-				},
-			},
-		}
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/testing", "my-host.com", nil))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
@@ -347,32 +318,9 @@ func TestBouncer(t *testing.T) {
 	})
 
 	t.Run("xff with trusted proxy", func(t *testing.T) {
-		req := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{
-								Address: "192.168.1.100",
-							},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Headers: map[string]string{
-							"x-forwarded-for": "192.168.1.100,10.0.0.1",
-							":method":         "GET",
-							":path":           "/testing",
-							":authority":      "my-host.com",
-							":scheme":         "http",
-							"User-Agent":      "test-agent",
-						},
-						Protocol: "HTTP/1.1",
-					},
-				},
-			},
-		}
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/testing", "my-host.com", map[string]string{
+			"x-forwarded-for": "192.168.1.100,10.0.0.1",
+		}))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
@@ -381,31 +329,9 @@ func TestBouncer(t *testing.T) {
 	})
 
 	t.Run("ban decision removed", func(t *testing.T) {
-		req := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{
-								Address: "192.168.1.100",
-							},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Headers: map[string]string{
-							"x-forwarded-for": "192.168.1.100,10.0.0.1",
-							":method":         "GET",
-							":path":           "/testing",
-							":authority":      "my-host.com",
-							"User-Agent":      "test-agent",
-						},
-						Protocol: "HTTP/1.1",
-					},
-				},
-			},
-		}
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/testing", "my-host.com", map[string]string{
+			"x-forwarded-for": "192.168.1.100,10.0.0.1",
+		}))
 
 		_, _, err = lapiContainer.Exec(t.Context(), []string{
 			"cscli", "decisions", "delete", "-i", "192.168.1.100",
@@ -423,31 +349,9 @@ func TestBouncer(t *testing.T) {
 	})
 
 	t.Run("trigger inline", func(t *testing.T) {
-		req := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{
-								Address: "192.168.1.100",
-							},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Headers: map[string]string{
-							"x-forwarded-for": "192.168.1.100,10.0.0.1",
-							":method":         "GET",
-							":path":           "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl",
-							":authority":      "my-host.com",
-							"User-Agent":      "test-agent",
-						},
-						Protocol: "HTTP/1.1",
-					},
-				},
-			},
-		}
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", "my-host.com", map[string]string{
+			"x-forwarded-for": "192.168.1.100,10.0.0.1",
+		}))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
@@ -456,31 +360,7 @@ func TestBouncer(t *testing.T) {
 	})
 
 	t.Run("Test captcha decision with disabled captcha service", func(t *testing.T) {
-		req := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{
-								Address: "192.168.2.100",
-							},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Headers: map[string]string{
-							":method":    "GET",
-							":path":      "/protected",
-							":authority": "my-host.com",
-							":scheme":    "http",
-							"User-Agent": "test-agent",
-						},
-						Protocol: "HTTP/1.1",
-					},
-				},
-			},
-		}
+		req := createCheckRequest("192.168.2.100", createHttpRequest("GET", "/protected", "my-host.com", nil))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
@@ -767,16 +647,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	t.Run("Test captcha decision triggers captcha challenge", func(t *testing.T) {
 		time.Sleep(2 * time.Second)
 
-		req := createCheckRequest("192.168.1.100", &auth.AttributeContext_HttpRequest{
-			Headers: map[string]string{
-				":method":    "GET",
-				":path":      "/protected",
-				":authority": "my-host.com",
-				":scheme":    "http",
-				"User-Agent": "test-agent",
-			},
-			Protocol: "HTTP/1.1",
-		})
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected", "my-host.com", nil))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
@@ -818,16 +689,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	})
 
 	t.Run("Test WAF trigger captcha flow", func(t *testing.T) {
-		req := createCheckRequest("192.168.1.1", &auth.AttributeContext_HttpRequest{
-			Headers: map[string]string{
-				":method":    "GET",
-				":path":      "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl",
-				":authority": "my-host.com",
-				":scheme":    "http",
-				"User-Agent": "test-agent",
-			},
-			Protocol: "HTTP/1.1",
-		})
+		req := createCheckRequest("192.168.1.1", createHttpRequest("GET", "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", "my-host.com", nil))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
@@ -855,16 +717,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	})
 
 	t.Run("Test non-captcha decision allows through", func(t *testing.T) {
-		req := createCheckRequest("192.168.1.200", &auth.AttributeContext_HttpRequest{
-			Headers: map[string]string{
-				":method":    "GET",
-				":path":      "/testing",
-				":authority": "my-host.com",
-				":scheme":    "http",
-				"User-Agent": "test-agent",
-			},
-			Protocol: "HTTP/1.1",
-		})
+		req := createCheckRequest("192.168.1.200", createHttpRequest("GET", "/testing", "my-host.com", nil))
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
