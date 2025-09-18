@@ -221,7 +221,10 @@ func (b *Bouncer) Metrics(ctx context.Context) error {
 		case <-ticker.C:
 			allMetrics := b.CalculateMetrics(interval)
 			log.Debug("sending metrics update", slog.Any("metrics", allMetrics))
-			b.metricsProvider.SendMetrics(ctx, allMetrics)
+			err := b.metricsProvider.SendMetrics(ctx, allMetrics)
+			if err == nil {
+				b.ResetMetrics()
+			}
 		}
 	}
 }
