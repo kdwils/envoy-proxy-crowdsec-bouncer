@@ -8,6 +8,10 @@ import (
 )
 
 func NewClient(apiKey string, apiURL string, userAgent string) (*apiclient.ApiClient, error) {
+	if apiURL[len(apiURL)-1] != '/' {
+		apiURL += "/"
+	}
+	
 	url, err := url.Parse(apiURL)
 	if err != nil {
 		return nil, err

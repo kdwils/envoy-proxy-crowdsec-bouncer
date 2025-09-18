@@ -142,7 +142,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 	return bouncer, nil
 }
 
-func (bouncer *Bouncer) calculateMetrics(interval time.Duration) *models.AllMetrics {
+func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetrics {
 	currentMetrics := bouncer.GetMetrics()
 
 	items := []*models.MetricsDetailItem{
@@ -242,11 +242,19 @@ func (b *Bouncer) Metrics(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			allMetrics := b.calculateMetrics(interval)
+			allMetrics := b.CalculateMetrics(interval)
 			log.Debug("sending metrics update", slog.Any("metrics", allMetrics))
 			b.metricsProvider.SendMetrics(ctx, allMetrics)
 		}
 	}
+}
+
+
+func (b *Bouncer) SendMetrics(ctx context.Context, metrics *models.AllMetrics) error {
+	if b.metricsProvider == nil {
+		return errors.New("metrics provider not available")
+	}
+	return b.metricsProvider.SendMetrics(ctx, metrics)
 }
 
 func (b *Bouncer) GetMetrics() Metrics {
