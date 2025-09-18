@@ -583,15 +583,15 @@ func TestBouncer_Check(t *testing.T) {
 		// WAF should not be called when bouncer denies
 
 		got := r.Check(context.Background(), req)
-		want := CheckedRequest{IP: "1.2.3.4", Action: "deny", Reason: "crowdsec ban", HTTPStatus: 403}
+		want := CheckedRequest{IP: "1.2.3.4", Action: "deny", Reason: "unknown decision cache action", HTTPStatus: 403}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":                  {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:ban":                  {Name: "requests", Origin: "crowdsec", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -620,8 +620,8 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":                  {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:ban":                  {Name: "requests", Origin: "crowdsec", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -644,14 +644,14 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "ban" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "9.9.9.9" {
+		if got.Action != "ban" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "9.9.9.9" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"waf:ban":                       {Name: "dropped", Origin: "waf", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:ban":                  {Name: "requests", Origin: "crowdsec", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -674,7 +674,7 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "waf error" || got.HTTPStatus != 500 || got.IP != "10.0.0.1" {
+		if got.Action != "error" || got.Reason != "error" || got.HTTPStatus != 500 || got.IP != "10.0.0.1" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
@@ -700,7 +700,7 @@ func TestBouncer_Check(t *testing.T) {
 		// Verify metrics: 1 processed request (allowed through)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -723,7 +723,7 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "deny"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "deny" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "8.8.8.8" {
+		if got.Action != "deny" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "8.8.8.8" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
@@ -742,7 +742,7 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "11.11.11.11" {
+		if got.Action != "error" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "11.11.11.11" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
@@ -821,7 +821,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		// Verify metrics: 1 processed request (everything disabled)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -844,7 +844,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban")}, nil)
 
 		got := r.Check(context.Background(), req)
-		want := CheckedRequest{IP: "2.2.2.2", Action: "deny", Reason: "crowdsec ban", HTTPStatus: 403}
+		want := CheckedRequest{IP: "2.2.2.2", Action: "deny", Reason: "unknown decision cache action", HTTPStatus: 403}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
@@ -885,7 +885,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "deny"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "deny" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "4.4.4.4" {
+		if got.Action != "deny" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "4.4.4.4" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
@@ -905,7 +905,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "ban" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "5.5.5.5" {
+		if got.Action != "ban" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "5.5.5.5" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
@@ -925,7 +925,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf connection failed"))
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "waf error" || got.HTTPStatus != 500 || got.IP != "6.6.6.6" {
+		if got.Action != "error" || got.Reason != "error" || got.HTTPStatus != 500 || got.IP != "6.6.6.6" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
@@ -945,7 +945,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "waf" || got.HTTPStatus != 403 || got.IP != "7.7.7.7" {
+		if got.Action != "error" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "7.7.7.7" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
@@ -1097,8 +1097,8 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"waf:captcha":                   {Name: "dropped", Origin: "waf", RemediationType: "captcha", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:captcha":              {Name: "requests", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1136,8 +1136,8 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":              {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:captcha":              {Name: "requests", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1205,8 +1205,8 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"waf:captcha":                   {Name: "dropped", Origin: "waf", RemediationType: "captcha", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:captcha":              {Name: "requests", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()

@@ -390,10 +390,10 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	case "captcha":
 		return b.checkCaptcha(ctx, parsed, "crowdsec")
 	case "deny", "error":
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "denied"})
+		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	default:
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "denied"})
+		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
 	}
 
@@ -402,9 +402,12 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	case "allow":
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 	case "captcha":
-		return b.checkCaptcha(ctx, parsed, "waf")
-	case "deny", "ban", "error":
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "denied"})
+		return b.checkCaptcha(ctx, parsed, "crowdsec")
+	case "deny", "ban":
+		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
+		return result
+	case "error":
+		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "error"})
 		return result
 	default:
 		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
@@ -439,7 +442,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 
 	switch decisionType {
 	case "ban":
-		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "crowdsec ban", HTTPStatus: http.StatusForbidden}
+		return CheckedRequest{IP: parsed.RealIP, Action: "ban", Reason: "crowdsec ban", HTTPStatus: http.StatusForbidden}
 	case "captcha":
 		return CheckedRequest{IP: parsed.RealIP, Action: "captcha", Reason: "crowdsec captcha", HTTPStatus: http.StatusFound}
 	default:
@@ -498,11 +501,11 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
-		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "waf error", HTTPStatus: http.StatusInternalServerError}
+		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "error", HTTPStatus: http.StatusInternalServerError}
 	}
 
 	if wafResult.Action != "allow" {
-		return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "waf", HTTPStatus: http.StatusForbidden}
+		return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "ban", HTTPStatus: http.StatusForbidden}
 	}
 
 	return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "ok", HTTPStatus: http.StatusOK}
