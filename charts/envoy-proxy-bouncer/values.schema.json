@@ -62,6 +62,10 @@
                             "default": false,
                             "type": "boolean"
                         },
+                        "metricsInterval": {
+                            "default": "30m",
+                            "type": "string"
+                        },
                         "tickerInterval": {
                             "default": "10s",
                             "type": "string"
