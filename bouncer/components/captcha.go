@@ -37,10 +37,11 @@ type CaptchaSession struct {
 
 // CaptchaService handles captcha verification and challenge management
 type CaptchaService struct {
-	Config       config.Captcha
-	Provider     CaptchaProvider
-	Cache        *cache.Cache[time.Time]
-	SessionCache *cache.Cache[CaptchaSession]
+	Config         config.Captcha
+	Provider       CaptchaProvider
+	Cache          *cache.Cache[time.Time]
+	SessionCache   *cache.Cache[CaptchaSession]
+	RequestTimeout time.Duration
 }
 
 // VerificationRequest represents a captcha verification request
@@ -58,10 +59,16 @@ type VerificationResult struct {
 
 // NewCaptchaService creates a new captcha service with the specified configuration
 func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaService, error) {
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
 	service := &CaptchaService{
-		Config:       cfg,
-		Cache:        cache.New[time.Time](),
-		SessionCache: cache.New[CaptchaSession](),
+		Config:         cfg,
+		Cache:          cache.New[time.Time](),
+		SessionCache:   cache.New[CaptchaSession](),
+		RequestTimeout: timeout,
 	}
 
 	if !cfg.Enabled {
@@ -121,7 +128,10 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, req VerificationReq
 		}, nil
 	}
 
-	success, err := s.Provider.Verify(ctx, req.Response, req.IP)
+	timeoutCtx, cancel := context.WithTimeout(ctx, s.RequestTimeout)
+	defer cancel()
+
+	success, err := s.Provider.Verify(timeoutCtx, req.Response, req.IP)
 	if err != nil {
 		return &VerificationResult{
 			Success: false,
@@ -237,7 +247,7 @@ func (s *CaptchaService) GenerateChallengeURL(ip, originalURL string) (string, e
 	redirectParams := make(url.Values)
 	redirectParams.Set("session", sessionID)
 
-	return s.Config.URL + "/captcha/challenge?" + redirectParams.Encode(), nil
+	return s.Config.CallbackURL + "/captcha/challenge?" + redirectParams.Encode(), nil
 }
 
 func (s *CaptchaService) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {

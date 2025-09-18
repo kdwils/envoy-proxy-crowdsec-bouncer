@@ -16,10 +16,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func parseCIDROrFail(t *testing.T, cidr string) *net.IPNet {
 	_, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
@@ -578,7 +574,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 
 		req := mkReq("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -591,16 +587,19 @@ func TestBouncer_Check(t *testing.T) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
 
-		// Verify metrics: 1 total request, 1 bounced request, 0 captchas
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		expectedMetrics := Metrics{
+			TotalRequests:   1,
+			BouncedRequests: 1,
+			CaptchasServed:  0,
+			CaptchaAttempts: 0,
+			CaptchaFailures: 0,
+			Remediation: map[string]RemediationMetrics{
+				"crowdsec:ban": {Origin: "crowdsec", RemediationType: "ban", Count: 1},
+			},
 		}
-		if metrics.BouncedRequests != 1 {
-			t.Errorf("expected 1 bounced request, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 0 {
-			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 
@@ -610,7 +609,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 
 		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -622,16 +621,19 @@ func TestBouncer_Check(t *testing.T) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
 
-		// Verify metrics: 1 total request, 1 bounced request (due to error), 0 captchas
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		expectedMetrics := Metrics{
+			TotalRequests:   1,
+			BouncedRequests: 1,
+			CaptchasServed:  0,
+			CaptchaAttempts: 0,
+			CaptchaFailures: 0,
+			Remediation: map[string]RemediationMetrics{
+				"crowdsec:ban": {Origin: "crowdsec", RemediationType: "ban", Count: 1},
+			},
 		}
-		if metrics.BouncedRequests != 1 {
-			t.Errorf("expected 1 bounced request, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 0 {
-			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 
@@ -641,7 +643,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 
 		req := mkReq("9.9.9.9", "https", "host", "/bar", "POST", "HTTP/2", "abc")
 
@@ -653,16 +655,19 @@ func TestBouncer_Check(t *testing.T) {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 
-		// Verify metrics: 1 total request, 1 bounced request (from WAF), 0 captchas
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		expectedMetrics := Metrics{
+			TotalRequests:   1,
+			BouncedRequests: 1,
+			CaptchasServed:  0,
+			CaptchaAttempts: 0,
+			CaptchaFailures: 0,
+			Remediation: map[string]RemediationMetrics{
+				"waf:ban": {Origin: "waf", RemediationType: "ban", Count: 1},
+			},
 		}
-		if metrics.BouncedRequests != 1 {
-			t.Errorf("expected 1 bounced request, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 0 {
-			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 
@@ -691,7 +696,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 
 		req := mkReq("7.7.7.7", "https", "ex", "/ok", "GET", "HTTP/2", "")
 
@@ -704,15 +709,17 @@ func TestBouncer_Check(t *testing.T) {
 		}
 
 		// Verify metrics: 1 total request, 0 bounced requests, 0 captchas (allowed through)
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		expectedMetrics := Metrics{
+			TotalRequests:   1,
+			BouncedRequests: 0,
+			CaptchasServed:  0,
+			CaptchaAttempts: 0,
+			CaptchaFailures: 0,
+			Remediation:     map[string]RemediationMetrics{},
 		}
-		if metrics.BouncedRequests != 0 {
-			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 0 {
-			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 
@@ -817,7 +824,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 	}
 
 	t.Run("bouncer disabled - waf disabled - captcha disabled", func(t *testing.T) {
-		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		got := r.Check(context.Background(), req)
@@ -1089,7 +1096,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 
 		req := mkReq("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1103,16 +1110,19 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 
-		// Verify metrics: 1 total request, 0 bounced requests, 1 captcha served
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		expectedMetrics := Metrics{
+			TotalRequests:   1,
+			BouncedRequests: 0,
+			CaptchasServed:  1,
+			CaptchaAttempts: 0,
+			CaptchaFailures: 0,
+			Remediation: map[string]RemediationMetrics{
+				"waf:captcha": {Origin: "waf", RemediationType: "captcha", Count: 1},
+			},
 		}
-		if metrics.BouncedRequests != 0 {
-			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 1 {
-			t.Errorf("expected 1 captcha served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 
@@ -1123,12 +1133,11 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 
 		req := mkReq("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: ptr("captcha")}, nil)
-		// WAF should not be called when bouncer returns captcha
 		mc.EXPECT().IsEnabled().Return(true)
 		mc.EXPECT().GenerateChallengeURL("15.15.15.15", "https://example.com/test").Return("https://bouncer.example.com/captcha/challenge?session=crowdsec123", nil)
 
@@ -1144,7 +1153,6 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
 
-		// Verify metrics: 1 total request, 0 bounced requests, 1 captcha served
 		metrics := r.GetMetrics()
 		if metrics.TotalRequests != 1 {
 			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
@@ -1183,7 +1191,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		}
 	}
 
-	t.Run("captcha redirect with hostname", func(t *testing.T) {
+	t.Run("captcha redirect with callbackURL", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -1191,7 +1199,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
 
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: new(Metrics)}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
 
 		req := mkReq("1.2.3.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1214,7 +1222,6 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 			t.Fatalf("expected redirect URL %s, got %s", expectedURL, got.RedirectURL)
 		}
 
-		// Verify metrics: 1 total request, 0 bounced requests, 1 captcha served
 		metrics := r.GetMetrics()
 		if metrics.TotalRequests != 1 {
 			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)

@@ -25,19 +25,21 @@ type Server struct {
 
 type Captcha struct {
 	Enabled       bool          `yaml:"enabled" json:"enabled"`
-	Provider      string        `yaml:"provider" json:"provider"` // recaptcha, turnstile
+	Provider      string        `yaml:"provider" json:"provider"`
 	SiteKey       string        `yaml:"siteKey" json:"siteKey"`
 	SecretKey     string        `yaml:"secretKey" json:"secretKey"`
 	CacheDuration time.Duration `yaml:"cacheDuration" json:"cacheDuration"`
-	URL           string        `yaml:"url" json:"url"` // e.g., "https://yourdomain.com" or "http://localhost:8081"
+	CallbackURL   string        `yaml:"callbackURL" json:"callbackURL"`
+	Timeout       time.Duration `yaml:"timeout" json:"timeout"`
 }
 
 type Bouncer struct {
-	Enabled        bool   `yaml:"enabled" json:"enabled"`
-	Metrics        bool   `yaml:"metrics" json:"metrics"`
-	TickerInterval string `yaml:"tickerInterval" json:"tickerInterval"`
-	ApiKey         string `yaml:"apiKey" json:"apiKey"`
-	LAPIURL        string `yaml:"LAPIURL" json:"LAPIURL"`
+	Enabled         bool          `yaml:"enabled" json:"enabled"`
+	Metrics         bool          `yaml:"metrics" json:"metrics"`
+	TickerInterval  string        `yaml:"tickerInterval" json:"tickerInterval"`
+	MetricsInterval time.Duration `yaml:"metricsInterval" json:"metricsInterval"`
+	ApiKey          string        `yaml:"apiKey" json:"apiKey"`
+	LAPIURL         string        `yaml:"LAPIURL" json:"LAPIURL"`
 }
 
 type WAF struct {

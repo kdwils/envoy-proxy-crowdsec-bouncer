@@ -60,7 +60,7 @@ func TestCaptchaCache(t *testing.T) {
 	if c.Size() != 1 {
 		t.Errorf("expected cache size 1, got %d", c.Size())
 	}
-	
+
 	got, ok := c.Get(ip)
 	if !ok {
 		t.Errorf("expected to find entry for %s", ip)
@@ -68,7 +68,7 @@ func TestCaptchaCache(t *testing.T) {
 	if !got.Equal(expiry) {
 		t.Errorf("expected expiry %v, got %v", expiry, got)
 	}
-	
+
 	c.Delete(ip)
 	if c.Size() != 0 {
 		t.Errorf("expected empty cache after delete, got size %d", c.Size())

@@ -15,13 +15,21 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
   - Cloudflare Turnstile
 
 ## How It Works
+The bouncer subscribes to decisions from CrowdSec via the Stream API and processes each request through multiple stages:
 
-The remediation component subscribes to decisions from CrowdSec via the Stream API, and on each request:
+1. IP Extraction: Determines the real client IP from forwarded headers, respecting trusted proxy configuration.
+2. Bouncer Check: Checks CrowdSec decision cache for IP-based decisions (ban, captcha, allow). Updates to cached decisions are real-time from the Stream API.
+3. WAF Analysis: If no blocking decision, forwards request to CrowdSec AppSec for analysis.
+4. Decision Application: Applies the final decision:
+   - Allow: Request proceeds normally
+   - Ban/Deny: Returns 403 Forbidden
+   - Captcha: Creates session and redirects to challenge page
 
-1. Determines the real client IP from the forwarded request.
-2. When the Bouncer is enabled, the IP of the request is checked against cached banned decisions, and if the IP banned, returns a 403.
-3. When WAF is enabled, the request is forwarded to a CrowdSec AppSec instance and the returned decision is applied.
-4. When CAPTCHA is enabled, suspicious IPs are redirected to a CAPTCHA challenge page instead of being immediately blocked when a captcha decision is returned by the WAF component.
+When a captcha decision is made:
+1. CrowdSec or WAF returns "captcha" action for suspicious request
+2. Bouncer creates session and redirects to `/captcha/challenge?session=<id>`
+3. User completes CAPTCHA and submits to `/captcha/verify`
+4. On success, IP is cached (15 minutes by default) and user redirected to original URL
 
 ## Configuration
 The bouncer can be configured using:
@@ -57,11 +65,13 @@ waf:
 
 captcha:
   enabled: true
-  provider: "recaptcha"                    # Options: recaptcha, turnstile
+  provider: "recaptcha"                     # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
-  hostname: "https://yourdomain.com"       # Base URL for captcha callbacks
-  cacheDuration: "15m"                     # How long to cache sessions
+  callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks 
+                                            # If the bouncer is hosted at https://my-domain.com the callbackURL should be https://my-domain.com
+
+  cacheDuration: "15m"                      # How long to cache sessions
 ```
 
 Run with config file:
@@ -101,7 +111,7 @@ export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
-export ENVOY_BOUNCER_CAPTCHA_HOSTNAME=https://yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
 export ENVOY_BOUNCER_CAPTCHA_CACHEDURATION=1h
 ```
 
@@ -128,7 +138,7 @@ When CAPTCHA is enabled:
 - `captcha.provider`
 - `captcha.siteKey`
 - `captcha.secretKey`
-- `captcha.hostname`
+- `captcha.callbackURL`
 
 Note on API keys:
 - A key must be generated on your CrowdSec LAPI (with `cscli bouncers add <name>`). You can use this key for both `bouncer.apiKey` and `waf.apiKey`.
@@ -165,14 +175,6 @@ The bouncer supports CAPTCHA challenges as an alternative to immediately blockin
 |----------|-------------------|---------------|
 | Google reCAPTCHA v2 | `recaptcha` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
 | Cloudflare Turnstile | `turnstile` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
-
-### CAPTCHA Flow
-
-1. Detection: CrowdSec identifies a suspicious IP that should be challenged rather than blocked
-2. Redirect: The bouncer redirects the request to `/captcha/challenge?session=<session-id>`
-3. Challenge: User is presented with a CAPTCHA challenge page
-4. Verification: User completes CAPTCHA and submits to `/captcha/verify`
-5. Access: Upon successful verification, user is redirected to original URL
 
 ### CAPTCHA Endpoints
 

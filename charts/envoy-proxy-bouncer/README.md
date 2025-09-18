@@ -21,8 +21,8 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.bouncer.metrics | bool | `false` |  |
 | config.bouncer.tickerInterval | string | `"10s"` |  |
 | config.captcha.cacheDuration | string | `""` |  |
+| config.captcha.callbackURL | string | `""` |  |
 | config.captcha.enabled | bool | `false` |  |
-| config.captcha.hostname | string | `""` |  |
 | config.captcha.provider | string | `""` |  |
 | config.captcha.secretKey | string | `""` |  |
 | config.captcha.secretKeySecretRef.key | string | `""` |  |
@@ -37,6 +37,12 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.waf.appSecURL | string | `"http://crowdsec-appsec-service:7422"` |  |
 | config.waf.enabled | bool | `false` |  |
 | fullnameOverride | string | `""` |  |
+| httproute.annotations | object | `{}` |  |
+| httproute.enabled | bool | `false` |  |
+| httproute.hostnames | list | `[]` |  |
+| httproute.parentRefs | list | `[]` |  |
+| httproute.rules[0].path.type | string | `"PathPrefix"` |  |
+| httproute.rules[0].path.value | string | `"/"` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/kdwils/envoy-proxy-bouncer"` |  |
 | image.tag | string | `""` |  |

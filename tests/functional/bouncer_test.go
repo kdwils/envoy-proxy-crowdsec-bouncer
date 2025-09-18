@@ -67,11 +67,11 @@ func createHttpRequest(method, path, authority string, extraHeaders map[string]s
 		":scheme":    "http",
 		"User-Agent": "test-agent",
 	}
-	
+
 	for k, v := range extraHeaders {
 		headers[k] = v
 	}
-	
+
 	return &auth.AttributeContext_HttpRequest{
 		Headers:  headers,
 		Protocol: "HTTP/1.1",
@@ -250,6 +250,7 @@ func TestBouncer(t *testing.T) {
 	v.Set("trustedProxies", trustedProxies)
 	v.Set("bouncer.tickerInterval", "1s")
 	v.Set("bouncer.enabled", true)
+	v.Set("bouncer.metrics", true)
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
@@ -367,6 +368,22 @@ func TestBouncer(t *testing.T) {
 
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(0), check.Status.Code)
+	})
+
+	t.Run("Verify metrics after basic scenarios", func(t *testing.T) {
+		localMetrics := bouncer.GetMetrics()
+		require.Equal(t, int64(6), localMetrics.TotalRequests)
+		require.Equal(t, int64(3), localMetrics.BouncedRequests)
+
+		allMetrics := bouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
+		require.Len(t, allMetrics.RemediationComponents, 1)
+
+		component := allMetrics.RemediationComponents[0]
+		require.Equal(t, "envoy-proxy-crowdsec-bouncer", component.Type)
+		require.NotEmpty(t, component.Metrics)
+
+		err := bouncer.SendMetrics(ctx, allMetrics)
+		require.NoError(t, err)
 	})
 }
 
@@ -543,6 +560,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	v.Set("trustedProxies", trustedProxies)
 	v.Set("bouncer.tickerInterval", "1s")
 	v.Set("bouncer.enabled", true)
+	v.Set("bouncer.metrics", true)
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
@@ -550,7 +568,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")
 	v.Set("captcha.secretKey", "test-secret-key")
-	v.Set("captcha.url", "http://localhost")
+	v.Set("captcha.callbackURL", "http://localhost")
 
 	config, err := config.New(v)
 	require.NoError(t, err)
@@ -723,6 +741,22 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(0), check.Status.Code)
+	})
+
+	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
+		localMetrics := testBouncer.GetMetrics()
+		require.Equal(t, int64(3), localMetrics.TotalRequests)
+		require.Equal(t, int64(2), localMetrics.CaptchasServed)
+
+		allMetrics := testBouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
+		require.Len(t, allMetrics.RemediationComponents, 1)
+
+		component := allMetrics.RemediationComponents[0]
+		require.Equal(t, "envoy-proxy-crowdsec-bouncer", component.Type)
+		require.NotEmpty(t, component.Metrics)
+
+		err := testBouncer.SendMetrics(ctx, allMetrics)
+		require.NoError(t, err)
 	})
 }
 

@@ -1,0 +1,38 @@
+{{- if .Values.httproute.enabled -}}
+{{- $fullName := include "envoy-proxy-bouncer.fullname" . -}}
+{{- $svcPort := .Values.service.port -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "envoy-proxy-bouncer.labels" . | nindent 4 }}
+  {{- with .Values.httproute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.httproute.parentRefs }}
+  parentRefs:
+    {{- toYaml .Values.httproute.parentRefs | nindent 4 }}
+  {{- end }}
+  {{- if .Values.httproute.hostnames }}
+  hostnames:
+    {{- range .Values.httproute.hostnames }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+    - matches:
+        {{- range .Values.httproute.rules }}
+        - path:
+            type: {{ .path.type | default "PathPrefix" }}
+            value: {{ .path.value | default "/" }}
+          {{- if .method }}
+          method: {{ .method }}
+          {{- end }}
+        {{- end }}
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $svcPort }}
+{{- end }}

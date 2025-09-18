@@ -125,8 +125,8 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_CACHEDURATION
               value: {{ . | quote }}
             {{- end }}
-            {{- with .captcha.hostname }}
-            - name: ENVOY_BOUNCER_CAPTCHA_HOSTNAME
+            {{- with .captcha.callbackURL }}
+            - name: ENVOY_BOUNCER_CAPTCHA_CALLBACKURL
               value: {{ . | quote }}
             {{- end }}
           {{- end }}

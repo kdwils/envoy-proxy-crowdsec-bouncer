@@ -66,7 +66,7 @@ config:
       name: "" # @schema default: ""
       key: "" # @schema default: ""
     cacheDuration: "" # @schema default: ""
-    hostname: "" # @schema default: ""
+    callbackURL: "" # @schema default: ""
 
 autoscaling:
   enabled: false # @schema default: false
@@ -74,6 +74,16 @@ autoscaling:
   maxReplicas: 10 # @schema default: 10
   targetCPUUtilizationPercentage: 80 # @schema default: 80
   targetMemoryUtilizationPercentage: 80 # @schema default: 80
+
+httproute:
+  enabled: false # @schema default: false
+  annotations: {} # @schema default: {}
+  parentRefs: [] # @schema default: []
+  hostnames: [] # @schema default: []
+  rules: # @schema default: [{"path": {"type": "PathPrefix", "value": "/"}}]
+    - path:
+        type: PathPrefix # @schema default: "PathPrefix"
+        value: "/" # @schema default: "/"
 
 securityPolicy:
   create: false # @schema default: false
