@@ -13,7 +13,6 @@ import (
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
@@ -216,20 +215,19 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	bouncer, ok := s.bouncer.(*bouncer.Bouncer)
-	if !ok || bouncer.CaptchaService == nil {
+	if s.captcha == nil {
 		http.Error(w, "Captcha service not available", http.StatusInternalServerError)
 		return
 	}
 
-	session, exists := bouncer.CaptchaService.GetSession(sessionID)
+	session, exists := s.captcha.GetSession(sessionID)
 	if !exists {
 		http.Error(w, "Invalid or expired session", http.StatusForbidden)
 		return
 	}
 
 	callbackURL := s.config.Captcha.CallbackURL + "/captcha"
-	html, err := bouncer.CaptchaService.RenderChallenge(
+	html, err := s.captcha.RenderChallenge(
 		s.config.Captcha.SiteKey,
 		callbackURL,
 		session.OriginalURL,

@@ -225,7 +225,6 @@ func (s *CaptchaService) IsEnabled() bool {
 	return s.Config.Enabled
 }
 
-
 func (s *CaptchaService) GenerateChallengeURL(ip, originalURL string) (string, error) {
 	if !s.Config.Enabled {
 		return "", nil

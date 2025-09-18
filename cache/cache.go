@@ -47,7 +47,7 @@ func (c *Cache[T]) Size() int {
 func (c *Cache[T]) Cleanup(ctx context.Context, shouldDelete func(key string, value T) bool) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:

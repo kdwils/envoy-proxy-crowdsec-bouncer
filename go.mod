@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/crowdsecurity/crowdsec v1.7.0
 	github.com/crowdsecurity/go-cs-bouncer v0.0.17
+	github.com/crowdsecurity/go-cs-lib v0.0.21
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
@@ -35,7 +36,6 @@ require (
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/corazawaf/coraza/v3 v3.3.3 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
-	github.com/crowdsecurity/go-cs-lib v0.0.21 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/docker v28.2.2+incompatible // indirect

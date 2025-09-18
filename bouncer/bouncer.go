@@ -11,11 +11,15 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
+	"github.com/crowdsecurity/go-cs-lib/version"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 )
@@ -63,12 +67,23 @@ type CaptchaService interface {
 	RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error)
 }
 
+type MetricsProvider interface {
+	SendMetrics(ctx context.Context, metrics *models.AllMetrics) error
+}
+
+func ptr[T any](v T) *T {
+	return &v
+}
+
 type Bouncer struct {
-	DecisionCache  DecisionCache
-	WAF            WAF
-	CaptchaService CaptchaService
-	TrustedProxies []*net.IPNet
-	metrics        *Metrics
+	DecisionCache   DecisionCache
+	WAF             WAF
+	CaptchaService  CaptchaService
+	TrustedProxies  []*net.IPNet
+	metrics         *Metrics
+	metricsEnabled  bool
+	metricsProvider MetricsProvider
+	config          config.Config
 }
 
 // New creates a Bouncer from config.Config, instantiating decision cache and WAF only if enabled.
@@ -98,15 +113,107 @@ func New(cfg config.Config) (*Bouncer, error) {
 		}
 	}
 
-	return &Bouncer{
+	bouncer := &Bouncer{
 		DecisionCache:  dc,
 		WAF:            w,
 		CaptchaService: c,
 		TrustedProxies: trustedProxies,
+		config:         cfg,
 		metrics: &Metrics{
 			Remediation: make(map[string]RemediationMetrics),
 		},
-	}, nil
+	}
+
+	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
+		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
+		client, err := crowdsec.NewClient(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, userAgent)
+		if err != nil {
+			return nil, err
+		}
+
+		provider, err := components.NewMetricsProvider(client)
+		if err != nil {
+			return nil, err
+		}
+
+		bouncer.metricsProvider = provider
+	}
+
+	return bouncer, nil
+}
+
+func (bouncer *Bouncer) calculateMetrics(interval time.Duration) *models.AllMetrics {
+	currentMetrics := bouncer.GetMetrics()
+
+	items := []*models.MetricsDetailItem{
+		{
+			Name:  ptr("processed"),
+			Unit:  ptr("request"),
+			Value: ptr(float64(currentMetrics.TotalRequests)),
+			Labels: map[string]string{
+				"origin": "envoy-proxy-bouncer",
+			},
+		},
+		{
+			Name:  ptr("dropped"),
+			Unit:  ptr("request"),
+			Value: ptr(float64(currentMetrics.BouncedRequests)),
+			Labels: map[string]string{
+				"origin": "envoy-proxy-bouncer",
+			},
+		},
+	}
+
+	for _, remediation := range currentMetrics.Remediation {
+		items = append(items, &models.MetricsDetailItem{
+			Name:  ptr("dropped"),
+			Unit:  ptr("request"),
+			Value: ptr(float64(remediation.Count)),
+			Labels: map[string]string{
+				"origin":           remediation.Origin,
+				"remediation_type": remediation.RemediationType,
+			},
+		})
+	}
+
+	windowSizeSeconds := int64(interval.Seconds())
+	utcNowTimestamp := time.Now().Unix()
+
+	detailedMetrics := []*models.DetailedMetrics{
+		{
+			Items: items,
+			Meta: &models.MetricsMeta{
+				UtcNowTimestamp:   &utcNowTimestamp,
+				WindowSizeSeconds: &windowSizeSeconds,
+			},
+		},
+	}
+
+	startupTS := time.Now().Unix()
+
+	osName, osVersion := version.DetectOS()
+
+	version := bouncerVersion.Version
+
+	baseMetrics := &models.BaseMetrics{
+		Os: &models.OSversion{
+			Name:    &osName,
+			Version: &osVersion,
+		},
+		Version:             &version,
+		FeatureFlags:        []string{},
+		Metrics:             detailedMetrics,
+		UtcStartupTimestamp: &startupTS,
+	}
+
+	remediationMetrics := &models.RemediationComponentsMetrics{
+		BaseMetrics: *baseMetrics,
+		Type:        "envoy-proxy-crowdsec-bouncer",
+	}
+
+	return &models.AllMetrics{
+		RemediationComponents: []*models.RemediationComponentsMetrics{remediationMetrics},
+	}
 }
 
 func (b *Bouncer) Sync(ctx context.Context) error {
@@ -117,7 +224,29 @@ func (b *Bouncer) Sync(ctx context.Context) error {
 }
 
 func (b *Bouncer) Metrics(ctx context.Context) error {
-	return errors.New("metrics tracking moved to bouncer level - use GetMetrics() for current values")
+	log := logger.FromContext(ctx)
+	if b.metricsProvider == nil {
+		return nil
+	}
+
+	interval := b.config.Bouncer.MetricsInterval
+
+	if interval == 0 {
+		return nil
+	}
+
+	ticker := time.NewTicker(interval)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			allMetrics := b.calculateMetrics(interval)
+			log.Debug("sending metrics update", slog.Any("metrics", allMetrics))
+			b.metricsProvider.SendMetrics(ctx, allMetrics)
+		}
+	}
 }
 
 func (b *Bouncer) GetMetrics() Metrics {

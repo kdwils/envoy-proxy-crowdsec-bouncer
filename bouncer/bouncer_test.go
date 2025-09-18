@@ -16,10 +16,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func parseCIDROrFail(t *testing.T, cidr string) *net.IPNet {
 	_, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {

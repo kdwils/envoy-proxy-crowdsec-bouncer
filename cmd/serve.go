@@ -39,7 +39,7 @@ var ServeCmd = &cobra.Command{
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		
+
 		// Debug: Check if context is already cancelled
 		select {
 		case <-ctx.Done():
@@ -47,7 +47,7 @@ var ServeCmd = &cobra.Command{
 		default:
 			slogger.Info("Parent context is active")
 		}
-		
+
 		ctx = logger.WithContext(ctx, slogger)
 
 		bouncer, err := bouncer.New(config)
@@ -56,7 +56,7 @@ var ServeCmd = &cobra.Command{
 		}
 		go bouncer.Sync(ctx)
 
-		if config.Bouncer.Metrics {
+		if config.Bouncer.Enabled && config.Bouncer.Metrics {
 			slogger.Info("metrics enabled, starting bouncer metrics")
 			go func() {
 				if err := bouncer.Metrics(ctx); err != nil {
