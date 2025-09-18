@@ -52,6 +52,7 @@ func initConfig() {
 	viper.SetDefault("bouncer.enabled", false)
 	viper.SetDefault("bouncer.metrics", false)
 	viper.SetDefault("bouncer.tickerInterval", "10s")
+	viper.SetDefault("bouncer.metricsInterval", "10m")
 
 	viper.SetDefault("waf.enabled", false)
 	viper.SetDefault("waf.apiKey", "")
