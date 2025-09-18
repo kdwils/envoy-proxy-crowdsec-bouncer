@@ -73,6 +73,10 @@ spec:
             - name: ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .bouncer.metricsInterval }}
+            - name: ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .trustedProxies }}
             - name: ENVOY_BOUNCER_TRUSTEDPROXIES
               value: {{ join "," . | quote }}
