@@ -274,9 +274,7 @@ func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
 
 func (b *Bouncer) ResetMetrics() {
 	for _, k := range b.metrics.Keys() {
-		metric, _ := b.metrics.Get(k)
-		metric.Count = 0
-		b.metrics.Set(k, metric)
+		b.metrics.Delete(k)
 	}
 }
 
