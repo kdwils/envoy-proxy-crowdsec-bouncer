@@ -40,14 +40,6 @@ var ServeCmd = &cobra.Command{
 			ctx = context.Background()
 		}
 
-		// Debug: Check if context is already cancelled
-		select {
-		case <-ctx.Done():
-			slogger.Error("Parent context already cancelled!", "error", ctx.Err())
-		default:
-			slogger.Info("Parent context is active")
-		}
-
 		ctx = logger.WithContext(ctx, slogger)
 
 		bouncer, err := bouncer.New(config)

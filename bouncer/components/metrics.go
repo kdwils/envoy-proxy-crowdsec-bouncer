@@ -40,4 +40,3 @@ func (m *MetricsProvider) SendMetrics(ctx context.Context, metrics *models.AllMe
 
 	return nil
 }
-

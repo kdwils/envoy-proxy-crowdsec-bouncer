@@ -13,6 +13,7 @@ import (
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"go.uber.org/mock/gomock"
 )
 
@@ -574,7 +575,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -588,13 +589,9 @@ func TestBouncer_Check(t *testing.T) {
 		}
 
 		expectedMetrics := Metrics{
-			TotalRequests:   1,
-			BouncedRequests: 1,
-			CaptchasServed:  0,
-			CaptchaAttempts: 0,
-			CaptchaFailures: 0,
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:ban": {Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:ban":                  {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -609,7 +606,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -622,13 +619,9 @@ func TestBouncer_Check(t *testing.T) {
 		}
 
 		expectedMetrics := Metrics{
-			TotalRequests:   1,
-			BouncedRequests: 1,
-			CaptchasServed:  0,
-			CaptchaAttempts: 0,
-			CaptchaFailures: 0,
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:ban": {Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:ban":                  {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -643,7 +636,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("9.9.9.9", "https", "host", "/bar", "POST", "HTTP/2", "abc")
 
@@ -656,13 +649,9 @@ func TestBouncer_Check(t *testing.T) {
 		}
 
 		expectedMetrics := Metrics{
-			TotalRequests:   1,
-			BouncedRequests: 1,
-			CaptchasServed:  0,
-			CaptchaAttempts: 0,
-			CaptchaFailures: 0,
 			Remediation: map[string]RemediationMetrics{
-				"waf:ban": {Origin: "waf", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"waf:ban":                       {Name: "dropped", Origin: "waf", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -677,7 +666,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("10.0.0.1", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
@@ -696,7 +685,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("7.7.7.7", "https", "ex", "/ok", "GET", "HTTP/2", "")
 
@@ -708,14 +697,11 @@ func TestBouncer_Check(t *testing.T) {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 
-		// Verify metrics: 1 total request, 0 bounced requests, 0 captchas (allowed through)
+		// Verify metrics: 1 processed request (allowed through)
 		expectedMetrics := Metrics{
-			TotalRequests:   1,
-			BouncedRequests: 0,
-			CaptchasServed:  0,
-			CaptchaAttempts: 0,
-			CaptchaFailures: 0,
-			Remediation:     map[string]RemediationMetrics{},
+			Remediation: map[string]RemediationMetrics{
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+			},
 		}
 		actualMetrics := r.GetMetrics()
 		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
@@ -729,7 +715,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("8.8.8.8", "https", "host", "/bar", "POST", "HTTP/2", "abc")
 
@@ -748,7 +734,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("11.11.11.11", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
@@ -767,7 +753,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw}
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("12.12.12.12", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
@@ -785,7 +771,7 @@ func TestBouncer_Check(t *testing.T) {
 		defer ctrl.Finish()
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: nil}
+		r := Bouncer{DecisionCache: mb, WAF: nil, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("13.13.13.13", "https", "ex", "/ok", "GET", "HTTP/2", "")
 
@@ -824,7 +810,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 	}
 
 	t.Run("bouncer disabled - waf disabled - captcha disabled", func(t *testing.T) {
-		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, metrics: cache.New[RemediationMetrics]()}
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		got := r.Check(context.Background(), req)
@@ -832,16 +818,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 
-		// Verify metrics: 1 total request, 0 bounced requests, 0 captchas (everything disabled)
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		// Verify metrics: 1 processed request (everything disabled)
+		expectedMetrics := Metrics{
+			Remediation: map[string]RemediationMetrics{
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+			},
 		}
-		if metrics.BouncedRequests != 0 {
-			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 0 {
-			t.Errorf("expected 0 captchas served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 
@@ -852,7 +837,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("2.2.2.2", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -872,7 +857,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("3.3.3.3", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -892,7 +877,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("4.4.4.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -912,7 +897,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("5.5.5.5", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -932,7 +917,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("6.6.6.6", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -952,7 +937,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("7.7.7.7", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -972,7 +957,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("8.8.8.8", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -992,7 +977,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("9.9.9.9", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1012,7 +997,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("10.10.10.10", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1032,7 +1017,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: nil}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: nil, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("11.11.11.11", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1052,7 +1037,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("12.12.12.12", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1074,7 +1059,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("13.13.13.13", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1096,7 +1081,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1111,13 +1096,9 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		}
 
 		expectedMetrics := Metrics{
-			TotalRequests:   1,
-			BouncedRequests: 0,
-			CaptchasServed:  1,
-			CaptchaAttempts: 0,
-			CaptchaFailures: 0,
 			Remediation: map[string]RemediationMetrics{
-				"waf:captcha": {Origin: "waf", RemediationType: "captcha", Count: 1},
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"waf:captcha":                   {Name: "dropped", Origin: "waf", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1133,7 +1114,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1153,15 +1134,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
 
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		expectedMetrics := Metrics{
+			Remediation: map[string]RemediationMetrics{
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"crowdsec:captcha":              {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+			},
 		}
-		if metrics.BouncedRequests != 0 {
-			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 1 {
-			t.Errorf("expected 1 captcha served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 }
@@ -1199,7 +1180,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
 
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: &Metrics{Remediation: make(map[string]RemediationMetrics)}}
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("1.2.3.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1222,15 +1203,15 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 			t.Fatalf("expected redirect URL %s, got %s", expectedURL, got.RedirectURL)
 		}
 
-		metrics := r.GetMetrics()
-		if metrics.TotalRequests != 1 {
-			t.Errorf("expected 1 total request, got %d", metrics.TotalRequests)
+		expectedMetrics := Metrics{
+			Remediation: map[string]RemediationMetrics{
+				"envoy-proxy-bouncer:processed": {Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"waf:captcha":                   {Name: "dropped", Origin: "waf", RemediationType: "captcha", Count: 1},
+			},
 		}
-		if metrics.BouncedRequests != 0 {
-			t.Errorf("expected 0 bounced requests, got %d", metrics.BouncedRequests)
-		}
-		if metrics.CaptchasServed != 1 {
-			t.Errorf("expected 1 captcha served, got %d", metrics.CaptchasServed)
+		actualMetrics := r.GetMetrics()
+		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
+			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
 }

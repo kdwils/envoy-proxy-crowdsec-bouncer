@@ -21,7 +21,6 @@ func New[T any]() *Cache[T] {
 func (c *Cache[T]) Set(key string, value T) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	c.entries[key] = value
 }
 
@@ -42,6 +41,15 @@ func (c *Cache[T]) Size() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return len(c.entries)
+}
+
+func (c *Cache[T]) Keys() []string {
+	keys := make([]string, len(c.entries))
+	for k := range c.entries {
+		keys = append(keys, k)
+	}
+
+	return keys
 }
 
 func (c *Cache[T]) Cleanup(ctx context.Context, shouldDelete func(key string, value T) bool) {

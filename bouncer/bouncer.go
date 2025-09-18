@@ -10,13 +10,13 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	"github.com/crowdsecurity/go-cs-lib/version"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/crowdsec"
+	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
@@ -25,21 +25,18 @@ import (
 )
 
 type Metrics struct {
-	TotalRequests   int64                         `json:"total_requests"`
-	BouncedRequests int64                         `json:"banned_requests"`
-	CaptchasServed  int64                         `json:"captchas_served"`
-	CaptchaAttempts int64                         `json:"captcha_attempts"`
-	CaptchaFailures int64                         `json:"captcha_failures"`
-	Remediation     map[string]RemediationMetrics `json:"remediation"`
+	Remediation map[string]RemediationMetrics `json:"remediation"`
 }
 
 type RemediationMetrics struct {
+	Name            string `json:"name"`
 	Origin          string `json:"origin"`
 	RemediationType string `json:"remediation_type"`
 	Count           int64  `json:"count"`
 }
 
 type MetricLabels struct {
+	Name            string
 	Origin          string
 	RemediationType string
 }
@@ -80,8 +77,7 @@ type Bouncer struct {
 	WAF             WAF
 	CaptchaService  CaptchaService
 	TrustedProxies  []*net.IPNet
-	metrics         *Metrics
-	metricsEnabled  bool
+	metrics         *cache.Cache[RemediationMetrics]
 	metricsProvider MetricsProvider
 	config          config.Config
 }
@@ -119,9 +115,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 		CaptchaService: c,
 		TrustedProxies: trustedProxies,
 		config:         cfg,
-		metrics: &Metrics{
-			Remediation: make(map[string]RemediationMetrics),
-		},
+		metrics:        cache.New[RemediationMetrics](),
 	}
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
@@ -145,33 +139,16 @@ func New(cfg config.Config) (*Bouncer, error) {
 func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetrics {
 	currentMetrics := bouncer.GetMetrics()
 
-	items := []*models.MetricsDetailItem{
-		{
-			Name:  ptr("processed"),
-			Unit:  ptr("request"),
-			Value: ptr(float64(currentMetrics.TotalRequests)),
-			Labels: map[string]string{
-				"origin": "envoy-proxy-bouncer",
-			},
-		},
-		{
-			Name:  ptr("dropped"),
-			Unit:  ptr("request"),
-			Value: ptr(float64(currentMetrics.BouncedRequests)),
-			Labels: map[string]string{
-				"origin": "envoy-proxy-bouncer",
-			},
-		},
-	}
+	var items []*models.MetricsDetailItem
 
 	for _, remediation := range currentMetrics.Remediation {
 		items = append(items, &models.MetricsDetailItem{
-			Name:  ptr("dropped"),
+			Name:  ptr(remediation.Name),
 			Unit:  ptr("request"),
 			Value: ptr(float64(remediation.Count)),
 			Labels: map[string]string{
-				"origin":           remediation.Origin,
-				"remediation_type": remediation.RemediationType,
+				"origin":      remediation.Origin,
+				"remediation": remediation.RemediationType,
 			},
 		})
 	}
@@ -249,12 +226,15 @@ func (b *Bouncer) Metrics(ctx context.Context) error {
 	}
 }
 
-
 func (b *Bouncer) SendMetrics(ctx context.Context, metrics *models.AllMetrics) error {
 	if b.metricsProvider == nil {
 		return errors.New("metrics provider not available")
 	}
-	return b.metricsProvider.SendMetrics(ctx, metrics)
+	err := b.metricsProvider.SendMetrics(ctx, metrics)
+	if err == nil {
+		b.ResetMetrics()
+	}
+	return err
 }
 
 func (b *Bouncer) GetMetrics() Metrics {
@@ -263,93 +243,41 @@ func (b *Bouncer) GetMetrics() Metrics {
 	}
 
 	metrics := Metrics{
-		TotalRequests:   atomic.LoadInt64(&b.metrics.TotalRequests),
-		BouncedRequests: atomic.LoadInt64(&b.metrics.BouncedRequests),
-		CaptchasServed:  atomic.LoadInt64(&b.metrics.CaptchasServed),
-		CaptchaAttempts: atomic.LoadInt64(&b.metrics.CaptchaAttempts),
-		CaptchaFailures: atomic.LoadInt64(&b.metrics.CaptchaFailures),
-		Remediation:     make(map[string]RemediationMetrics),
+		Remediation: make(map[string]RemediationMetrics),
 	}
 
-	for key, value := range b.metrics.Remediation {
-		metrics.Remediation[key] = RemediationMetrics{
-			Origin:          value.Origin,
-			RemediationType: value.RemediationType,
-			Count:           atomic.LoadInt64(&value.Count),
+	for _, key := range b.metrics.Keys() {
+		metric, exists := b.metrics.Get(key)
+		if exists {
+			metrics.Remediation[key] = metric
 		}
 	}
 
 	return metrics
 }
 
-func (b *Bouncer) IncTotalRequests() {
-	if b.metrics == nil {
-		return
-	}
-	atomic.AddInt64(&b.metrics.TotalRequests, 1)
-}
-
-func (b *Bouncer) IncBouncedRequests() {
-	if b.metrics == nil {
-		return
-	}
-	atomic.AddInt64(&b.metrics.BouncedRequests, 1)
-}
-
-func (b *Bouncer) IncCaptchasServed() {
-	if b.metrics == nil {
-		return
-	}
-	atomic.AddInt64(&b.metrics.CaptchasServed, 1)
-}
-
 // IncRemediationMetric increments a remediation metric with origin and remediation_type labels
 func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
-	if b.metrics == nil {
-		return
-	}
-
 	key := labels.Origin + ":" + labels.RemediationType
-	metric, exists := b.metrics.Remediation[key]
-	if exists {
-		atomic.AddInt64(&metric.Count, 1)
-		b.metrics.Remediation[key] = metric
-		return
+	metric, exists := b.metrics.Get(key)
+	if !exists {
+		metric = RemediationMetrics{
+			Name:            labels.Name,
+			Origin:          labels.Origin,
+			RemediationType: labels.RemediationType,
+			Count:           0,
+		}
 	}
-
-	b.metrics.Remediation[key] = RemediationMetrics{
-		Origin:          labels.Origin,
-		RemediationType: labels.RemediationType,
-		Count:           1,
-	}
+	metric.Count++
+	b.metrics.Set(key, metric)
 }
 
-// IncBouncedRequestsWithLabels increments bounced requests with CrowdSec-compliant labels
-func (b *Bouncer) IncBouncedRequestsWithLabels(labels MetricLabels) {
-	b.IncBouncedRequests()
-	b.IncRemediationMetric(labels)
-}
-
-// IncCaptchasServedWithLabels increments captchas served with CrowdSec-compliant labels
-func (b *Bouncer) IncCaptchasServedWithLabels(labels MetricLabels) {
-	b.IncCaptchasServed()
-	b.IncRemediationMetric(labels)
-}
-
-// IncCaptchaAttempts increments the captcha verification attempts counter
-func (b *Bouncer) IncCaptchaAttempts() {
-	if b.metrics == nil {
-		return
+func (b *Bouncer) ResetMetrics() {
+	for _, k := range b.metrics.Keys() {
+		metric, _ := b.metrics.Get(k)
+		metric.Count = 0
+		b.metrics.Set(k, metric)
 	}
-	atomic.AddInt64(&b.metrics.CaptchaAttempts, 1)
-}
-
-// IncCaptchaFailures increments the captcha verification failures counter
-func (b *Bouncer) IncCaptchaFailures() {
-	if b.metrics == nil {
-		return
-	}
-	atomic.AddInt64(&b.metrics.CaptchaFailures, 1)
 }
 
 // extractRealIP determines the real client IP from headers and socket address, matching bouncer logic.
@@ -449,8 +377,8 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 }
 
 // Check runs bouncer first, then captcha if enabled, then WAF if enabled, and returns the result.
-func (b Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
-	b.IncTotalRequests()
+func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
+	b.IncRemediationMetric(MetricLabels{Name: "processed", Origin: "envoy-proxy-bouncer", RemediationType: "processed"})
 
 	parsed := b.ParseCheckRequest(ctx, req)
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
@@ -461,10 +389,10 @@ func (b Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedReque
 	case "captcha":
 		return b.checkCaptcha(ctx, parsed, "crowdsec")
 	case "deny", "error":
-		b.IncBouncedRequestsWithLabels(MetricLabels{Origin: "crowdsec", RemediationType: "ban"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", Origin: "crowdsec", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	default:
-		b.IncBouncedRequestsWithLabels(MetricLabels{Origin: "crowdsec", RemediationType: "ban"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", Origin: "crowdsec", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
 	}
 
@@ -475,14 +403,14 @@ func (b Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedReque
 	case "captcha":
 		return b.checkCaptcha(ctx, parsed, "waf")
 	case "deny", "ban", "error":
-		b.IncBouncedRequestsWithLabels(MetricLabels{Origin: "waf", RemediationType: "ban"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", Origin: "waf", RemediationType: "ban"})
 		return result
 	default:
 		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
 	}
 }
 
-func (b Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.DecisionCache == nil {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "decision cache disabled", HTTPStatus: http.StatusOK}
@@ -518,7 +446,7 @@ func (b Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) 
 	}
 }
 
-func (b Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, origin string) CheckedRequest {
+func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, origin string) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}
@@ -537,7 +465,7 @@ func (b Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, origin
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
 	}
 
-	b.IncCaptchasServedWithLabels(MetricLabels{Origin: origin, RemediationType: "captcha"})
+	b.IncRemediationMetric(MetricLabels{Name: "dropped", Origin: origin, RemediationType: "captcha"})
 	return CheckedRequest{
 		IP:          parsed.RealIP,
 		Action:      "captcha",
@@ -547,7 +475,7 @@ func (b Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, origin
 	}
 }
 
-func (b Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.WAF == nil {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "waf disabled", HTTPStatus: http.StatusOK}
