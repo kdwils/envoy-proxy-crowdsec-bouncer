@@ -623,7 +623,7 @@ func TestBouncer_Check(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":                  {Name: "requests", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"crowdsec:error":                {Name: "requests", Origin: "crowdsec", RemediationType: "error", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1234,31 +1234,31 @@ func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 	detailedMetrics := component.Metrics[0]
 	require.Len(t, detailedMetrics.Items, 3)
 
-	itemsByName := make(map[string]*models.MetricsDetailItem)
+	itemsByUnit := make(map[string]*models.MetricsDetailItem)
 	for _, item := range detailedMetrics.Items {
-		itemsByName[*item.Name] = item
+		itemsByUnit[*item.Unit] = item
 	}
 
-	processedItem := itemsByName["processed"]
+	processedItem := itemsByUnit["processed"]
 	require.NotNil(t, processedItem)
-	require.Equal(t, "processed", *processedItem.Name)
-	require.Equal(t, "requests", *processedItem.Unit)
+	require.Equal(t, "requests", *processedItem.Name)
+	require.Equal(t, "processed", *processedItem.Unit)
 	require.Equal(t, float64(1), *processedItem.Value)
 	require.Equal(t, "envoy-proxy-bouncer", processedItem.Labels["origin"])
 	require.Equal(t, "processed", processedItem.Labels["remediation"])
 
-	banItem := itemsByName["ban"]
+	banItem := itemsByUnit["ban"]
 	require.NotNil(t, banItem)
-	require.Equal(t, "ban", *banItem.Name)
-	require.Equal(t, "requests", *banItem.Unit)
+	require.Equal(t, "requests", *banItem.Name)
+	require.Equal(t, "ban", *banItem.Unit)
 	require.Equal(t, float64(1), *banItem.Value)
 	require.Equal(t, "crowdsec", banItem.Labels["origin"])
 	require.Equal(t, "ban", banItem.Labels["remediation"])
 
-	captchaItem := itemsByName["captcha"]
+	captchaItem := itemsByUnit["captcha"]
 	require.NotNil(t, captchaItem)
-	require.Equal(t, "captcha", *captchaItem.Name)
-	require.Equal(t, "requests", *captchaItem.Unit)
+	require.Equal(t, "requests", *captchaItem.Name)
+	require.Equal(t, "captcha", *captchaItem.Unit)
 	require.Equal(t, float64(1), *captchaItem.Value)
 	require.Equal(t, "crowdsec", captchaItem.Labels["origin"])
 	require.Equal(t, "captcha", captchaItem.Labels["remediation"])

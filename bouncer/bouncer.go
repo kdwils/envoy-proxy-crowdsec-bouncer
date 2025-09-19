@@ -143,8 +143,8 @@ func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetr
 
 	for _, remediation := range currentMetrics.Remediation {
 		items = append(items, &models.MetricsDetailItem{
-			Name:  ptr(remediation.RemediationType),
-			Unit:  ptr(remediation.Name),
+			Name:  ptr(remediation.Name),
+			Unit:  ptr(remediation.RemediationType),
 			Value: ptr(float64(remediation.Count)),
 			Labels: map[string]string{
 				"origin":      remediation.Origin,
@@ -389,8 +389,11 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	case "allow":
 	case "captcha":
 		return b.checkCaptcha(ctx, parsed, "crowdsec")
-	case "deny", "error":
+	case "deny":
 		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
+		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
+	case "error":
+		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "error"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	default:
 		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
