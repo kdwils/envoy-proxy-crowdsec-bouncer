@@ -109,18 +109,13 @@ func New(cfg config.Config) (*Bouncer, error) {
 		}
 	}
 
-	metricsCleanupInterval := cfg.Bouncer.CacheCleanupInterval
-	if metricsCleanupInterval == 0 {
-		metricsCleanupInterval = 5 * time.Minute
-	}
-
 	bouncer := &Bouncer{
 		DecisionCache:  dc,
 		WAF:            w,
 		CaptchaService: c,
 		TrustedProxies: trustedProxies,
 		config:         cfg,
-		metrics:        cache.New(cache.WithCleanupInterval[RemediationMetrics](metricsCleanupInterval)),
+		metrics:        cache.New(cache.WithCleanupInterval[RemediationMetrics](cfg.Bouncer.CacheCleanupInterval)),
 	}
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {

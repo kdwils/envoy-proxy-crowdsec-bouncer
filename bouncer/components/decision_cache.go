@@ -25,11 +25,6 @@ func NewDecisionCache(apiKey, apiURL, tickerInterval string, cleanupInterval tim
 	if err != nil {
 		return nil, err
 	}
-
-	if cleanupInterval == 0 {
-		cleanupInterval = 5 * time.Minute
-	}
-
 	dc := &CrowdSecDecisionCache{
 		stream: stream,
 		cache:  cache.New(cache.WithCleanupInterval[models.Decision](cleanupInterval)),
