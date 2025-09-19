@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -14,6 +15,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/cache"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -1214,4 +1216,50 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
 		}
 	})
+}
+
+func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
+	r := Bouncer{metrics: cache.New[RemediationMetrics]()}
+
+	r.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed"})
+	r.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
+	r.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "captcha"})
+
+	allMetrics := r.CalculateMetrics(10 * time.Second)
+
+	require.Len(t, allMetrics.RemediationComponents, 1)
+	component := allMetrics.RemediationComponents[0]
+	require.Len(t, component.Metrics, 1)
+
+	detailedMetrics := component.Metrics[0]
+	require.Len(t, detailedMetrics.Items, 3)
+
+	itemsByName := make(map[string]*models.MetricsDetailItem)
+	for _, item := range detailedMetrics.Items {
+		itemsByName[*item.Name] = item
+	}
+
+	processedItem := itemsByName["processed"]
+	require.NotNil(t, processedItem)
+	require.Equal(t, "processed", *processedItem.Name)
+	require.Equal(t, "requests", *processedItem.Unit)
+	require.Equal(t, float64(1), *processedItem.Value)
+	require.Equal(t, "envoy-proxy-bouncer", processedItem.Labels["origin"])
+	require.Equal(t, "processed", processedItem.Labels["remediation"])
+
+	banItem := itemsByName["ban"]
+	require.NotNil(t, banItem)
+	require.Equal(t, "ban", *banItem.Name)
+	require.Equal(t, "requests", *banItem.Unit)
+	require.Equal(t, float64(1), *banItem.Value)
+	require.Equal(t, "crowdsec", banItem.Labels["origin"])
+	require.Equal(t, "ban", banItem.Labels["remediation"])
+
+	captchaItem := itemsByName["captcha"]
+	require.NotNil(t, captchaItem)
+	require.Equal(t, "captcha", *captchaItem.Name)
+	require.Equal(t, "requests", *captchaItem.Unit)
+	require.Equal(t, float64(1), *captchaItem.Value)
+	require.Equal(t, "crowdsec", captchaItem.Labels["origin"])
+	require.Equal(t, "captcha", captchaItem.Labels["remediation"])
 }

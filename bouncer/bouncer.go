@@ -143,8 +143,8 @@ func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetr
 
 	for _, remediation := range currentMetrics.Remediation {
 		items = append(items, &models.MetricsDetailItem{
-			Name:  ptr(remediation.Name),
-			Unit:  ptr("requests"),
+			Name:  ptr(remediation.RemediationType),
+			Unit:  ptr(remediation.Name),
 			Value: ptr(float64(remediation.Count)),
 			Labels: map[string]string{
 				"origin":      remediation.Origin,

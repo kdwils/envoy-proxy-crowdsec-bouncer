@@ -146,6 +146,11 @@ mb.EXPECT().Bounce(gomock.Any(), "1.2.3.4", gomock.Any()).Return(false, nil)
 mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 ```
 
+**Test Assertions**:
+- NEVER use `require.Contains()` or `assert.Contains()` for unit tests - it's lazy and inaccurate
+- Always use exact equality checks like `require.Equal()` for precise validation
+- Test exact values, not partial matches
+
 **Mock Locations**:
 - `remediation/mocks/` - Bouncer and WAF mocks
 - `server/mocks/` - Captcha interface mocks
