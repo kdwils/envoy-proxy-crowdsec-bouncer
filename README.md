@@ -57,6 +57,7 @@ bouncer:
   metrics: false
   lapiURL: "http://crowdsec:8080"
   apiKey: "<lapi-key>"
+  cacheCleanupInterval: "5m"                # How often to clean up expired cache entries (optional)
 
 waf:
   enabled: true 
@@ -68,10 +69,10 @@ captcha:
   provider: "recaptcha"                     # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
-  callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks 
+  callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks
                                             # If the bouncer is hosted at https://my-domain.com the callbackURL should be https://my-domain.com
-
-  cacheDuration: "15m"                      # How long to cache sessions
+  sessionDuration: "5m"                    # How long captcha verification is valid
+  cacheCleanupInterval: "5m"                # How often to clean up expired cache entries (optional)
 ```
 
 Run with config file:
@@ -97,6 +98,7 @@ export ENVOY_BOUNCER_BOUNCER_APIKEY=your-lapi-bouncer-api-key
 export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
 export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=5s
 export ENVOY_BOUNCER_BOUNCER_METRICS=false
+export ENVOY_BOUNCER_BOUNCER_CACHECLEANUPINTERVAL=5m
 
 # Trusted proxies (comma-separated)
 export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
@@ -112,7 +114,8 @@ export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
-export ENVOY_BOUNCER_CAPTCHA_CACHEDURATION=1h
+export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=5m
+export ENVOY_BOUNCER_CAPTCHA_CACHECLEANUPINTERVAL=5m
 ```
 
 ### Configuration Precedence
@@ -154,13 +157,15 @@ bouncer:
   enabled: false
   metrics: false
   tickerInterval: "10s"
+  cacheCleanupInterval: "5m"
 
 waf:
   enabled: false
 
 captcha:
   enabled: false
-  cacheDuration: "15m"
+  sessionDuration: "5m"
+  cacheCleanupInterval: "5m"
 ```
 
 ## CAPTCHA Configuration

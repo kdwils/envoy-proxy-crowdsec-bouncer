@@ -14,6 +14,7 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	"github.com/crowdsecurity/go-cs-lib/version"
+
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/cache"
@@ -89,7 +90,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 	}
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval)
+		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval, cfg.Bouncer.CacheCleanupInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +115,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 		CaptchaService: c,
 		TrustedProxies: trustedProxies,
 		config:         cfg,
-		metrics:        cache.New[RemediationMetrics](),
+		metrics:        cache.New(cache.WithCleanupInterval[RemediationMetrics](cfg.Bouncer.CacheCleanupInterval)),
 	}
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
@@ -388,7 +389,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	switch result.Action {
 	case "allow":
 	case "captcha":
-		captchaResult := b.checkCaptcha(ctx, parsed, "crowdsec")
+		captchaResult := b.checkCaptcha(ctx, parsed)
 		switch captchaResult.Action {
 		case "allow":
 			b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "allowed"})
@@ -413,7 +414,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "allowed"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 	case "captcha":
-		captchaResult := b.checkCaptcha(ctx, parsed, "crowdsec")
+		captchaResult := b.checkCaptcha(ctx, parsed)
 		switch captchaResult.Action {
 		case "allow":
 			b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "allowed"})
@@ -469,7 +470,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	}
 }
 
-func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, origin string) CheckedRequest {
+func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}

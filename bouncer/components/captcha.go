@@ -66,8 +66,8 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 
 	service := &CaptchaService{
 		Config:         cfg,
-		Cache:          cache.New[time.Time](),
-		SessionCache:   cache.New[CaptchaSession](),
+		Cache:          cache.New(cache.WithCleanupInterval[time.Time](cfg.CacheCleanupInterval)),
+		SessionCache:   cache.New(cache.WithCleanupInterval[CaptchaSession](cfg.SessionDuration)),
 		RequestTimeout: timeout,
 	}
 
@@ -147,7 +147,7 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, req VerificationReq
 
 	}
 
-	s.Cache.Set(req.IP, time.Now().Add(s.Config.CacheDuration))
+	s.Cache.Set(req.IP, time.Now().Add(s.Config.SessionDuration))
 	return &VerificationResult{
 		Success: true,
 		Message: "Captcha verified successfully",

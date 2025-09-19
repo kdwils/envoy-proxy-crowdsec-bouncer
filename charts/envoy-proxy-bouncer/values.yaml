@@ -45,6 +45,7 @@ config:
     metricsInterval: "30m" # @schema default: "30m"
     lapiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
     tickerInterval: "10s" # @schema default: "10s"
+    cacheCleanupInterval: "" # @schema default: ""
     apiKey: "" # @schema default: ""
     apiKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
@@ -66,7 +67,8 @@ config:
     secretKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
       key: "" # @schema default: ""
-    cacheDuration: "" # @schema default: ""
+    sessionDuration: "" # @schema default: ""
+    cacheCleanupInterval: "" # @schema default: ""
     callbackURL: "" # @schema default: ""
 
 autoscaling:

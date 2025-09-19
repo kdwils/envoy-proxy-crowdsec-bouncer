@@ -7,14 +7,34 @@ import (
 )
 
 type Cache[T any] struct {
-	entries map[string]T
-	mu      sync.RWMutex
+	entries         map[string]T
+	mu              sync.RWMutex
+	cleanupInterval time.Duration
 }
 
-func New[T any]() *Cache[T] {
-	return &Cache[T]{
-		mu:      sync.RWMutex{},
-		entries: make(map[string]T),
+type Option[T any] func(*Cache[T])
+
+func New[T any](opts ...Option[T]) *Cache[T] {
+	c := &Cache[T]{
+		mu:              sync.RWMutex{},
+		entries:         make(map[string]T),
+		cleanupInterval: 5 * time.Minute,
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	if c.cleanupInterval == 0 {
+		c.cleanupInterval = time.Minute * 5
+	}
+
+	return c
+}
+
+func WithCleanupInterval[T any](interval time.Duration) Option[T] {
+	return func(c *Cache[T]) {
+		c.cleanupInterval = interval
 	}
 }
 
@@ -45,15 +65,17 @@ func (c *Cache[T]) Size() int {
 
 func (c *Cache[T]) Keys() []string {
 	keys := make([]string, len(c.entries))
+	i := 0
 	for k := range c.entries {
-		keys = append(keys, k)
+		keys[i] = k
+		i++
 	}
 
 	return keys
 }
 
 func (c *Cache[T]) Cleanup(ctx context.Context, shouldDelete func(key string, value T) bool) {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(c.cleanupInterval)
 	defer ticker.Stop()
 
 	for {
