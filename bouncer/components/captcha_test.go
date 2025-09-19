@@ -146,10 +146,10 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
 		cfg := config.Captcha{
-			Enabled:       true,
-			Provider:      "recaptcha",
-			SecretKey:     "test",
-			CacheDuration: 1 * time.Hour,
+			Enabled:         true,
+			Provider:        "recaptcha",
+			SecretKey:       "test",
+			SessionDuration: 1 * time.Hour,
 		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
