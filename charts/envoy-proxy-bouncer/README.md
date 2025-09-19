@@ -16,11 +16,13 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.bouncer.apiKey | string | `""` |  |
 | config.bouncer.apiKeySecretRef.key | string | `""` |  |
 | config.bouncer.apiKeySecretRef.name | string | `""` |  |
+| config.bouncer.cacheCleanupInterval | string | `"5m"` |  |
 | config.bouncer.enabled | bool | `true` |  |
 | config.bouncer.lapiURL | string | `"http://crowdsec-service:8080"` |  |
 | config.bouncer.metrics | bool | `false` |  |
 | config.bouncer.metricsInterval | string | `"30m"` |  |
 | config.bouncer.tickerInterval | string | `"10s"` |  |
+| config.captcha.cacheCleanupInterval | string | `"5m"` |  |
 | config.captcha.cacheDuration | string | `""` |  |
 | config.captcha.callbackURL | string | `""` |  |
 | config.captcha.enabled | bool | `false` |  |

@@ -50,6 +50,10 @@
                                 }
                             }
                         },
+                        "cacheCleanupInterval": {
+                            "default": "5m",
+                            "type": "string"
+                        },
                         "enabled": {
                             "default": true,
                             "type": "boolean"
@@ -75,6 +79,10 @@
                 "captcha": {
                     "type": "object",
                     "properties": {
+                        "cacheCleanupInterval": {
+                            "default": "5m",
+                            "type": "string"
+                        },
                         "cacheDuration": {
                             "default": "",
                             "type": "string"

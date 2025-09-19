@@ -64,10 +64,15 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 		timeout = 10 * time.Second
 	}
 
+	cleanupInterval := cfg.CacheCleanupInterval
+	if cleanupInterval == 0 {
+		cleanupInterval = 5 * time.Minute
+	}
+
 	service := &CaptchaService{
 		Config:         cfg,
-		Cache:          cache.New[time.Time](),
-		SessionCache:   cache.New[CaptchaSession](),
+		Cache:          cache.New(cache.WithCleanupInterval[time.Time](cleanupInterval)),
+		SessionCache:   cache.New(cache.WithCleanupInterval[CaptchaSession](cleanupInterval)),
 		RequestTimeout: timeout,
 	}
 
