@@ -129,8 +129,8 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_SECRETKEY
               value: {{ .captcha.secretKey | quote }}
             {{- end }}
-            {{- with .captcha.cacheDuration }}
-            - name: ENVOY_BOUNCER_CAPTCHA_CACHEDURATION
+            {{- with .captcha.sessionDuration }}
+            - name: ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION
               value: {{ . | quote }}
             {{- end }}
             {{- with .captcha.callbackURL }}
