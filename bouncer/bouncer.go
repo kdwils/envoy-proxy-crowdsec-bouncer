@@ -37,7 +37,6 @@ type RemediationMetrics struct {
 
 type MetricLabels struct {
 	Name            string
-	Origin          string
 	RemediationType string
 }
 
@@ -259,14 +258,15 @@ func (b *Bouncer) GetMetrics() Metrics {
 	return metrics
 }
 
-// IncRemediationMetric increments a remediation metric with origin and remediation_type labels
+// IncRemediationMetric increments a remediation metric with envoy-proxy-bouncer origin
 func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
-	key := labels.Origin + ":" + labels.RemediationType
+	origin := "envoy-proxy-bouncer"
+	key := origin + ":" + labels.RemediationType
 	metric, exists := b.metrics.Get(key)
 	if !exists {
 		metric = RemediationMetrics{
 			Name:            labels.Name,
-			Origin:          labels.Origin,
+			Origin:          origin,
 			RemediationType: labels.RemediationType,
 			Count:           0,
 		}
@@ -379,7 +379,7 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 
 // Check runs bouncer first, then captcha if enabled, then WAF if enabled, and returns the result.
 func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
-	b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed"})
+	b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "processed"})
 
 	parsed := b.ParseCheckRequest(ctx, req)
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
@@ -388,31 +388,47 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	switch result.Action {
 	case "allow":
 	case "captcha":
-		return b.checkCaptcha(ctx, parsed, "crowdsec")
+		captchaResult := b.checkCaptcha(ctx, parsed, "crowdsec")
+		switch captchaResult.Action {
+		case "allow":
+			b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "allowed"})
+		case "error":
+			b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "errored"})
+		}
+		return captchaResult
 	case "deny":
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
+		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "denied"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	case "error":
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "error"})
+		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "errored"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	default:
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
+		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "denied"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
 	}
 
 	result = b.checkWAF(ctx, parsed)
 	switch result.Action {
 	case "allow":
+		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "allowed"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 	case "captcha":
-		return b.checkCaptcha(ctx, parsed, "crowdsec")
+		captchaResult := b.checkCaptcha(ctx, parsed, "crowdsec")
+		switch captchaResult.Action {
+		case "allow":
+			b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "allowed"})
+		case "error":
+			b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "errored"})
+		}
+		return captchaResult
 	case "deny", "ban":
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
+		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "denied"})
 		return result
 	case "error":
-		b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "error"})
+		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "errored"})
 		return result
 	default:
+		b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "errored"})
 		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
 	}
 }
@@ -472,7 +488,7 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, origi
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
 	}
 
-	b.IncRemediationMetric(MetricLabels{Name: "requests", Origin: origin, RemediationType: "captcha"})
+	b.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "captcha"})
 	return CheckedRequest{
 		IP:          parsed.RealIP,
 		Action:      "captcha",

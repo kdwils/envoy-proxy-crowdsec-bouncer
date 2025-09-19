@@ -593,7 +593,7 @@ func TestBouncer_Check(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":                  {Name: "requests", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:denied":    {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "denied", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -623,7 +623,7 @@ func TestBouncer_Check(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:error":                {Name: "requests", Origin: "crowdsec", RemediationType: "error", Count: 1},
+				"envoy-proxy-bouncer:errored":   {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "errored", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -653,7 +653,7 @@ func TestBouncer_Check(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":                  {Name: "requests", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"envoy-proxy-bouncer:denied":    {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "denied", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -703,6 +703,7 @@ func TestBouncer_Check(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"envoy-proxy-bouncer:allowed":   {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "allowed", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -824,6 +825,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
+				"envoy-proxy-bouncer:allowed":   {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "allowed", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1100,7 +1102,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":              {Name: "requests", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"envoy-proxy-bouncer:captcha":   {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1139,7 +1141,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":              {Name: "requests", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"envoy-proxy-bouncer:captcha":   {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1208,7 +1210,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
 				"envoy-proxy-bouncer:processed": {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":              {Name: "requests", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"envoy-proxy-bouncer:captcha":   {Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1221,9 +1223,9 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 	r := Bouncer{metrics: cache.New[RemediationMetrics]()}
 
-	r.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "envoy-proxy-bouncer", RemediationType: "processed"})
-	r.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "ban"})
-	r.IncRemediationMetric(MetricLabels{Name: "requests", Origin: "crowdsec", RemediationType: "captcha"})
+	r.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "processed"})
+	r.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "denied"})
+	r.IncRemediationMetric(MetricLabels{Name: "requests", RemediationType: "captcha"})
 
 	allMetrics := r.CalculateMetrics(10 * time.Second)
 
@@ -1247,19 +1249,19 @@ func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 	require.Equal(t, "envoy-proxy-bouncer", processedItem.Labels["origin"])
 	require.Equal(t, "processed", processedItem.Labels["remediation"])
 
-	banItem := itemsByUnit["ban"]
-	require.NotNil(t, banItem)
-	require.Equal(t, "requests", *banItem.Name)
-	require.Equal(t, "ban", *banItem.Unit)
-	require.Equal(t, float64(1), *banItem.Value)
-	require.Equal(t, "crowdsec", banItem.Labels["origin"])
-	require.Equal(t, "ban", banItem.Labels["remediation"])
+	deniedItem := itemsByUnit["denied"]
+	require.NotNil(t, deniedItem)
+	require.Equal(t, "requests", *deniedItem.Name)
+	require.Equal(t, "denied", *deniedItem.Unit)
+	require.Equal(t, float64(1), *deniedItem.Value)
+	require.Equal(t, "envoy-proxy-bouncer", deniedItem.Labels["origin"])
+	require.Equal(t, "denied", deniedItem.Labels["remediation"])
 
 	captchaItem := itemsByUnit["captcha"]
 	require.NotNil(t, captchaItem)
 	require.Equal(t, "requests", *captchaItem.Name)
 	require.Equal(t, "captcha", *captchaItem.Unit)
 	require.Equal(t, float64(1), *captchaItem.Value)
-	require.Equal(t, "crowdsec", captchaItem.Labels["origin"])
+	require.Equal(t, "envoy-proxy-bouncer", captchaItem.Labels["origin"])
 	require.Equal(t, "captcha", captchaItem.Labels["remediation"])
 }
