@@ -56,6 +56,20 @@ func (mr *MockDecisionCacheMockRecorder) GetDecision(ctx, ip any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDecision", reflect.TypeOf((*MockDecisionCache)(nil).GetDecision), ctx, ip)
 }
 
+// Size mocks base method.
+func (m *MockDecisionCache) Size() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Size")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// Size indicates an expected call of Size.
+func (mr *MockDecisionCacheMockRecorder) Size() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Size", reflect.TypeOf((*MockDecisionCache)(nil).Size))
+}
+
 // Sync mocks base method.
 func (m *MockDecisionCache) Sync(ctx context.Context) error {
 	m.ctrl.T.Helper()

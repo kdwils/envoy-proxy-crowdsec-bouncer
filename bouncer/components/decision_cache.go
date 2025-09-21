@@ -83,6 +83,13 @@ func (dc *CrowdSecDecisionCache) GetDecision(ctx context.Context, ip string) (*m
 	return &decision, nil
 }
 
+func (dc *CrowdSecDecisionCache) Size() int {
+	if dc.cache == nil {
+		return 0
+	}
+	return dc.cache.Size()
+}
+
 func (dc *CrowdSecDecisionCache) Sync(ctx context.Context) error {
 	if dc.stream == nil {
 		return errors.New("stream not initialized")
