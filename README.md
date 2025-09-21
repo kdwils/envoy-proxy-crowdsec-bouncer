@@ -248,6 +248,16 @@ cscli metrics
 
 This project is tested in Kubernetes clusters with Envoy Gateway. For other environments, please open an issue if you encounter problems.
 
+### ⚠️ Breaking Changes: 
+
+#### SecurityPolicy Configuration 09-21-25
+
+Starting from version 0.2.0, SecurityPolicies are no longer created at the Gateway level due to limitations with redirect flows for CAPTCHA functionality. Individual HTTPRoutes cannot be excluded from gateway-level policies, which breaks the bouncer's redirect mechanism.
+
+SecurityPolicies applied at the gateway level for the bouncer will cause infinite redirects.
+
+Migration Required: SecurityPolicies must now be created at the HTTPRoute level per namespace. See the [SecurityPolicy Configuration](#securitypolicy-configuration) section below for examples.
+
 ### Kubernetes
 
 The bouncer can be deployed in a Kubernetes cluster alongside Envoy Gateway. See [examples/deploy/README.md](examples/deploy/README.md) for a flat YAML example.
@@ -265,11 +275,118 @@ helm repo update
 Install the chart:
 ```bash
 helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
-  --set crowdsec.bouncer.enabled=true \
-  --set crowdsec.bouncer.apiKey=<lapi-key> \
-  --set crowdsec.bouncer.lapiURL=<your-crowdsec-host>:<port> \
-  --set crowdsec.trustedProxies=<your-trusted-proxies>
+  --set config.bouncer.enabled=true \
+  --set config.bouncer.apiKey=<lapi-key> \
+  --set config.bouncer.lapiURL=<your-crowdsec-host>:<port> \
+  --set config.trustedProxies=<your-trusted-proxies>
 ```
+
+For cross-namespace SecurityPolicy access, enable the ReferenceGrant:
+```bash
+helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
+  --set config.bouncer.enabled=true \
+  --set config.bouncer.apiKey=<lapi-key> \
+  --set config.bouncer.lapiURL=<your-crowdsec-host>:<port> \
+  --set referenceGrant.create=true \
+  --set referenceGrant.fromNamespaces="{media,argocd,blog}"
+```
+
+### SecurityPolicy Configuration
+
+SecurityPolicies must be created at the HTTPRoute level to ensure proper functionality with CAPTCHA redirects. Create a SecurityPolicy for each namespace that contains HTTPRoutes you want to protect.
+
+#### Creating security policies 
+
+1. Namespace: Create the SecurityPolicy in the same namespace as your HTTPRoutes
+2. Service Name: Update the service name to match your bouncer deployment
+3. Service Namespace: Ensure the namespace matches where the bouncer is deployed
+4. Port: Use port 8080 for the gRPC ext_authz service
+5. Target Multiple Routes: You can target multiple HTTPRoutes in the same SecurityPolicy
+
+If an a set of HTTPRoutes exist like so:
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: plex
+  namespace: media
+spec:
+  hostnames:
+    - plex.my-domain.com
+  parentRefs:
+    - name: my-gateway
+      namespace: envoy-gateway-system
+  rules:
+    - backendRefs:
+        - name: plex
+          port: 32400
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: overseerr
+  namespace: media
+spec:
+  hostnames:
+    - overseerr.my-domain.com
+  parentRefs:
+    - name: my-gateway
+      namespace: envoy-gateway-system
+  rules:
+    - backendRefs:
+        - name: overseerr
+          port: 80
+```
+
+Then the following security policy could then be created to apply to them:
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: media
+  namespace: media
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: overseer
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: plex
+  extAuth:
+    grpc:
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: envoy-proxy-bouncer
+          port: 8080
+          namespace: envoy-gateway-system
+```
+
+#### ReferenceGrant Configuration
+
+When SecurityPolicies are created in different namespaces than the bouncer service, a ReferenceGrant is required to allow cross-namespace access. The Helm chart can automatically create this ReferenceGrant.
+
+Example ReferenceGrant configuration in values.yaml:
+```yaml
+referenceGrant:
+  create: true
+  fromNamespaces:
+    - media
+    - argocd
+    - blog
+    - vaultwarden
+```
+
+This creates a ReferenceGrant that allows SecurityPolicies from the specified namespaces to reference the bouncer service.
+
+#### Migration from Gateway-Level Policies
+
+If you were previously using gateway-level SecurityPolicies:
+
+1. Remove any existing gateway-level SecurityPolicies that target the bouncer
+2. Create namespace-specific SecurityPolicies targeting individual HTTPRoutes
+3. Ensure CAPTCHA endpoints (`/captcha/*`) are accessible and not protected by the bouncer
 
 Acknowledgements:
 * Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
