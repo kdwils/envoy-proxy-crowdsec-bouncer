@@ -26,7 +26,8 @@ securityContext:
 
 service:
   type: ClusterIP # @schema default: ClusterIP
-  port: 8080 # @schema default: 8080
+  grpcPort: 8080 # @schema default: 8080
+  httpPort: 8081 # @schema default: 8081
 
 resources:
   limits:
@@ -35,7 +36,8 @@ resources:
 
 config:
   server:
-    port: 8080 # @schema default: 8080
+    grpcPort: 8080 # @schema default: 8080
+    httpPort: 8081 # @schema default: 8081
     logLevel: "info" # @schema default: "info"
   trustedProxies: [] # @schema default: []
 
@@ -83,10 +85,6 @@ httproute:
   annotations: {} # @schema default: {}
   parentRefs: [] # @schema default: []
   hostnames: [] # @schema default: []
-  rules: # @schema default: [{"path": {"type": "PathPrefix", "value": "/"}}]
-    - path:
-        type: PathPrefix # @schema default: "PathPrefix"
-        value: "/" # @schema default: "/"
 
 referenceGrant:
   create: false # @schema default: false

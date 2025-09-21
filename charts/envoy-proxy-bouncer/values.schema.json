@@ -125,13 +125,17 @@
                 "server": {
                     "type": "object",
                     "properties": {
+                        "grpcPort": {
+                            "default": 8080,
+                            "type": "integer"
+                        },
+                        "httpPort": {
+                            "default": 8081,
+                            "type": "integer"
+                        },
                         "logLevel": {
                             "default": "info",
                             "type": "string"
-                        },
-                        "port": {
-                            "default": 8080,
-                            "type": "integer"
                         }
                     }
                 },
@@ -314,8 +318,12 @@
         "service": {
             "type": "object",
             "properties": {
-                "port": {
+                "grpcPort": {
                     "default": 8080,
+                    "type": "integer"
+                },
+                "httpPort": {
+                    "default": 8081,
                     "type": "integer"
                 },
                 "type": {

@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.1.3](https://img.shields.io/badge/Version-0.1.3-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.1.3](https://img.shields.io/badge/AppVersion-v0.1.3-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.0](https://img.shields.io/badge/AppVersion-v0.2.0-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -31,8 +31,9 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.captcha.secretKeySecretRef.name | string | `""` |  |
 | config.captcha.sessionDuration | string | `""` |  |
 | config.captcha.siteKey | string | `""` |  |
+| config.server.grpcPort | int | `8080` |  |
+| config.server.httpPort | int | `8081` |  |
 | config.server.logLevel | string | `"info"` |  |
-| config.server.port | int | `8080` |  |
 | config.trustedProxies | list | `[]` |  |
 | config.waf.apiKey | string | `""` |  |
 | config.waf.apiKeySecretRef.key | string | `""` |  |
@@ -62,7 +63,8 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | securityContext.readOnlyRootFilesystem | bool | `true` |  |
 | securityContext.runAsNonRoot | bool | `true` |  |
 | securityContext.runAsUser | int | `1000` |  |
-| service.port | int | `8080` |  |
+| service.grpcPort | int | `8080` |  |
+| service.httpPort | int | `8081` |  |
 | service.type | string | `"ClusterIP"` |  |
 | serviceAccount.create | bool | `true` |  |
 | serviceAccount.name | string | `""` |  |
