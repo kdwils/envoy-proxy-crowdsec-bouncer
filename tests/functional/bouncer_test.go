@@ -372,8 +372,8 @@ func TestBouncer(t *testing.T) {
 
 	t.Run("Verify metrics after basic scenarios", func(t *testing.T) {
 		localMetrics := bouncer.GetMetrics()
-		require.Equal(t, int64(6), localMetrics.Remediation["crowdsec:processed"].Count)
-		require.Equal(t, int64(3), localMetrics.Remediation["crowdsec:ban"].Count)
+		require.Equal(t, int64(3), localMetrics.Remediation["CAPI:bypass"].Count)
+		require.Equal(t, int64(3), localMetrics.Remediation["CAPI:ban"].Count)
 
 		allMetrics := bouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
 		require.Len(t, allMetrics.RemediationComponents, 1)
@@ -745,8 +745,8 @@ func TestBouncerWithCaptcha(t *testing.T) {
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		localMetrics := testBouncer.GetMetrics()
-		require.Equal(t, int64(3), localMetrics.Remediation["crowdsec:processed"].Count)
-		require.Equal(t, int64(2), localMetrics.Remediation["crowdsec:captcha"].Count)
+		require.Equal(t, int64(1), localMetrics.Remediation["CAPI:bypass"].Count)
+		require.Equal(t, int64(2), localMetrics.Remediation["CAPI:captcha"].Count)
 
 		allMetrics := testBouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
 		require.Len(t, allMetrics.RemediationComponents, 1)

@@ -592,8 +592,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":    {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"CAPI:ban":    {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -622,8 +621,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":   {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"CAPI:ban":   {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -652,8 +650,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":    {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"CAPI:ban":    {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -702,8 +699,7 @@ func TestBouncer_Check(t *testing.T) {
 		// Verify metrics: 1 processed request (allowed through)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:bypass":   {Name: "processed", Origin: "crowdsec", RemediationType: "bypass", Count: 1},
+				"CAPI:bypass":   {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -824,8 +820,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		// Verify metrics: 1 processed request (everything disabled)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:bypass":   {Name: "processed", Origin: "crowdsec", RemediationType: "bypass", Count: 1},
+				"CAPI:bypass":   {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1101,8 +1096,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":   {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha":   {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1140,8 +1134,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":   {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha":   {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1209,8 +1202,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":   {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha":   {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1247,7 +1239,7 @@ func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 	require.Equal(t, "processed", *processedItem.Name)
 	require.Equal(t, "request", *processedItem.Unit)
 	require.Equal(t, float64(1), *processedItem.Value)
-	require.Equal(t, "crowdsec", processedItem.Labels["origin"])
+	require.Equal(t, "CAPI", processedItem.Labels["origin"])
 	require.Equal(t, "processed", processedItem.Labels["remediation"])
 
 	droppedDeniedItem := itemsByKey["dropped:ban"]
@@ -1255,7 +1247,7 @@ func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 	require.Equal(t, "dropped", *droppedDeniedItem.Name)
 	require.Equal(t, "request", *droppedDeniedItem.Unit)
 	require.Equal(t, float64(1), *droppedDeniedItem.Value)
-	require.Equal(t, "crowdsec", droppedDeniedItem.Labels["origin"])
+	require.Equal(t, "CAPI", droppedDeniedItem.Labels["origin"])
 	require.Equal(t, "ban", droppedDeniedItem.Labels["remediation"])
 
 	droppedCaptchaItem := itemsByKey["dropped:captcha"]
@@ -1263,6 +1255,6 @@ func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 	require.Equal(t, "dropped", *droppedCaptchaItem.Name)
 	require.Equal(t, "request", *droppedCaptchaItem.Unit)
 	require.Equal(t, float64(1), *droppedCaptchaItem.Value)
-	require.Equal(t, "crowdsec", droppedCaptchaItem.Labels["origin"])
+	require.Equal(t, "CAPI", droppedCaptchaItem.Labels["origin"])
 	require.Equal(t, "captcha", droppedCaptchaItem.Labels["remediation"])
 }
