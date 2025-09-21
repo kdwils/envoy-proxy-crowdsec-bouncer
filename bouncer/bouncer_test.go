@@ -592,7 +592,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:ban":    {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
+				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -621,7 +621,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:ban":   {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
+				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -650,7 +650,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:ban":    {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
+				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -699,7 +699,7 @@ func TestBouncer_Check(t *testing.T) {
 		// Verify metrics: 1 processed request (allowed through)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:bypass":   {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
+				"CAPI:bypass": {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -820,7 +820,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		// Verify metrics: 1 processed request (everything disabled)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:bypass":   {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
+				"CAPI:bypass": {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1096,7 +1096,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:captcha":   {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1134,7 +1134,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:captcha":   {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1202,7 +1202,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"CAPI:captcha":   {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
