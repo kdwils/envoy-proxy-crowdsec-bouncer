@@ -52,6 +52,8 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | imagePullSecrets | list | `[]` |  |
 | nameOverride | string | `""` |  |
 | podSecurityContext | object | `{}` |  |
+| referenceGrant.create | bool | `false` |  |
+| referenceGrant.fromNamespaces | list | `[]` |  |
 | replicaCount | int | `1` |  |
 | resources.limits.cpu | string | `"100m"` |  |
 | resources.limits.memory | string | `"128Mi"` |  |
@@ -60,9 +62,6 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | securityContext.readOnlyRootFilesystem | bool | `true` |  |
 | securityContext.runAsNonRoot | bool | `true` |  |
 | securityContext.runAsUser | int | `1000` |  |
-| securityPolicy.create | bool | `false` |  |
-| securityPolicy.gatewayName | string | `""` |  |
-| securityPolicy.gatewayNamespace | string | `"envoy-gateway-system"` |  |
 | service.port | int | `8080` |  |
 | service.type | string | `"ClusterIP"` |  |
 | serviceAccount.create | bool | `true` |  |

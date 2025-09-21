@@ -88,7 +88,7 @@ httproute:
         type: PathPrefix # @schema default: "PathPrefix"
         value: "/" # @schema default: "/"
 
-securityPolicy:
+referenceGrant:
   create: false # @schema default: false
-  gatewayName: "" # @schema default: ""
-  gatewayNamespace: "envoy-gateway-system" # @schema default: "envoy-gateway-system"
+  fromNamespaces: [] # @schema default: []
+

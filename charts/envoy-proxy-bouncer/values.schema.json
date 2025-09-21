@@ -250,6 +250,19 @@
         "podSecurityContext": {
             "type": "object"
         },
+        "referenceGrant": {
+            "type": "object",
+            "properties": {
+                "create": {
+                    "default": false,
+                    "type": "boolean"
+                },
+                "fromNamespaces": {
+                    "default": [],
+                    "type": "array"
+                }
+            }
+        },
         "replicaCount": {
             "default": 1,
             "type": "integer"
@@ -295,23 +308,6 @@
                 },
                 "runAsUser": {
                     "type": "integer"
-                }
-            }
-        },
-        "securityPolicy": {
-            "type": "object",
-            "properties": {
-                "create": {
-                    "default": false,
-                    "type": "boolean"
-                },
-                "gatewayName": {
-                    "default": "",
-                    "type": "string"
-                },
-                "gatewayNamespace": {
-                    "default": "envoy-gateway-system",
-                    "type": "string"
                 }
             }
         },
