@@ -1,0 +1,18 @@
+{{- if .Values.referenceGrant.create -}}
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: {{ include "envoy-proxy-bouncer.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  from:
+  {{- range .Values.referenceGrant.fromNamespaces }}
+  - group: gateway.envoyproxy.io
+    kind: SecurityPolicy
+    namespace: {{ . }}
+  {{- end }}
+  to:
+  - group: ""
+    kind: Service
+    name: {{ include "envoy-proxy-bouncer.fullname" . }}
+{{- end -}}
