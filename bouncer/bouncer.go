@@ -50,6 +50,7 @@ type WAF interface {
 type DecisionCache interface {
 	GetDecision(ctx context.Context, ip string) (*models.Decision, error)
 	Sync(ctx context.Context) error
+	Size() int
 }
 
 //go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
@@ -150,6 +151,14 @@ func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetr
 				"origin":      remediation.Origin,
 				"remediation": remediation.RemediationType,
 			},
+		})
+	}
+
+	if bouncer.DecisionCache != nil {
+		items = append(items, &models.MetricsDetailItem{
+			Name:  ptr("active_decisions"),
+			Unit:  ptr("decision"),
+			Value: ptr(float64(bouncer.DecisionCache.Size())),
 		})
 	}
 
@@ -261,7 +270,7 @@ func (b *Bouncer) GetMetrics() Metrics {
 
 // IncRemediationMetric increments a remediation metric with envoy-proxy-bouncer origin
 func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
-	origin := "envoy-proxy-bouncer"
+	origin := "crowdsec"
 	key := origin + ":" + labels.RemediationType
 	metric, exists := b.metrics.Get(key)
 	if !exists {
@@ -392,44 +401,44 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		captchaResult := b.checkCaptcha(ctx, parsed)
 		switch captchaResult.Action {
 		case "allow":
-			b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "allowed"})
+			b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
 		case "error":
-			b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "errored"})
+			b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		}
 		return captchaResult
 	case "deny":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "denied"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	case "error":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "errored"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 	default:
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "denied"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
 	}
 
 	result = b.checkWAF(ctx, parsed)
 	switch result.Action {
 	case "allow":
-		b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "allowed"})
+		b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
 	case "captcha":
 		captchaResult := b.checkCaptcha(ctx, parsed)
 		switch captchaResult.Action {
 		case "allow":
-			b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "allowed"})
+			b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
 		case "error":
-			b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "errored"})
+			b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		}
 		return captchaResult
 	case "deny", "ban":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "denied"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		return result
 	case "error":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "errored"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		return result
 	default:
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "errored"})
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
 	}
 }
