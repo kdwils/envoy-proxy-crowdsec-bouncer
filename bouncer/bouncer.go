@@ -157,8 +157,12 @@ func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetr
 	if bouncer.DecisionCache != nil {
 		items = append(items, &models.MetricsDetailItem{
 			Name:  ptr("active_decisions"),
-			Unit:  ptr("decision"),
+			Unit:  ptr("IPs"),
 			Value: ptr(float64(bouncer.DecisionCache.Size())),
+			Labels: map[string]string{
+				"origin":  "CAPI",
+				"ip_type": "",
+			},
 		})
 	}
 
@@ -270,7 +274,7 @@ func (b *Bouncer) GetMetrics() Metrics {
 
 // IncRemediationMetric increments a remediation metric with envoy-proxy-bouncer origin
 func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
-	origin := "crowdsec"
+	origin := "CAPI"
 	key := origin + ":" + labels.RemediationType
 	metric, exists := b.metrics.Get(key)
 	if !exists {
@@ -288,6 +292,19 @@ func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
 func (b *Bouncer) ResetMetrics() {
 	for _, k := range b.metrics.Keys() {
 		b.metrics.Delete(k)
+	}
+}
+
+func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
+	switch result.Action {
+	case "allow":
+		b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
+	case "deny":
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
+	case "captcha":
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "captcha"})
+	default:
+		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
 	}
 }
 
@@ -389,7 +406,6 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 
 // Check runs bouncer first, then captcha if enabled, then WAF if enabled, and returns the result.
 func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
-	b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "processed"})
 
 	parsed := b.ParseCheckRequest(ctx, req)
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
@@ -399,47 +415,42 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	case "allow":
 	case "captcha":
 		captchaResult := b.checkCaptcha(ctx, parsed)
-		switch captchaResult.Action {
-		case "allow":
-			b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
-		case "error":
-			b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
-		}
+		b.recordFinalMetric(captchaResult)
 		return captchaResult
 	case "deny":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
-		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
+		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
+		b.recordFinalMetric(finalResult)
+		return finalResult
 	case "error":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
-		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
+		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
+		b.recordFinalMetric(finalResult)
+		return finalResult
 	default:
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
-		return CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
+		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
+		b.recordFinalMetric(finalResult)
+		return finalResult
 	}
 
 	result = b.checkWAF(ctx, parsed)
 	switch result.Action {
 	case "allow":
-		b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
+		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
+		b.recordFinalMetric(finalResult)
+		return finalResult
 	case "captcha":
 		captchaResult := b.checkCaptcha(ctx, parsed)
-		switch captchaResult.Action {
-		case "allow":
-			b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
-		case "error":
-			b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
-		}
+		b.recordFinalMetric(captchaResult)
 		return captchaResult
 	case "deny", "ban":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
+		b.recordFinalMetric(result)
 		return result
 	case "error":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
+		b.recordFinalMetric(result)
 		return result
 	default:
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
-		return CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
+		finalResult := CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
+		b.recordFinalMetric(finalResult)
+		return finalResult
 	}
 }
 
@@ -498,7 +509,6 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Check
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
 	}
 
-	b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "captcha"})
 	return CheckedRequest{
 		IP:          parsed.RealIP,
 		Action:      "captcha",

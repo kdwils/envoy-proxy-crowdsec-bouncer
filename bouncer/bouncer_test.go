@@ -592,8 +592,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":    {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -622,8 +621,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":   {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -652,8 +650,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:ban":    {Name: "dropped", Origin: "crowdsec", RemediationType: "ban", Count: 1},
+				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -702,8 +699,7 @@ func TestBouncer_Check(t *testing.T) {
 		// Verify metrics: 1 processed request (allowed through)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:bypass":   {Name: "processed", Origin: "crowdsec", RemediationType: "bypass", Count: 1},
+				"CAPI:bypass": {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -824,8 +820,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		// Verify metrics: 1 processed request (everything disabled)
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:bypass":   {Name: "processed", Origin: "crowdsec", RemediationType: "bypass", Count: 1},
+				"CAPI:bypass": {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1101,8 +1096,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":   {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1140,8 +1134,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":   {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1209,8 +1202,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
-				"crowdsec:processed": {Name: "processed", Origin: "crowdsec", RemediationType: "processed", Count: 1},
-				"crowdsec:captcha":   {Name: "dropped", Origin: "crowdsec", RemediationType: "captcha", Count: 1},
+				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
 			},
 		}
 		actualMetrics := r.GetMetrics()
@@ -1221,7 +1213,16 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 }
 
 func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
-	r := Bouncer{metrics: cache.New[RemediationMetrics]()}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockCache := remediationmocks.NewMockDecisionCache(ctrl)
+	mockCache.EXPECT().Size().Return(5)
+
+	r := Bouncer{
+		metrics:       cache.New[RemediationMetrics](),
+		DecisionCache: mockCache,
+	}
 
 	r.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "processed"})
 	r.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
@@ -1234,35 +1235,51 @@ func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 	require.Len(t, component.Metrics, 1)
 
 	detailedMetrics := component.Metrics[0]
-	require.Len(t, detailedMetrics.Items, 3)
+	require.Len(t, detailedMetrics.Items, 4)
 
-	itemsByKey := make(map[string]*models.MetricsDetailItem)
+	var processedItem, droppedBanItem, droppedCaptchaItem, activeDecisionsItem *models.MetricsDetailItem
+
 	for _, item := range detailedMetrics.Items {
-		key := *item.Name + ":" + item.Labels["remediation"]
-		itemsByKey[key] = item
+		name := *item.Name
+		remediation := item.Labels["remediation"]
+
+		switch {
+		case name == "processed" && remediation == "processed":
+			processedItem = item
+		case name == "dropped" && remediation == "ban":
+			droppedBanItem = item
+		case name == "dropped" && remediation == "captcha":
+			droppedCaptchaItem = item
+		case name == "active_decisions":
+			activeDecisionsItem = item
+		}
 	}
 
-	processedItem := itemsByKey["processed:processed"]
 	require.NotNil(t, processedItem)
 	require.Equal(t, "processed", *processedItem.Name)
 	require.Equal(t, "request", *processedItem.Unit)
 	require.Equal(t, float64(1), *processedItem.Value)
-	require.Equal(t, "crowdsec", processedItem.Labels["origin"])
+	require.Equal(t, "CAPI", processedItem.Labels["origin"])
 	require.Equal(t, "processed", processedItem.Labels["remediation"])
 
-	droppedDeniedItem := itemsByKey["dropped:ban"]
-	require.NotNil(t, droppedDeniedItem)
-	require.Equal(t, "dropped", *droppedDeniedItem.Name)
-	require.Equal(t, "request", *droppedDeniedItem.Unit)
-	require.Equal(t, float64(1), *droppedDeniedItem.Value)
-	require.Equal(t, "crowdsec", droppedDeniedItem.Labels["origin"])
-	require.Equal(t, "ban", droppedDeniedItem.Labels["remediation"])
+	require.NotNil(t, droppedBanItem)
+	require.Equal(t, "dropped", *droppedBanItem.Name)
+	require.Equal(t, "request", *droppedBanItem.Unit)
+	require.Equal(t, float64(1), *droppedBanItem.Value)
+	require.Equal(t, "CAPI", droppedBanItem.Labels["origin"])
+	require.Equal(t, "ban", droppedBanItem.Labels["remediation"])
 
-	droppedCaptchaItem := itemsByKey["dropped:captcha"]
 	require.NotNil(t, droppedCaptchaItem)
 	require.Equal(t, "dropped", *droppedCaptchaItem.Name)
 	require.Equal(t, "request", *droppedCaptchaItem.Unit)
 	require.Equal(t, float64(1), *droppedCaptchaItem.Value)
-	require.Equal(t, "crowdsec", droppedCaptchaItem.Labels["origin"])
+	require.Equal(t, "CAPI", droppedCaptchaItem.Labels["origin"])
 	require.Equal(t, "captcha", droppedCaptchaItem.Labels["remediation"])
+
+	require.NotNil(t, activeDecisionsItem)
+	require.Equal(t, "active_decisions", *activeDecisionsItem.Name)
+	require.Equal(t, "IPs", *activeDecisionsItem.Unit)
+	require.Equal(t, float64(5), *activeDecisionsItem.Value)
+	require.Equal(t, "CAPI", activeDecisionsItem.Labels["origin"])
+	require.Equal(t, "", activeDecisionsItem.Labels["ip_type"])
 }
