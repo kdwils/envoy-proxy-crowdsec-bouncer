@@ -7,12 +7,12 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.config.server.grpcPort | default (.Values.config.server.port | default .Values.service.port) }}
+    - port: {{ .Values.service.grpcPort }}
       targetPort: grpc
       protocol: TCP
       name: grpc
-    {{- if .Values.config.server.httpPort }}
-    - port: {{ .Values.config.server.httpPort }}
+    {{- if .Values.config.captcha.enabled }}
+    - port: {{ .Values.service.httpPort }}
       targetPort: http
       protocol: TCP
       name: http

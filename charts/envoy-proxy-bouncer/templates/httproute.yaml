@@ -1,6 +1,7 @@
 {{- if .Values.httproute.enabled -}}
 {{- $fullName := include "envoy-proxy-bouncer.fullname" . -}}
-{{- $svcPort := .Values.service.port -}}
+{{- $grpcPort := .Values.service.grpcPort -}}
+{{- $httpPort := .Values.service.httpPort -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -23,16 +24,20 @@ spec:
     {{- end }}
   {{- end }}
   rules:
+    {{- if .Values.config.captcha.enabled }}
     - matches:
-        {{- range .Values.httproute.rules }}
         - path:
-            type: {{ .path.type | default "PathPrefix" }}
-            value: {{ .path.value | default "/" }}
-          {{- if .method }}
-          method: {{ .method }}
-          {{- end }}
-        {{- end }}
+            type: PathPrefix
+            value: /captcha
       backendRefs:
         - name: {{ $fullName }}
-          port: {{ $svcPort }}
+          port: {{ $httpPort }}
+    {{- end }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $grpcPort }}
 {{- end }}
