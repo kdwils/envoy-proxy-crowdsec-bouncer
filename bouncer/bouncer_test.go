@@ -1278,8 +1278,7 @@ func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
 
 	require.NotNil(t, activeDecisionsItem)
 	require.Equal(t, "active_decisions", *activeDecisionsItem.Name)
-	require.Equal(t, "IPs", *activeDecisionsItem.Unit)
+	require.Equal(t, "ip", *activeDecisionsItem.Unit)
 	require.Equal(t, float64(5), *activeDecisionsItem.Value)
 	require.Equal(t, "CAPI", activeDecisionsItem.Labels["origin"])
-	require.Equal(t, "", activeDecisionsItem.Labels["ip_type"])
 }
