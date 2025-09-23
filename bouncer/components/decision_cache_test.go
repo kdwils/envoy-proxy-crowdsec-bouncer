@@ -23,9 +23,9 @@ func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
 	testCache.Set("192.168.1.100", decision)
 
 	type fields struct {
-		stream *csbouncer.StreamBouncer
-		cache  *cache.Cache[models.Decision]
-		mu     *sync.RWMutex
+		stream    *csbouncer.StreamBouncer
+		decisions *cache.Cache[models.Decision]
+		mu        *sync.RWMutex
 	}
 	type args struct {
 		ctx context.Context
@@ -41,8 +41,8 @@ func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
 		{
 			name: "empty ip",
 			fields: fields{
-				cache: testCache,
-				mu:    &sync.RWMutex{},
+				decisions: testCache,
+				mu:        &sync.RWMutex{},
 			},
 			args: args{
 				ctx: context.Background(),
@@ -66,8 +66,8 @@ func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
 		{
 			name: "decision found in cache",
 			fields: fields{
-				cache: testCache,
-				mu:    &sync.RWMutex{},
+				decisions: testCache,
+				mu:        &sync.RWMutex{},
 			},
 			args: args{
 				ctx: context.Background(),
@@ -79,8 +79,8 @@ func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
 		{
 			name: "decision not found in cache",
 			fields: fields{
-				cache: testCache,
-				mu:    &sync.RWMutex{},
+				decisions: testCache,
+				mu:        &sync.RWMutex{},
 			},
 			args: args{
 				ctx: context.Background(),
@@ -93,10 +93,10 @@ func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dc := &CrowdSecDecisionCache{
-				stream: tt.fields.stream,
-				cache:  tt.fields.cache,
-				mu:     tt.fields.mu,
+			dc := &DecisionCache{
+				stream:    tt.fields.stream,
+				decisions: tt.fields.decisions,
+				mu:        tt.fields.mu,
 			}
 			got, err := dc.GetDecision(tt.args.ctx, tt.args.ip)
 			if (err != nil) != tt.wantErr {

@@ -56,6 +56,20 @@ func (mr *MockDecisionCacheMockRecorder) GetDecision(ctx, ip any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDecision", reflect.TypeOf((*MockDecisionCache)(nil).GetDecision), ctx, ip)
 }
 
+// GetOriginCounts mocks base method.
+func (m *MockDecisionCache) GetOriginCounts() map[string]int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOriginCounts")
+	ret0, _ := ret[0].(map[string]int)
+	return ret0
+}
+
+// GetOriginCounts indicates an expected call of GetOriginCounts.
+func (mr *MockDecisionCacheMockRecorder) GetOriginCounts() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOriginCounts", reflect.TypeOf((*MockDecisionCache)(nil).GetOriginCounts))
+}
+
 // Size mocks base method.
 func (m *MockDecisionCache) Size() int {
 	m.ctrl.T.Helper()

@@ -127,12 +127,12 @@ func TestWithCleanupInterval(t *testing.T) {
 	}
 }
 
-func TestNewWithDefaultCleanupInterval(t *testing.T) {
+func TestNewWithNoCleanupInterval(t *testing.T) {
 	c := New[string]()
 
-	expected := 5 * time.Minute
+	expected := time.Duration(0)
 	if c.cleanupInterval != expected {
-		t.Errorf("expected default cleanup interval %v, got %v", expected, c.cleanupInterval)
+		t.Errorf("expected no cleanup interval %v, got %v", expected, c.cleanupInterval)
 	}
 }
 

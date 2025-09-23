@@ -334,6 +334,11 @@ func TestBouncer(t *testing.T) {
 			"x-forwarded-for": "192.168.1.100,10.0.0.1",
 		}))
 
+		originCounts := bouncer.DecisionCache.GetOriginCounts()
+		require.NotEmpty(t, originCounts, "should have active decisions before removal")
+		require.Contains(t, originCounts, "cscli", "should have cscli origin")
+		require.Equal(t, 1, originCounts["cscli"], "should have 1 decision from cscli origin")
+
 		_, _, err = lapiContainer.Exec(t.Context(), []string{
 			"cscli", "decisions", "delete", "-i", "192.168.1.100",
 		})
@@ -754,6 +759,20 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		component := allMetrics.RemediationComponents[0]
 		require.Equal(t, "envoy-proxy-crowdsec-bouncer", component.Type)
 		require.NotEmpty(t, component.Metrics)
+
+		detailedMetrics := component.Metrics[0]
+
+		activeDecisionsFound := false
+		for _, item := range detailedMetrics.Items {
+			if *item.Name == "active_decisions" {
+				activeDecisionsFound = true
+				origin := item.Labels["origin"]
+				require.NotEmpty(t, origin, "active_decisions metric should have origin label")
+				require.Equal(t, "ip", *item.Unit)
+				require.GreaterOrEqual(t, *item.Value, float64(0), "active_decisions count should be non-negative")
+			}
+		}
+		require.True(t, activeDecisionsFound, "should have active_decisions metrics from decision cache")
 
 		err := testBouncer.SendMetrics(ctx, allMetrics)
 		require.NoError(t, err)
