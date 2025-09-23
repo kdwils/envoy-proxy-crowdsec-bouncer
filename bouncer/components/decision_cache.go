@@ -14,21 +14,23 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 )
 
-type CrowdSecDecisionCache struct {
-	stream *csbouncer.StreamBouncer
-	cache  *cache.Cache[models.Decision]
-	mu     *sync.RWMutex
+type DecisionCache struct {
+	stream    *csbouncer.StreamBouncer
+	decisions *cache.Cache[models.Decision]
+	origins   *cache.Cache[int]
+	mu        *sync.RWMutex
 }
 
-func NewDecisionCache(apiKey, apiURL, tickerInterval string, cleanupInterval time.Duration) (*CrowdSecDecisionCache, error) {
+func NewDecisionCache(apiKey, apiURL, tickerInterval string, cleanupInterval time.Duration) (*DecisionCache, error) {
 	stream, err := newStreamBouncer(apiKey, apiURL, tickerInterval)
 	if err != nil {
 		return nil, err
 	}
-	dc := &CrowdSecDecisionCache{
-		stream: stream,
-		cache:  cache.New(cache.WithCleanupInterval[models.Decision](cleanupInterval)),
-		mu:     new(sync.RWMutex),
+	dc := &DecisionCache{
+		stream:    stream,
+		decisions: cache.New[models.Decision](),
+		origins:   cache.New[int](),
+		mu:        new(sync.RWMutex),
 	}
 
 	return dc, nil
@@ -58,14 +60,14 @@ func NewLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
 	return b, err
 }
 
-func (dc *CrowdSecDecisionCache) GetDecision(ctx context.Context, ip string) (*models.Decision, error) {
+func (dc *DecisionCache) GetDecision(ctx context.Context, ip string) (*models.Decision, error) {
 	logger := logger.FromContext(ctx).With(slog.String("method", "get_decision"))
 	if ip == "" {
 		logger.Debug("no ip provided")
 		return nil, errors.New("no ip found")
 	}
 
-	if dc.cache == nil {
+	if dc.decisions == nil {
 		logger.Debug("cache is nil")
 		return nil, errors.New("cache is nil")
 	}
@@ -73,7 +75,7 @@ func (dc *CrowdSecDecisionCache) GetDecision(ctx context.Context, ip string) (*m
 	logger = logger.With(slog.String("ip", ip))
 	logger.Debug("checking for decision")
 
-	decision, ok := dc.cache.Get(ip)
+	decision, ok := dc.decisions.Get(ip)
 	if !ok {
 		logger.Debug("not found in cache")
 		return nil, nil
@@ -83,14 +85,30 @@ func (dc *CrowdSecDecisionCache) GetDecision(ctx context.Context, ip string) (*m
 	return &decision, nil
 }
 
-func (dc *CrowdSecDecisionCache) Size() int {
-	if dc.cache == nil {
+func (dc *DecisionCache) Size() int {
+	if dc.decisions == nil {
 		return 0
 	}
-	return dc.cache.Size()
+	return dc.decisions.Size()
 }
 
-func (dc *CrowdSecDecisionCache) Sync(ctx context.Context) error {
+func (dc *DecisionCache) GetOriginCounts() map[string]int {
+	originCounts := make(map[string]int)
+	if dc.origins == nil {
+		return originCounts
+	}
+
+	for _, key := range dc.origins.Keys() {
+		count, exists := dc.origins.Get(key)
+		if exists && count > 0 {
+			originCounts[key] = count
+		}
+	}
+
+	return originCounts
+}
+
+func (dc *DecisionCache) Sync(ctx context.Context) error {
 	if dc.stream == nil {
 		return errors.New("stream not initialized")
 	}
@@ -118,8 +136,18 @@ func (dc *CrowdSecDecisionCache) Sync(ctx context.Context) error {
 				if decision == nil || decision.Value == nil {
 					continue
 				}
+
 				logger.Debug("deleting decision", "decision", decision)
-				dc.cache.Delete(*decision.Value)
+				dc.decisions.Delete(*decision.Value)
+
+				if decision.Origin == nil {
+					continue
+				}
+				count, ok := dc.origins.Get(*decision.Origin)
+				if !ok || count == 0 {
+					continue
+				}
+				dc.origins.Set(*decision.Origin, count-1)
 			}
 
 			for _, decision := range d.New {
@@ -127,7 +155,12 @@ func (dc *CrowdSecDecisionCache) Sync(ctx context.Context) error {
 					continue
 				}
 				logger.Debug("received new decision", "decision", decision)
-				dc.cache.Set(*decision.Value, *decision)
+				dc.decisions.Set(*decision.Value, *decision)
+				if decision.Origin == nil {
+					continue
+				}
+				count, _ := dc.origins.Get(*decision.Origin)
+				dc.origins.Set(*decision.Origin, count+1)
 			}
 		}
 	}

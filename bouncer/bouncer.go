@@ -51,6 +51,7 @@ type DecisionCache interface {
 	GetDecision(ctx context.Context, ip string) (*models.Decision, error)
 	Sync(ctx context.Context) error
 	Size() int
+	GetOriginCounts() map[string]int
 }
 
 //go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
@@ -116,7 +117,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 		CaptchaService: c,
 		TrustedProxies: trustedProxies,
 		config:         cfg,
-		metrics:        cache.New(cache.WithCleanupInterval[RemediationMetrics](cfg.Bouncer.CacheCleanupInterval)),
+		metrics:        cache.New[RemediationMetrics](),
 	}
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
@@ -155,14 +156,17 @@ func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetr
 	}
 
 	if bouncer.DecisionCache != nil {
-		items = append(items, &models.MetricsDetailItem{
-			Name:  ptr("active_decisions"),
-			Unit:  ptr("ip"),
-			Value: ptr(float64(bouncer.DecisionCache.Size())),
-			Labels: map[string]string{
-				"origin": "CAPI",
-			},
-		})
+		originCounts := bouncer.DecisionCache.GetOriginCounts()
+		for origin, count := range originCounts {
+			items = append(items, &models.MetricsDetailItem{
+				Name:  ptr("active_decisions"),
+				Unit:  ptr("ip"),
+				Value: ptr(float64(count)),
+				Labels: map[string]string{
+					"origin": origin,
+				},
+			})
+		}
 	}
 
 	windowSizeSeconds := int64(interval.Seconds())
@@ -253,10 +257,6 @@ func (b *Bouncer) SendMetrics(ctx context.Context, metrics *models.AllMetrics) e
 }
 
 func (b *Bouncer) GetMetrics() Metrics {
-	if b.metrics == nil {
-		return Metrics{Remediation: make(map[string]RemediationMetrics)}
-	}
-
 	metrics := Metrics{
 		Remediation: make(map[string]RemediationMetrics),
 	}

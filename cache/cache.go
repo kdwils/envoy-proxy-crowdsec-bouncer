@@ -16,17 +16,12 @@ type Option[T any] func(*Cache[T])
 
 func New[T any](opts ...Option[T]) *Cache[T] {
 	c := &Cache[T]{
-		mu:              sync.RWMutex{},
-		entries:         make(map[string]T),
-		cleanupInterval: 5 * time.Minute,
+		mu:      sync.RWMutex{},
+		entries: make(map[string]T),
 	}
 
 	for _, opt := range opts {
 		opt(c)
-	}
-
-	if c.cleanupInterval == 0 {
-		c.cleanupInterval = time.Minute * 5
 	}
 
 	return c
@@ -75,6 +70,10 @@ func (c *Cache[T]) Keys() []string {
 }
 
 func (c *Cache[T]) Cleanup(ctx context.Context, shouldDelete func(key string, value T) bool) {
+	if c.cleanupInterval == 0 {
+		return
+	}
+
 	ticker := time.NewTicker(c.cleanupInterval)
 	defer ticker.Stop()
 
