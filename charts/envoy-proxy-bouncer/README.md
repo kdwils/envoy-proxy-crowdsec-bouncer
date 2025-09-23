@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.0](https://img.shields.io/badge/AppVersion-v0.2.0-informational?style=flat-square)
+![Version: 0.2.1](https://img.shields.io/badge/Version-0.2.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.1](https://img.shields.io/badge/AppVersion-v0.2.1-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -45,8 +45,6 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | httproute.enabled | bool | `false` |  |
 | httproute.hostnames | list | `[]` |  |
 | httproute.parentRefs | list | `[]` |  |
-| httproute.rules[0].path.type | string | `"PathPrefix"` |  |
-| httproute.rules[0].path.value | string | `"/"` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/kdwils/envoy-proxy-bouncer"` |  |
 | image.tag | string | `""` |  |

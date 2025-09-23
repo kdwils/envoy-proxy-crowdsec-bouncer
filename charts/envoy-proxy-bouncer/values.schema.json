@@ -196,35 +196,6 @@
                 "parentRefs": {
                     "default": [],
                     "type": "array"
-                },
-                "rules": {
-                    "default": [
-                        {
-                            "path": {
-                                "type": "PathPrefix",
-                                "value": "/"
-                            }
-                        }
-                    ],
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "path": {
-                                "type": "object",
-                                "properties": {
-                                    "type": {
-                                        "default": "PathPrefix",
-                                        "type": "string"
-                                    },
-                                    "value": {
-                                        "default": "/",
-                                        "type": "string"
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         },
