@@ -158,6 +158,9 @@ func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetr
 	if bouncer.DecisionCache != nil {
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
 		for origin, count := range originCounts {
+			if count == 0 {
+				continue
+			}
 			items = append(items, &models.MetricsDetailItem{
 				Name:  ptr("active_decisions"),
 				Unit:  ptr("ip"),
