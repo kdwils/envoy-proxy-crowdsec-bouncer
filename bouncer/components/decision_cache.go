@@ -17,7 +17,6 @@ import (
 type DecisionCache struct {
 	stream    *csbouncer.StreamBouncer
 	decisions *cache.Cache[models.Decision]
-	origins   *cache.Cache[int]
 	mu        *sync.RWMutex
 }
 
@@ -29,7 +28,6 @@ func NewDecisionCache(apiKey, apiURL, tickerInterval string, cleanupInterval tim
 	dc := &DecisionCache{
 		stream:    stream,
 		decisions: cache.New[models.Decision](),
-		origins:   cache.New[int](),
 		mu:        new(sync.RWMutex),
 	}
 
@@ -94,14 +92,14 @@ func (dc *DecisionCache) Size() int {
 
 func (dc *DecisionCache) GetOriginCounts() map[string]int {
 	originCounts := make(map[string]int)
-	if dc.origins == nil {
+	if dc.decisions == nil {
 		return originCounts
 	}
 
-	for _, key := range dc.origins.Keys() {
-		count, exists := dc.origins.Get(key)
-		if exists && count > 0 {
-			originCounts[key] = count
+	for _, key := range dc.decisions.Keys() {
+		decision, exists := dc.decisions.Get(key)
+		if exists && decision.Origin != nil {
+			originCounts[*decision.Origin]++
 		}
 	}
 
@@ -139,15 +137,6 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 
 				logger.Debug("deleting decision", "decision", decision)
 				dc.decisions.Delete(*decision.Value)
-
-				if decision.Origin == nil {
-					continue
-				}
-				count, ok := dc.origins.Get(*decision.Origin)
-				if !ok || count == 0 {
-					continue
-				}
-				dc.origins.Set(*decision.Origin, count-1)
 			}
 
 			for _, decision := range d.New {
@@ -156,11 +145,6 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				}
 				logger.Debug("received new decision", "decision", decision)
 				dc.decisions.Set(*decision.Value, *decision)
-				if decision.Origin == nil {
-					continue
-				}
-				count, _ := dc.origins.Get(*decision.Origin)
-				dc.origins.Set(*decision.Origin, count+1)
 			}
 		}
 	}
