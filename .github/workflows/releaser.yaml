@@ -17,7 +17,7 @@ jobs:
     uses: kdwils/homelab-workflow/.github/workflows/update-image-tag.yml@main
     secrets: inherit
     with:
-      image: kdwils/envoy-proxy-bouncer
+      image: ${{ github.repository_owner }}/envoy-proxy-bouncer
       registry: ghcr.io
 
   charts:
