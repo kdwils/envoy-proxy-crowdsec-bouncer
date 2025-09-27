@@ -585,9 +585,11 @@ func TestBouncer_Check(t *testing.T) {
 		// WAF should not be called when bouncer denies
 
 		got := r.Check(context.Background(), req)
-		want := CheckedRequest{IP: "1.2.3.4", Action: "deny", Reason: "unknown decision cache action", HTTPStatus: 403}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %+v, want %+v", got, want)
+		if got.Action != "ban" || got.Reason != "crowdsec ban" || got.HTTPStatus != 403 || got.IP != "1.2.3.4" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
+		if got.Decision == nil {
+			t.Fatalf("expected decision to be set")
 		}
 
 		expectedMetrics := Metrics{
@@ -598,6 +600,27 @@ func TestBouncer_Check(t *testing.T) {
 		actualMetrics := r.GetMetrics()
 		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
 			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
+		}
+	})
+
+	t.Run("bouncer denies with scenario", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+
+		req := mkReq("2.2.2.2", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
+
+		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban"), Scenario: ptr("crowdsecurity/test"), Origin: ptr("CAPI"), Duration: ptr("1h"), Scope: ptr("Ip"), Value: ptr("2.2.2.2")}, nil)
+
+		got := r.Check(context.Background(), req)
+		if got.Reason != "crowdsecurity/test" {
+			t.Fatalf("expected scenario reason, got %q", got.Reason)
+		}
+		if got.Decision == nil || got.Decision.Scenario == nil || *got.Decision.Scenario != "crowdsecurity/test" {
+			t.Fatalf("expected decision scenario to be preserved")
 		}
 	})
 
@@ -843,9 +866,8 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban")}, nil)
 
 		got := r.Check(context.Background(), req)
-		want := CheckedRequest{IP: "2.2.2.2", Action: "deny", Reason: "unknown decision cache action", HTTPStatus: 403}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %+v, want %+v", got, want)
+		if got.Action != "ban" || got.Reason != "crowdsec ban" || got.HTTPStatus != 403 || got.IP != "2.2.2.2" {
+			t.Fatalf("unexpected result: %+v", got)
 		}
 	})
 

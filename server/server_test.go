@@ -5,12 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
+	"github.com/crowdsecurity/crowdsec/pkg/models"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
@@ -30,7 +33,85 @@ func TestServer_Check(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(500), resp.Status.Code)
+		deny := resp.GetDeniedResponse()
+		if assert.NotNil(t, deny) {
+			value, ok := findHeader(deny.Headers, "Content-Type")
+			assert.True(t, ok)
+			assert.Equal(t, defaultDeniedContentType, value)
+			assert.Equal(t, "remediator not initialized", deny.Body)
+		}
 	})
+
+	t.Run("request blocked with template", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		tmpl := "<html><body><h1>Access Denied</h1><p>IP: {{ .IP }}</p><p>Scenario: {{ .Decision.Scenario }}</p><p>Path: {{ .Request.Path }}</p></body></html>"
+		dir := t.TempDir()
+		path := filepath.Join(dir, "ban.html")
+		if err := os.WriteFile(path, []byte(tmpl), 0o644); err != nil {
+			t.Fatalf("failed to write template: %v", err)
+		}
+		originalPath := deniedTemplatePath
+		deniedTemplatePath = path
+		t.Cleanup(func() {
+			deniedTemplatePath = originalPath
+		})
+
+		cfg := config.Config{}
+
+		decision := &models.Decision{
+			Type:     strPtr("ban"),
+			Scenario: strPtr("crowdsecurity/http-bad"),
+			Origin:   strPtr("CAPI"),
+			Duration: strPtr("1h"),
+			Scope:    strPtr("Ip"),
+			Value:    strPtr("192.0.2.1"),
+		}
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
+			Action:     "ban",
+			Reason:     "crowdsecurity/http-bad",
+			HTTPStatus: 403,
+			Decision:   decision,
+			IP:         "192.0.2.1",
+		})
+
+		s := NewServer(cfg, mockBouncer, nil, log)
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{Address: "192.0.2.1"},
+						},
+					},
+				},
+				Request: &auth.AttributeContext_Request{
+					Http: &auth.AttributeContext_HttpRequest{
+						Headers: map[string]string{
+							":method": "GET",
+							":path":   "/blocked",
+						},
+					},
+				},
+			},
+		}
+
+		resp, err := s.Check(context.Background(), req)
+
+		assert.NoError(t, err)
+		assert.Equal(t, int32(403), resp.Status.Code)
+			deny := resp.GetDeniedResponse()
+			if assert.NotNil(t, deny) {
+				expectedBody := "<html><body><h1>Access Denied</h1><p>IP: 192.0.2.1</p><p>Scenario: crowdsecurity/http-bad</p><p>Path: /blocked</p></body></html>"
+				assert.Equal(t, expectedBody, deny.Body)
+				value, ok := findHeader(deny.Headers, "Content-Type")
+				assert.True(t, ok)
+				assert.Equal(t, templateDeniedContentType, value)
+			}
+		})
 
 	t.Run("bouncer error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -50,7 +131,13 @@ func TestServer_Check(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(500), resp.Status.Code)
-		assert.Contains(t, resp.GetDeniedResponse().Body, "test error")
+		deny := resp.GetDeniedResponse()
+		if assert.NotNil(t, deny) {
+			assert.Contains(t, deny.Body, "test error")
+			value, ok := findHeader(deny.Headers, "Content-Type")
+			assert.True(t, ok)
+			assert.Equal(t, defaultDeniedContentType, value)
+		}
 	})
 
 	t.Run("request blocked", func(t *testing.T) {
@@ -85,6 +172,13 @@ func TestServer_Check(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
+		deny := resp.GetDeniedResponse()
+		if assert.NotNil(t, deny) {
+			value, ok := findHeader(deny.Headers, "Content-Type")
+			assert.True(t, ok)
+			assert.Equal(t, defaultDeniedContentType, value)
+			assert.Equal(t, "blocked", deny.Body)
+		}
 	})
 
 	t.Run("request allowed", func(t *testing.T) {
@@ -142,7 +236,13 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(500), resp.Status.Code)
-		assert.Contains(t, resp.GetDeniedResponse().Body, "remediator error")
+		deny := resp.GetDeniedResponse()
+		if assert.NotNil(t, deny) {
+			assert.Contains(t, deny.Body, "remediator error")
+			value, ok := findHeader(deny.Headers, "Content-Type")
+			assert.True(t, ok)
+			assert.Equal(t, defaultDeniedContentType, value)
+		}
 	})
 
 	t.Run("remediator returns deny", func(t *testing.T) {
@@ -163,7 +263,13 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
-		assert.Contains(t, resp.GetDeniedResponse().Body, "blocked")
+		deny := resp.GetDeniedResponse()
+		if assert.NotNil(t, deny) {
+			assert.Contains(t, deny.Body, "blocked")
+			value, ok := findHeader(deny.Headers, "Content-Type")
+			assert.True(t, ok)
+			assert.Equal(t, defaultDeniedContentType, value)
+		}
 	})
 
 	t.Run("remediator returns allow", func(t *testing.T) {
@@ -658,7 +764,7 @@ func TestServer_getDeniedResponse(t *testing.T) {
 		code := envoy_type.StatusCode_Forbidden
 		body := "Access denied"
 
-		resp := getDeniedResponse(code, body)
+		resp := getDeniedResponse(code, body, nil)
 
 		assert.NotNil(t, resp)
 		assert.Equal(t, int32(code), resp.Status.Code)
@@ -667,6 +773,7 @@ func TestServer_getDeniedResponse(t *testing.T) {
 		assert.NotNil(t, deniedResp)
 		assert.Equal(t, code, deniedResp.Status.Code)
 		assert.Equal(t, body, deniedResp.Body)
+		assert.Len(t, deniedResp.Headers, 0)
 	})
 }
 
@@ -693,4 +800,20 @@ func TestServer_getRedirectResponse(t *testing.T) {
 		}
 		assert.True(t, found, "Location header not found")
 	})
+}
+
+func findHeader(headers []*core.HeaderValueOption, key string) (string, bool) {
+	for _, h := range headers {
+		if h == nil || h.Header == nil {
+			continue
+		}
+		if strings.EqualFold(h.Header.Key, key) {
+			return h.Header.Value, true
+		}
+	}
+	return "", false
+}
+
+func strPtr(s string) *string {
+	return &s
 }

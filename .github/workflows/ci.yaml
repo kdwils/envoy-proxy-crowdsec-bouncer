@@ -42,7 +42,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5.8.0
         with:
-          images: ghcr.io/kdwils/envoy-proxy-bouncer
+          images: ghcr.io/${{ github.repository_owner }}/envoy-proxy-bouncer
           tags: |
             type=sha,format=long
             type=ref,event=tag

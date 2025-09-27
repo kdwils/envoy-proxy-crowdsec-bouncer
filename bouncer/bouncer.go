@@ -383,6 +383,7 @@ type CheckedRequest struct {
 	Reason      string
 	HTTPStatus  int
 	RedirectURL string
+	Decision    *models.Decision
 }
 
 func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
@@ -419,10 +420,12 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		captchaResult := b.checkCaptcha(ctx, parsed)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
-	case "deny":
-		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
-		b.recordFinalMetric(finalResult)
-		return finalResult
+	case "deny", "ban":
+		if result.HTTPStatus == 0 {
+			result.HTTPStatus = http.StatusForbidden
+		}
+		b.recordFinalMetric(result)
+		return result
 	case "error":
 		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
 		b.recordFinalMetric(finalResult)
@@ -484,9 +487,13 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 
 	switch decisionType {
 	case "ban":
-		return CheckedRequest{IP: parsed.RealIP, Action: "ban", Reason: "crowdsec ban", HTTPStatus: http.StatusForbidden}
+		reason := "crowdsec ban"
+		if decision.Scenario != nil && *decision.Scenario != "" {
+			reason = *decision.Scenario
+		}
+		return CheckedRequest{IP: parsed.RealIP, Action: "ban", Reason: reason, HTTPStatus: http.StatusForbidden, Decision: decision}
 	case "captcha":
-		return CheckedRequest{IP: parsed.RealIP, Action: "captcha", Reason: "crowdsec captcha", HTTPStatus: http.StatusFound}
+		return CheckedRequest{IP: parsed.RealIP, Action: "captcha", Reason: "crowdsec captcha", HTTPStatus: http.StatusFound, Decision: decision}
 	default:
 		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "decision allows", HTTPStatus: http.StatusOK}
 	}
