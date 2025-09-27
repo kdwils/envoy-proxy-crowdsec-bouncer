@@ -166,6 +166,18 @@ captcha:
   enabled: false
   sessionDuration: "5m"
   cacheCleanupInterval: "5m"
+
+### Denied Response Templates
+
+If a file named `/ban.html` is present when the bouncer starts, it serves that HTML template for denied responses.
+
+Templates are rendered with Go's `html/template` engine, so variables use the `{{ ... }}` syntax. The following data is available inside the template:
+
+- `{{ .IP }}`, `{{ .Action }}`, `{{ .Reason }}`, `{{ .Timestamp }}`
+- Request context: `{{ .Request.Method }}`, `{{ .Request.Path }}`, `{{ .Request.Scheme }}`, `{{ .Request.Host }}`, `{{ .Request.Protocol }}`, `{{ .Request.URL }}`, and `{{ index .Request.Headers "x-forwarded-for" }}`
+- CrowdSec decision details when present: `{{ .Decision.Scenario }}`, `{{ .Decision.Origin }}`, `{{ .Decision.Scope }}`, `{{ .Decision.Value }}`, `{{ .Decision.Duration }}`, `{{ .Decision.Until }}`
+
+An example template is available at [examples/deploy/deny.html](examples/deploy/deny.html).
 ```
 
 ## CAPTCHA Configuration

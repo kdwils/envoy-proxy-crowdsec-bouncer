@@ -1,18 +1,25 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"sync"
+	"time"
 
+	"github.com/crowdsecurity/crowdsec/pkg/models"
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
@@ -21,21 +28,56 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+const (
+	defaultDeniedContentType  = "text/plain; charset=utf-8"
+	templateDeniedContentType = "text/html; charset=utf-8"
+	defaultDeniedTemplatePath = "/ban.html"
+)
+
+var deniedTemplatePath = defaultDeniedTemplatePath
+
 type Server struct {
 	auth.UnimplementedAuthorizationServer
-	bouncer Bouncer
-	captcha Captcha
-	config  config.Config
-	logger  *slog.Logger
+	bouncer           Bouncer
+	captcha           Captcha
+	config            config.Config
+	logger            *slog.Logger
+	deniedTemplate    *template.Template
+	deniedContentType string
 }
 
 func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, logger *slog.Logger) *Server {
-	return &Server{
+	s := &Server{
 		config:  config,
 		bouncer: bouncer,
 		logger:  logger,
 		captcha: captcha,
 	}
+
+	s.deniedTemplate, s.deniedContentType = s.loadDeniedTemplate()
+	if s.deniedTemplate == nil {
+		s.deniedContentType = defaultDeniedContentType
+	}
+
+	return s
+}
+
+func (s *Server) loadDeniedTemplate() (*template.Template, string) {
+	content, err := os.ReadFile(deniedTemplatePath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			s.logger.Error("failed to read denied response template", "path", deniedTemplatePath, "error", err)
+		}
+		return nil, ""
+	}
+
+	tmpl, err := template.New("denied_response").Parse(string(content))
+	if err != nil {
+		s.logger.Error("failed to parse denied response template", "error", err)
+		return nil, ""
+	}
+
+	return tmpl, templateDeniedContentType
 }
 
 // ServeDual starts both gRPC and HTTP servers concurrently
@@ -251,7 +293,8 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
 	if s.bouncer == nil {
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "remediator not initialized"), nil
+		body, headers := s.renderDeniedResponse(bouncer.CheckedRequest{Reason: "remediator not initialized"}, req)
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, body, headers), nil
 	}
 	result := s.bouncer.Check(ctx, req)
 	s.logger.Info("remediation result", slog.Any("result", result))
@@ -261,12 +304,134 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
 	case "deny", "ban":
-		return getDeniedResponse(envoy_type.StatusCode_Forbidden, result.Reason), nil
+		body, headers := s.renderDeniedResponse(result, req)
+		return getDeniedResponse(envoy_type.StatusCode_Forbidden, body, headers), nil
 	case "error":
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason), nil
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason, map[string]string{"Content-Type": defaultDeniedContentType}), nil
 	default:
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "unknown action"), nil
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "unknown action", map[string]string{"Content-Type": defaultDeniedContentType}), nil
 	}
+}
+
+func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest, req *auth.CheckRequest) (string, map[string]string) {
+	if s.deniedTemplate == nil {
+		reason := result.Reason
+		if reason == "" {
+			reason = "access denied"
+		}
+		return reason, map[string]string{"Content-Type": defaultDeniedContentType}
+	}
+
+	data := buildDeniedTemplateData(result, req)
+	var buf bytes.Buffer
+	if err := s.deniedTemplate.Execute(&buf, data); err != nil {
+		s.logger.Error("failed to render denied response template", "error", err)
+		reason := result.Reason
+		if reason == "" {
+			reason = "access denied"
+		}
+		return reason, map[string]string{"Content-Type": defaultDeniedContentType}
+	}
+
+	return buf.String(), map[string]string{"Content-Type": s.deniedContentType}
+}
+
+type deniedRequestData struct {
+	Method   string
+	Path     string
+	Host     string
+	Scheme   string
+	Protocol string
+	URL      string
+	Headers  map[string]string
+}
+
+type deniedTemplateData struct {
+	IP        string
+	Reason    string
+	Action    string
+	Timestamp time.Time
+	Request   deniedRequestData
+	Decision  *models.Decision
+}
+
+func buildDeniedTemplateData(result bouncer.CheckedRequest, req *auth.CheckRequest) deniedTemplateData {
+	data := deniedTemplateData{
+		IP:        result.IP,
+		Reason:    result.Reason,
+		Action:    result.Action,
+		Timestamp: time.Now().UTC(),
+		Decision:  result.Decision,
+	}
+
+	data.Request.Headers = map[string]string{}
+
+	if req == nil {
+		return data
+	}
+
+	attrs := req.GetAttributes()
+	if attrs == nil {
+		return data
+	}
+
+	reqAttr := attrs.GetRequest()
+	if reqAttr == nil {
+		return data
+	}
+
+	httpReq := reqAttr.GetHttp()
+	if httpReq == nil {
+		return data
+	}
+
+	headers := make(map[string]string, len(httpReq.GetHeaders()))
+	for k, v := range httpReq.GetHeaders() {
+		headers[k] = v
+	}
+
+	method := headers[":method"]
+	path := headers[":path"]
+	host := headers[":authority"]
+	scheme := headers[":scheme"]
+	proto := httpReq.GetProtocol()
+
+	url := ""
+	if scheme != "" && host != "" {
+		url = fmt.Sprintf("%s://%s%s", scheme, host, path)
+	}
+
+	data.Request = deniedRequestData{
+		Method:   method,
+		Path:     path,
+		Host:     host,
+		Scheme:   scheme,
+		Protocol: proto,
+		URL:      url,
+		Headers:  headers,
+	}
+
+	return data
+}
+
+func buildHeaderValues(headers map[string]string) []*envoy_core.HeaderValueOption {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	values := make([]*envoy_core.HeaderValueOption, 0, len(headers))
+	for k, v := range headers {
+		key := k
+		value := v
+		values = append(values, &envoy_core.HeaderValueOption{
+			Header: &envoy_core.HeaderValue{
+				Key:   key,
+				Value: value,
+			},
+		})
+	}
+
+	return values
 }
 
 func getAllowedResponse() *auth.CheckResponse {
@@ -278,7 +443,7 @@ func getAllowedResponse() *auth.CheckResponse {
 	}
 }
 
-func getDeniedResponse(code envoy_type.StatusCode, body string) *auth.CheckResponse {
+func getDeniedResponse(code envoy_type.StatusCode, body string, headers map[string]string) *auth.CheckResponse {
 	return &auth.CheckResponse{
 		Status: &status.Status{
 			Code: int32(code),
@@ -288,7 +453,8 @@ func getDeniedResponse(code envoy_type.StatusCode, body string) *auth.CheckRespo
 				Status: &envoy_type.HttpStatus{
 					Code: code,
 				},
-				Body: body,
+				Body:    body,
+				Headers: buildHeaderValues(headers),
 			},
 		},
 	}
