@@ -92,7 +92,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 	}
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval, cfg.Bouncer.CacheCleanupInterval)
+		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -617,7 +617,6 @@ func parseHTTPVersion(proto string) (int, int) {
 	proto = strings.TrimSpace(proto)
 	version, ok := strings.CutPrefix(proto, "HTTP/")
 	if !ok {
-
 		return 0, 0
 	}
 

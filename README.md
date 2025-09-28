@@ -55,12 +55,13 @@ trustedProxies:
 bouncer:
   enabled: true
   metrics: false
-  lapiURL: "http://crowdsec:8080"
+  tickerInterval: "10s"                     # How often to fetch decisions from LAPI
+  metricsInterval: "10m"                    # How often to report metrics to LAPI
+  lapiUrl: "http://crowdsec:8080"
   apiKey: "<lapi-key>"
-  cacheCleanupInterval: "5m"                # How often to clean up expired cache entries (optional)
 
 waf:
-  enabled: true 
+  enabled: true
   appSecURL: "http://appsec:7422"
   apiKey: "<lapi-key>"
 
@@ -69,10 +70,11 @@ captcha:
   provider: "recaptcha"                     # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
+  timeout: "10s"                           # Request timeout for CAPTCHA provider verification
   callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks
                                             # If the bouncer is hosted at https://my-domain.com the callbackURL should be https://my-domain.com
-  sessionDuration: "5m"                    # How long captcha verification is valid
-  cacheCleanupInterval: "5m"                # How often to clean up expired cache entries (optional)
+  sessionDuration: "15m"                   # How long captcha verification is valid
+  cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 ```
 
 Run with config file:
@@ -96,9 +98,9 @@ export ENVOY_BOUNCER_SERVER_PORT=8080
 export ENVOY_BOUNCER_BOUNCER_ENABLED=true
 export ENVOY_BOUNCER_BOUNCER_APIKEY=your-lapi-bouncer-api-key
 export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
-export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=5s
+export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=10s
+export ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL=10m
 export ENVOY_BOUNCER_BOUNCER_METRICS=false
-export ENVOY_BOUNCER_BOUNCER_CACHECLEANUPINTERVAL=5m
 
 # Trusted proxies (comma-separated)
 export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
@@ -113,8 +115,9 @@ export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
+export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
-export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=5m
+export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
 export ENVOY_BOUNCER_CAPTCHA_CACHECLEANUPINTERVAL=5m
 ```
 
@@ -153,19 +156,26 @@ server:
   httpPort: 8081  # Only used when captcha is enabled
   logLevel: "info"
 
+trustedProxies:
+  - 192.168.0.1
+  - 2001:db8::1
+  - 10.0.0.0/8
+  - 100.64.0.0/10
+
 bouncer:
   enabled: false
   metrics: false
   tickerInterval: "10s"
-  cacheCleanupInterval: "5m"
+  metricsInterval: "10m"
 
 waf:
   enabled: false
 
 captcha:
   enabled: false
-  sessionDuration: "5m"
-  cacheCleanupInterval: "5m"
+  timeout: "10s"
+  sessionDuration: "15m"
+  cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 ```
 
 ## CAPTCHA Configuration
