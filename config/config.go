@@ -36,20 +36,18 @@ type Captcha struct {
 }
 
 type Bouncer struct {
-	Enabled              bool          `yaml:"enabled" json:"enabled"`
-	Metrics              bool          `yaml:"metrics" json:"metrics"`
-	TickerInterval       string        `yaml:"tickerInterval" json:"tickerInterval"`
-	MetricsInterval      time.Duration `yaml:"metricsInterval" json:"metricsInterval"`
-	ApiKey               string        `yaml:"apiKey" json:"apiKey"`
-	LAPIURL              string        `yaml:"LAPIURL" json:"LAPIURL"`
-	CacheCleanupInterval time.Duration `yaml:"cacheCleanupInterval" json:"cacheCleanupInterval"`
+	Enabled         bool          `yaml:"enabled" json:"enabled"`
+	Metrics         bool          `yaml:"metrics" json:"metrics"`
+	TickerInterval  string        `yaml:"tickerInterval" json:"tickerInterval"`
+	MetricsInterval time.Duration `yaml:"metricsInterval" json:"metricsInterval"`
+	ApiKey          string        `yaml:"apiKey" json:"apiKey"`
+	LAPIURL         string        `yaml:"lapiUrl" json:"lapiUrl"`
 }
 
 type WAF struct {
-	Enabled   bool          `yaml:"enabled" json:"enabled"`
-	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
-	AppSecURL string        `yaml:"appSecURL" json:"appSecURL"`
-	ApiKey    string        `yaml:"apiKey" json:"apiKey"`
+	Enabled   bool   `yaml:"enabled" json:"enabled"`
+	AppSecURL string `yaml:"appSecURL" json:"appSecURL"`
+	ApiKey    string `yaml:"apiKey" json:"apiKey"`
 }
 
 func New(v *viper.Viper) (Config, error) {

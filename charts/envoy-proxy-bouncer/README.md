@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.2.1](https://img.shields.io/badge/Version-0.2.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.2](https://img.shields.io/badge/AppVersion-v0.2.2-informational?style=flat-square)
+![Version: 0.2.3](https://img.shields.io/badge/Version-0.2.3-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.2.3](https://img.shields.io/badge/AppVersion-v0.2.3-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -16,21 +16,21 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.bouncer.apiKey | string | `""` |  |
 | config.bouncer.apiKeySecretRef.key | string | `""` |  |
 | config.bouncer.apiKeySecretRef.name | string | `""` |  |
-| config.bouncer.cacheCleanupInterval | string | `""` |  |
 | config.bouncer.enabled | bool | `true` |  |
 | config.bouncer.lapiURL | string | `"http://crowdsec-service:8080"` |  |
 | config.bouncer.metrics | bool | `false` |  |
-| config.bouncer.metricsInterval | string | `"30m"` |  |
+| config.bouncer.metricsInterval | string | `"10m"` |  |
 | config.bouncer.tickerInterval | string | `"10s"` |  |
-| config.captcha.cacheCleanupInterval | string | `""` |  |
+| config.captcha.cacheCleanupInterval | string | `"5m"` |  |
 | config.captcha.callbackURL | string | `""` |  |
 | config.captcha.enabled | bool | `false` |  |
 | config.captcha.provider | string | `""` |  |
 | config.captcha.secretKey | string | `""` |  |
 | config.captcha.secretKeySecretRef.key | string | `""` |  |
 | config.captcha.secretKeySecretRef.name | string | `""` |  |
-| config.captcha.sessionDuration | string | `""` |  |
+| config.captcha.sessionDuration | string | `"15m"` |  |
 | config.captcha.siteKey | string | `""` |  |
+| config.captcha.timeout | string | `"10s"` |  |
 | config.server.grpcPort | int | `8080` |  |
 | config.server.httpPort | int | `8081` |  |
 | config.server.logLevel | string | `"info"` |  |
