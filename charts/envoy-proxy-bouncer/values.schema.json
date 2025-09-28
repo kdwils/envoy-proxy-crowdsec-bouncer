@@ -51,7 +51,7 @@
                             }
                         },
                         "enabled": {
-                            "default": false,
+                            "default": true,
                             "type": "boolean"
                         },
                         "lapiURL": {
