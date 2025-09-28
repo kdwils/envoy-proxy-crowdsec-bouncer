@@ -47,8 +47,10 @@ server:
   logLevel: "info"
 
 trustedProxies:
-  - 127.0.0.1
-  - ::1
+  - 192.168.0.1
+  - 2001:db8::1
+  - 10.0.0.0/8
+  - 100.64.0.0/10
 
 bouncer:
   enabled: true
@@ -155,8 +157,10 @@ server:
   logLevel: "info"
 
 trustedProxies:
-  - '192.168.0.1'
-  - '10.0.0.0/8'
+  - 192.168.0.1
+  - 2001:db8::1
+  - 10.0.0.0/8
+  - 100.64.0.0/10
 
 bouncer:
   enabled: false
