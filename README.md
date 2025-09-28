@@ -74,7 +74,7 @@ captcha:
   callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks
                                             # If the bouncer is hosted at https://my-domain.com the callbackURL should be https://my-domain.com
   sessionDuration: "15m"                   # How long captcha verification is valid
-  cacheCleanupInterval: "5m"                # How often to clean up expired cache entries (optional)
+  cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 ```
 
 Run with config file:
@@ -175,7 +175,7 @@ captcha:
   enabled: false
   timeout: "10s"
   sessionDuration: "15m"
-  cacheCleanupInterval: "5m"
+  cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 ```
 
 ## CAPTCHA Configuration
