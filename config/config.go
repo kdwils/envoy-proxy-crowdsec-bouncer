@@ -16,9 +16,10 @@ type Config struct {
 }
 
 type Server struct {
-	GRPCPort int    `yaml:"grpcPort" json:"grpcPort"`
-	HTTPPort int    `yaml:"httpPort" json:"httpPort"`
-	LogLevel string `yaml:"logLevel" json:"logLevel"`
+	GRPCPort        int    `yaml:"grpcPort" json:"grpcPort"`
+	HTTPPort        int    `yaml:"httpPort" json:"httpPort"`
+	LogLevel        string `yaml:"logLevel" json:"logLevel"`
+	BanTemplatePath string `yaml:"banTemplatePath" json:"banTemplatePath"`
 	// Deprecated: Use GRPCPort instead
 	Port int `yaml:"port" json:"port"`
 }

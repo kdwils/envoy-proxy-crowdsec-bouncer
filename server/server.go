@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"html/template"
@@ -28,13 +29,13 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+//go:embed templates/ban.html
+var defaultBanTemplate string
+
 const (
 	defaultDeniedContentType  = "text/plain; charset=utf-8"
 	templateDeniedContentType = "text/html; charset=utf-8"
-	defaultDeniedTemplatePath = "/ban.html"
 )
-
-var deniedTemplatePath = defaultDeniedTemplatePath
 
 type Server struct {
 	auth.UnimplementedAuthorizationServer
@@ -63,20 +64,33 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, logger *s
 }
 
 func (s *Server) loadDeniedTemplate() (*template.Template, string) {
-	content, err := os.ReadFile(deniedTemplatePath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			s.logger.Error("failed to read denied response template", "path", deniedTemplatePath, "error", err)
+	templateContent := defaultBanTemplate
+	templateSource := "embedded"
+	s.logger.Info("using embedded ban template")
+
+	if s.config.Server.BanTemplatePath != "" {
+		content, err := os.ReadFile(s.config.Server.BanTemplatePath)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				s.logger.Error("failed to read denied response template", "path", s.config.Server.BanTemplatePath, "error", err)
+			}
+			s.logger.Info("using embedded ban template as fallback")
+			return s.parseTemplate(templateContent, templateSource)
 		}
-		return nil, ""
+		templateContent = string(content)
+		templateSource = s.config.Server.BanTemplatePath
+		s.logger.Info("loaded custom ban template", "path", s.config.Server.BanTemplatePath)
 	}
 
-	tmpl, err := template.New("denied_response").Parse(string(content))
+	return s.parseTemplate(templateContent, templateSource)
+}
+
+func (s *Server) parseTemplate(content, source string) (*template.Template, string) {
+	tmpl, err := template.New("denied_response").Parse(content)
 	if err != nil {
-		s.logger.Error("failed to parse denied response template", "error", err)
+		s.logger.Error("failed to parse denied response template", "source", source, "error", err)
 		return nil, ""
 	}
-
 	return tmpl, templateDeniedContentType
 }
 

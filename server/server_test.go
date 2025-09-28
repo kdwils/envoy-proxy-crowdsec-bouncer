@@ -37,8 +37,8 @@ func TestServer_Check(t *testing.T) {
 		if assert.NotNil(t, deny) {
 			value, ok := findHeader(deny.Headers, "Content-Type")
 			assert.True(t, ok)
-			assert.Equal(t, defaultDeniedContentType, value)
-			assert.Equal(t, "remediator not initialized", deny.Body)
+			assert.Equal(t, templateDeniedContentType, value)
+			assert.Contains(t, deny.Body, "Access Blocked")
 		}
 	})
 
@@ -52,13 +52,12 @@ func TestServer_Check(t *testing.T) {
 		if err := os.WriteFile(path, []byte(tmpl), 0o644); err != nil {
 			t.Fatalf("failed to write template: %v", err)
 		}
-		originalPath := deniedTemplatePath
-		deniedTemplatePath = path
-		t.Cleanup(func() {
-			deniedTemplatePath = originalPath
-		})
 
-		cfg := config.Config{}
+		cfg := config.Config{
+			Server: config.Server{
+				BanTemplatePath: path,
+			},
+		}
 
 		decision := &models.Decision{
 			Type:     strPtr("ban"),
@@ -103,15 +102,15 @@ func TestServer_Check(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
-			deny := resp.GetDeniedResponse()
-			if assert.NotNil(t, deny) {
-				expectedBody := "<html><body><h1>Access Denied</h1><p>IP: 192.0.2.1</p><p>Scenario: crowdsecurity/http-bad</p><p>Path: /blocked</p></body></html>"
-				assert.Equal(t, expectedBody, deny.Body)
-				value, ok := findHeader(deny.Headers, "Content-Type")
-				assert.True(t, ok)
-				assert.Equal(t, templateDeniedContentType, value)
-			}
-		})
+		deny := resp.GetDeniedResponse()
+		if assert.NotNil(t, deny) {
+			expectedBody := "<html><body><h1>Access Denied</h1><p>IP: 192.0.2.1</p><p>Scenario: crowdsecurity/http-bad</p><p>Path: /blocked</p></body></html>"
+			assert.Equal(t, expectedBody, deny.Body)
+			value, ok := findHeader(deny.Headers, "Content-Type")
+			assert.True(t, ok)
+			assert.Equal(t, templateDeniedContentType, value)
+		}
+	})
 
 	t.Run("bouncer error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -176,8 +175,8 @@ func TestServer_Check(t *testing.T) {
 		if assert.NotNil(t, deny) {
 			value, ok := findHeader(deny.Headers, "Content-Type")
 			assert.True(t, ok)
-			assert.Equal(t, defaultDeniedContentType, value)
-			assert.Equal(t, "blocked", deny.Body)
+			assert.Equal(t, templateDeniedContentType, value)
+			assert.Contains(t, deny.Body, "Access Blocked")
 		}
 	})
 
@@ -265,10 +264,10 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		assert.Equal(t, int32(403), resp.Status.Code)
 		deny := resp.GetDeniedResponse()
 		if assert.NotNil(t, deny) {
-			assert.Contains(t, deny.Body, "blocked")
+			assert.Contains(t, deny.Body, "Access Blocked")
 			value, ok := findHeader(deny.Headers, "Content-Type")
 			assert.True(t, ok)
-			assert.Equal(t, defaultDeniedContentType, value)
+			assert.Equal(t, templateDeniedContentType, value)
 		}
 	})
 
@@ -345,7 +344,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
-		assert.Contains(t, resp.GetDeniedResponse().Body, "IP banned")
+		assert.Contains(t, resp.GetDeniedResponse().Body, "Access Blocked")
 	})
 
 	t.Run("remediator returns unknown action", func(t *testing.T) {
