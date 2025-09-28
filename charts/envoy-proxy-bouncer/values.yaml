@@ -42,12 +42,11 @@ config:
   trustedProxies: [] # @schema default: []
 
   bouncer:
-    enabled: true # @schema default: true
+    enabled: false # @schema default: false
     metrics: false # @schema default: false
-    metricsInterval: "30m" # @schema default: "30m"
+    metricsInterval: "10m" # @schema default: "10m"
     lapiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"
     tickerInterval: "10s" # @schema default: "10s"
-    cacheCleanupInterval: "" # @schema default: ""
     apiKey: "" # @schema default: ""
     apiKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
@@ -69,8 +68,9 @@ config:
     secretKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
       key: "" # @schema default: ""
-    sessionDuration: "" # @schema default: ""
-    cacheCleanupInterval: "" # @schema default: ""
+    sessionDuration: "15m" # @schema default: "15m"
+    timeout: "10s" # @schema default: "10s"
+    cacheCleanupInterval: "5m" # @schema default: "5m"
     callbackURL: "" # @schema default: ""
 
 autoscaling:

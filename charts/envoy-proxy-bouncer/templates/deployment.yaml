@@ -77,20 +77,12 @@ spec:
             - name: ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .bouncer.cacheCleanupInterval }}
-            - name: ENVOY_BOUNCER_BOUNCER_CACHECLEANUPINTERVAL
-              value: {{ . | quote }}
-            {{- end }}
             {{- with .trustedProxies }}
             - name: ENVOY_BOUNCER_TRUSTEDPROXIES
               value: {{ join "," . | quote }}
             {{- end }}
             {{- with .waf.enabled }}
             - name: ENVOY_BOUNCER_WAF_ENABLED
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .waf.timeout }}
-            - name: ENVOY_BOUNCER_WAF_TIMEOUT
               value: {{ . | quote }}
             {{- end }}
             {{- if and .waf.apiKeySecretRef .waf.apiKeySecretRef.name .waf.apiKeySecretRef.key }}
@@ -133,12 +125,16 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION
               value: {{ . | quote }}
             {{- end }}
-            {{- with .captcha.callbackURL }}
-            - name: ENVOY_BOUNCER_CAPTCHA_CALLBACKURL
+            {{- with .captcha.timeout }}
+            - name: ENVOY_BOUNCER_CAPTCHA_TIMEOUT
               value: {{ . | quote }}
             {{- end }}
             {{- with .captcha.cacheCleanupInterval }}
             - name: ENVOY_BOUNCER_CAPTCHA_CACHECLEANUPINTERVAL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .captcha.callbackURL }}
+            - name: ENVOY_BOUNCER_CAPTCHA_CALLBACKURL
               value: {{ . | quote }}
             {{- end }}
           {{- end }}

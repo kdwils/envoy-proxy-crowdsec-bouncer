@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
@@ -20,7 +19,7 @@ type DecisionCache struct {
 	mu        *sync.RWMutex
 }
 
-func NewDecisionCache(apiKey, apiURL, tickerInterval string, cleanupInterval time.Duration) (*DecisionCache, error) {
+func NewDecisionCache(apiKey, apiURL, tickerInterval string) (*DecisionCache, error) {
 	stream, err := newStreamBouncer(apiKey, apiURL, tickerInterval)
 	if err != nil {
 		return nil, err

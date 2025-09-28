@@ -50,12 +50,8 @@
                                 }
                             }
                         },
-                        "cacheCleanupInterval": {
-                            "default": "",
-                            "type": "string"
-                        },
                         "enabled": {
-                            "default": true,
+                            "default": false,
                             "type": "boolean"
                         },
                         "lapiURL": {
@@ -67,7 +63,7 @@
                             "type": "boolean"
                         },
                         "metricsInterval": {
-                            "default": "30m",
+                            "default": "10m",
                             "type": "string"
                         },
                         "tickerInterval": {
@@ -80,7 +76,7 @@
                     "type": "object",
                     "properties": {
                         "cacheCleanupInterval": {
-                            "default": "",
+                            "default": "5m",
                             "type": "string"
                         },
                         "callbackURL": {
@@ -113,11 +109,15 @@
                             }
                         },
                         "sessionDuration": {
-                            "default": "",
+                            "default": "15m",
                             "type": "string"
                         },
                         "siteKey": {
                             "default": "",
+                            "type": "string"
+                        },
+                        "timeout": {
+                            "default": "10s",
                             "type": "string"
                         }
                     }
