@@ -53,7 +53,7 @@ trustedProxies: []  # No default trusted proxies - configure as needed
   # - 100.64.0.0/10
 
 bouncer:
-  enabled: false                            # Set to true to enable CrowdSec integration
+  enabled: true                             # CrowdSec integration (enabled by default)
   metrics: false
   tickerInterval: "10s"                     # How often to fetch decisions from LAPI
   metricsInterval: "10m"                    # How often to report metrics to LAPI
@@ -93,8 +93,8 @@ export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
 # Deprecated - use GRPCPORT instead
 export ENVOY_BOUNCER_SERVER_PORT=8080
 
-# Bouncer configuration (disabled by default)
-export ENVOY_BOUNCER_BOUNCER_ENABLED=true  # Set to true to enable
+# Bouncer configuration (enabled by default)
+export ENVOY_BOUNCER_BOUNCER_ENABLED=true
 export ENVOY_BOUNCER_BOUNCER_APIKEY=your-lapi-bouncer-api-key
 export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
 export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=10s
@@ -131,12 +131,11 @@ The configuration is loaded in the following order (last wins):
 
 A minimal configuration requires:
 
-**Note**: All components are disabled by default and must be explicitly enabled.
+**Note**: The bouncer component is enabled by default. WAF and CAPTCHA are disabled by default.
 
-When bouncer is enabled:
-- `bouncer.enabled: true`
-- `bouncer.apiKey`
-- `bouncer.lapiURL`
+When bouncer is enabled (default):
+- `bouncer.apiKey` (required)
+- `bouncer.lapiURL` (required)
 
 When WAF is enabled:
 - `waf.apiKey`
@@ -166,7 +165,7 @@ trustedProxies: []  # No default trusted proxies - configure as needed
   # - 100.64.0.0/10
 
 bouncer:
-  enabled: false
+  enabled: true
   metrics: false
   tickerInterval: "10s"
   metricsInterval: "10m"
