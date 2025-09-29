@@ -46,6 +46,7 @@ func initConfig() {
 	viper.SetDefault("server.grpcPort", 8080)
 	viper.SetDefault("server.httpPort", 8081)
 	viper.SetDefault("server.logLevel", slog.LevelInfo)
+	viper.SetDefault("server.banTemplatePath", "/ban.html")
 
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.lapiURL", "")

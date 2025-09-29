@@ -3,6 +3,7 @@
 ![License](https://img.shields.io/github/license/kdwils/envoy-proxy-crowdsec-bouncer)
 
 # CrowdSec Envoy Proxy Bouncer
+
 A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](https://www.envoyproxy.io/) using the ext_authz filter.
 
 ## Features
@@ -15,6 +16,7 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
   - Cloudflare Turnstile
 
 ## How It Works
+
 The bouncer subscribes to decisions from CrowdSec via the Stream API and processes each request through multiple stages:
 
 1. IP Extraction: Determines the real client IP from forwarded headers, respecting trusted proxy configuration.
@@ -26,13 +28,16 @@ The bouncer subscribes to decisions from CrowdSec via the Stream API and process
    - Captcha: Creates session and redirects to challenge page
 
 When a captcha decision is made:
+
 1. CrowdSec or WAF returns "captcha" action for suspicious request
 2. Bouncer creates session and redirects to `/captcha/challenge?session=<id>`
 3. User completes CAPTCHA and submits to `/captcha/verify`
 4. On success, IP is cached (15 minutes by default) and user redirected to original URL
 
 ## Configuration
+
 The bouncer can be configured using:
+
 1. Configuration file (YAML or JSON)
 2. Environment variables
 
@@ -42,8 +47,8 @@ Create a `config.yaml` file:
 
 ```yaml
 server:
-  grpcPort: 8080          # Port for gRPC (Envoy ext_authz)
-  httpPort: 8081          # Port for HTTP (CAPTCHA endpoints)
+  grpcPort: 8080 # Port for gRPC (Envoy ext_authz)
+  httpPort: 8081 # Port for HTTP (CAPTCHA endpoints)
   logLevel: "info"
 
 trustedProxies:
@@ -67,7 +72,7 @@ waf:
 
 captcha:
   enabled: true
-  provider: "recaptcha"                     # Options: recaptcha, turnstile
+  provider: "recaptcha" # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
   timeout: "10s"                           # Request timeout for CAPTCHA provider verification
@@ -78,6 +83,7 @@ captcha:
 ```
 
 Run with config file:
+
 ```bash
 envoy-proxy-bouncer serve --config config.yaml
 ```
@@ -124,6 +130,7 @@ export ENVOY_BOUNCER_CAPTCHA_CACHECLEANUPINTERVAL=5m
 ### Configuration Precedence
 
 The configuration is loaded in the following order (last wins):
+
 1. Default values
 2. Configuration file
 3. Environment variables
@@ -133,27 +140,32 @@ The configuration is loaded in the following order (last wins):
 A minimal configuration requires:
 
 When bouncer is enabled:
+
 - `bouncer.apiKey`
 - `bouncer.lapiURL`
 
 When WAF is enabled:
+
 - `waf.apiKey`
 - `waf.appSecURL`
 
 When CAPTCHA is enabled:
+
 - `captcha.provider`
 - `captcha.siteKey`
 - `captcha.secretKey`
 - `captcha.callbackURL`
 
 Note on API keys:
+
 - A key must be generated on your CrowdSec LAPI (with `cscli bouncers add <name>`). You can use this key for both `bouncer.apiKey` and `waf.apiKey`.
+
 ### Default Values
 
 ```yaml
 server:
-  grpcPort: 8080  # ext_authz grpc port
-  httpPort: 8081  # Only used when captcha is enabled
+  grpcPort: 8080 # ext_authz grpc port
+  httpPort: 8081 # Only used when captcha is enabled
   logLevel: "info"
 
 trustedProxies:
@@ -178,18 +190,38 @@ captcha:
   cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 ```
 
+### Denied Response Templates
+
+The bouncer serves HTML ban pages by default using an embedded template. You can customize the ban page by setting the `server.banTemplatePath` configuration option to point to your custom template file.
+
+```yaml
+server:
+  banTemplatePath: "/custom/ban.html"
+```
+
+If the specified custom template file is not found or cannot be parsed, the bouncer falls back to the embedded template.
+
+Templates are rendered with Go's `html/template` engine, so variables use the `{{ ... }}` syntax. The following data is available inside the template:
+
+- `{{ .IP }}`, `{{ .Action }}`, `{{ .Reason }}`, `{{ .Timestamp }}`
+- Request context: `{{ .Request.Method }}`, `{{ .Request.Path }}`, `{{ .Request.Scheme }}`, `{{ .Request.Host }}`, `{{ .Request.Protocol }}`, `{{ .Request.URL }}`, and `{{ index .Request.Headers "x-forwarded-for" }}`
+- CrowdSec decision details when present: `{{ .Decision.Scenario }}`, `{{ .Decision.Origin }}`, `{{ .Decision.Scope }}`, `{{ .Decision.Value }}`, `{{ .Decision.Duration }}`, `{{ .Decision.Until }}`
+
+An example custom template is available at [server/templates/ban.html](server/templates/ban.html).
+
 ## CAPTCHA Configuration
 
 The bouncer supports CAPTCHA challenges as an alternative to immediately blocking suspicious IPs. When enabled, the bouncer runs dual servers:
+
 - gRPC server (default port 8080): Handles Envoy ext_authz requests
 - HTTP server (default port 8081): Serves CAPTCHA challenge and verification endpoints
 
 ### Supported Providers
 
-| Provider | Configuration Value | Documentation |
-|----------|-------------------|---------------|
-| Google reCAPTCHA v2 | `recaptcha` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
-| Cloudflare Turnstile | `turnstile` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
+| Provider             | Configuration Value | Documentation                                                           |
+| -------------------- | ------------------- | ----------------------------------------------------------------------- |
+| Google reCAPTCHA v2  | `recaptcha`         | [reCAPTCHA Documentation](https://developers.google.com/recaptcha)      |
+| Cloudflare Turnstile | `turnstile`         | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
 
 ### CAPTCHA Endpoints
 
@@ -208,6 +240,7 @@ When CAPTCHA is enabled, the HTTP server exposes these endpoints:
 ## Usage
 
 ### Install the binary
+
 ```shell
 go install github.com/kdwils/envoy-proxy-bouncer@latest
 ```
@@ -238,18 +271,22 @@ envoy-proxy-bouncer serve
 ```
 
 ### Check an IP address against LAPI
+
 ```bash
 envoy-proxy-bouncer bounce -i 192.168.1.1,10.0.0.1
 ```
 
 ## Metrics
+
 The bouncer can report metrics to CrowdSec's dashboard including:
+
 - Total requests processed
 - Number of requests bounced
 
 These are opt-in and can be enabled by setting `metrics: true` in the bouncer config.
 
 Metrics can be viewed using [cscli](https://docs.crowdsec.net/u/getting_started/post_installation/metrics/)
+
 ```bash
 cscli metrics
 ```
@@ -258,7 +295,7 @@ cscli metrics
 
 This project is tested in Kubernetes clusters with Envoy Gateway. For other environments, please open an issue if you encounter problems.
 
-### ⚠️ Breaking Changes: 
+### ⚠️ Breaking Changes:
 
 #### SecurityPolicy Configuration 09-21-25
 
@@ -277,12 +314,14 @@ There is also a manifest that can be referenced in my [homelab](https://github.c
 ### Helm
 
 Add the Helm repository:
+
 ```bash
 helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-crowdsec-bouncer
 helm repo update
 ```
 
 Install the chart:
+
 ```bash
 helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set config.bouncer.enabled=true \
@@ -292,6 +331,7 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
 ```
 
 For cross-namespace SecurityPolicy access, enable the ReferenceGrant:
+
 ```bash
 helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set config.bouncer.enabled=true \
@@ -305,7 +345,7 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
 
 SecurityPolicies must be created at the HTTPRoute level to ensure proper functionality with CAPTCHA redirects. Create a SecurityPolicy for each namespace that contains HTTPRoutes you want to protect.
 
-#### Creating security policies 
+#### Creating security policies
 
 1. Namespace: Create the SecurityPolicy in the same namespace as your HTTPRoutes
 2. Service Name: Update the service name to match your bouncer deployment
@@ -314,6 +354,7 @@ SecurityPolicies must be created at the HTTPRoute level to ensure proper functio
 5. Target Multiple Routes: You can target multiple HTTPRoutes in the same SecurityPolicy
 
 If an a set of HTTPRoutes exist like so:
+
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -349,6 +390,7 @@ spec:
 ```
 
 Then the following security policy could then be created to apply to them:
+
 ```yaml
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
@@ -378,6 +420,7 @@ spec:
 When SecurityPolicies are created in different namespaces than the bouncer service, a ReferenceGrant is required to allow cross-namespace access. The Helm chart can automatically create this ReferenceGrant.
 
 Example ReferenceGrant configuration in values.yaml:
+
 ```yaml
 referenceGrant:
   create: true
@@ -399,5 +442,6 @@ If you were previously using gateway-level SecurityPolicies:
 3. Ensure CAPTCHA endpoints (`/captcha/*`) are accessible and not protected by the bouncer
 
 Acknowledgements:
-* Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
-* Helm docs generated with [helm-docs](https://github.com/norwoodj/helm-docs)
+
+- Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
+- Helm docs generated with [helm-docs](https://github.com/norwoodj/helm-docs)
