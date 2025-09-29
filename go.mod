@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/crowdsecurity/crowdsec v1.7.0
 	github.com/crowdsecurity/go-cs-bouncer v0.0.17
-	github.com/crowdsecurity/go-cs-lib v0.0.21
+	github.com/crowdsecurity/go-cs-lib v0.0.22
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
