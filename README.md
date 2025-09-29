@@ -29,7 +29,7 @@ When a captcha decision is made:
 1. CrowdSec or WAF returns "captcha" action for suspicious request
 2. Bouncer creates session and redirects to `/captcha/challenge?session=<id>`
 3. User completes CAPTCHA and submits to `/captcha/verify`
-4. On success, the IP is cached (15 minutes by default) and the user is redirected to the original URL
+4. On success, the IP is cached and the user is redirected to the original URL
 
 ## Configuration
 The bouncer can be configured using:
