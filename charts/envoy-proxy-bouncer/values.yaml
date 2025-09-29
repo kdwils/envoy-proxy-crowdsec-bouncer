@@ -42,7 +42,7 @@ config:
   trustedProxies: [] # @schema default: []
 
   bouncer:
-    enabled: true # @schema default: true
+    enabled: false # @schema default: false
     metrics: false # @schema default: false
     metricsInterval: "10m" # @schema default: "10m"
     lapiURL: "http://crowdsec-service:8080" # @schema default: "http://crowdsec-service:8080"

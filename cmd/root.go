@@ -41,7 +41,6 @@ func initConfig() {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", ""))
 	viper.AutomaticEnv()
 
-	viper.SetDefault("trustedProxies", []string{"127.0.0.1", "::1"})
 
 	viper.SetDefault("server.grpcPort", 8080)
 	viper.SetDefault("server.httpPort", 8081)

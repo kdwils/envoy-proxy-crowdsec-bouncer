@@ -46,11 +46,11 @@ server:
   httpPort: 8081          # Port for HTTP (CAPTCHA endpoints)
   logLevel: "info"
 
-trustedProxies:
-  - 192.168.0.1
-  - 2001:db8::1
-  - 10.0.0.0/8
-  - 100.64.0.0/10
+trustedProxies: []  # No default trusted proxies - configure as needed
+  # - 192.168.0.1
+  # - 2001:db8::1
+  # - 10.0.0.0/8
+  # - 100.64.0.0/10
 
 bouncer:
   enabled: true
@@ -132,7 +132,10 @@ The configuration is loaded in the following order (last wins):
 
 A minimal configuration requires:
 
+**Note**: All components are disabled by default and must be explicitly enabled.
+
 When bouncer is enabled:
+- `bouncer.enabled: true`
 - `bouncer.apiKey`
 - `bouncer.lapiURL`
 
@@ -141,6 +144,7 @@ When WAF is enabled:
 - `waf.appSecURL`
 
 When CAPTCHA is enabled:
+- `captcha.enabled: true`
 - `captcha.provider`
 - `captcha.siteKey`
 - `captcha.secretKey`
@@ -156,11 +160,11 @@ server:
   httpPort: 8081  # Only used when captcha is enabled
   logLevel: "info"
 
-trustedProxies:
-  - 192.168.0.1
-  - 2001:db8::1
-  - 10.0.0.0/8
-  - 100.64.0.0/10
+trustedProxies: []  # No default trusted proxies - configure as needed
+  # - 192.168.0.1
+  # - 2001:db8::1
+  # - 10.0.0.0/8
+  # - 100.64.0.0/10
 
 bouncer:
   enabled: false
@@ -288,7 +292,7 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set config.bouncer.enabled=true \
   --set config.bouncer.apiKey=<lapi-key> \
   --set config.bouncer.lapiURL=<your-crowdsec-host>:<port> \
-  --set config.trustedProxies=<your-trusted-proxies>
+  --set config.trustedProxies=<your-trusted-proxies>  # Optional - no defaults
 ```
 
 For cross-namespace SecurityPolicy access, enable the ReferenceGrant:
