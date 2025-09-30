@@ -11,6 +11,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
+	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 
 	"github.com/spf13/cobra"
@@ -61,7 +62,16 @@ var ServeCmd = &cobra.Command{
 			go bouncer.CaptchaService.StartCleanup(ctx)
 		}
 
-		server := server.NewServer(config, bouncer, bouncer.CaptchaService, slogger)
+		templateStore, err := template.NewStore(template.Config{
+			DeniedTemplatePath:  config.Templates.DeniedTemplatePath,
+			CaptchaTemplatePath: config.Templates.CaptchaTemplatePath,
+		})
+		if err != nil {
+			slogger.Error("failed to create template store", "error", err)
+			templateStore = nil
+		}
+
+		server := server.NewServer(config, bouncer, bouncer.CaptchaService, templateStore, slogger)
 
 		sigCtx, cancel := context.WithCancel(ctx)
 		defer cancel()

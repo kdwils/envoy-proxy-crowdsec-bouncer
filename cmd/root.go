@@ -67,4 +67,7 @@ func initConfig() {
 	viper.SetDefault("captcha.cacheCleanupInterval", "5m")
 	viper.SetDefault("captcha.callbackURL", "")
 	viper.SetDefault("captcha.timeout", "10s")
+
+	viper.SetDefault("templates.deniedTemplateHeaders", "text/plain; charset=utf-8")
+	viper.SetDefault("templates.captchaTemplateHeaders", "text/html; charset=utf-8")
 }

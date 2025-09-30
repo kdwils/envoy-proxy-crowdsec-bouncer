@@ -1,20 +1,15 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/crowdsecurity/crowdsec/pkg/models"
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
@@ -24,74 +19,31 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
-//go:embed templates/ban.html
-var defaultBanTemplate string
-
-const (
-	defaultDeniedContentType  = "text/plain; charset=utf-8"
-	templateDeniedContentType = "text/html; charset=utf-8"
-)
-
 type Server struct {
 	auth.UnimplementedAuthorizationServer
-	bouncer           Bouncer
-	captcha           Captcha
-	config            config.Config
-	logger            *slog.Logger
-	deniedTemplate    *template.Template
-	deniedContentType string
+	bouncer       Bouncer
+	captcha       Captcha
+	config        config.Config
+	logger        *slog.Logger
+	templateStore TemplateStore
+	now           func() time.Time
 }
 
-func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, logger *slog.Logger) *Server {
-	s := &Server{
-		config:  config,
-		bouncer: bouncer,
-		logger:  logger,
-		captcha: captcha,
+func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateStore TemplateStore, logger *slog.Logger) *Server {
+	return &Server{
+		config:        config,
+		bouncer:       bouncer,
+		logger:        logger,
+		captcha:       captcha,
+		templateStore: templateStore,
+		now:           time.Now,
 	}
-
-	s.deniedTemplate, s.deniedContentType = s.loadDeniedTemplate()
-	if s.deniedTemplate == nil {
-		s.deniedContentType = defaultDeniedContentType
-	}
-
-	return s
-}
-
-func (s *Server) loadDeniedTemplate() (*template.Template, string) {
-	templateContent := defaultBanTemplate
-	templateSource := "embedded"
-	s.logger.Info("using embedded ban template")
-
-	if s.config.Server.BanTemplatePath != "" {
-		content, err := os.ReadFile(s.config.Server.BanTemplatePath)
-		if err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				s.logger.Error("failed to read denied response template", "path", s.config.Server.BanTemplatePath, "error", err)
-			}
-			s.logger.Info("using embedded ban template as fallback")
-			return s.parseTemplate(templateContent, templateSource)
-		}
-		templateContent = string(content)
-		templateSource = s.config.Server.BanTemplatePath
-		s.logger.Info("loaded custom ban template", "path", s.config.Server.BanTemplatePath)
-	}
-
-	return s.parseTemplate(templateContent, templateSource)
-}
-
-func (s *Server) parseTemplate(content, source string) (*template.Template, string) {
-	tmpl, err := template.New("denied_response").Parse(content)
-	if err != nil {
-		s.logger.Error("failed to parse denied response template", "source", source, "error", err)
-		return nil, ""
-	}
-	return tmpl, templateDeniedContentType
 }
 
 // ServeDual starts both gRPC and HTTP servers concurrently
@@ -307,7 +259,7 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
 	if s.bouncer == nil {
-		body, headers := s.renderDeniedResponse(bouncer.CheckedRequest{Reason: "remediator not initialized"}, req)
+		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil))
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, body, headers), nil
 	}
 	result := s.bouncer.Check(ctx, req)
@@ -318,110 +270,66 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
 	case "deny", "ban":
-		body, headers := s.renderDeniedResponse(result, req)
+		body, headers := s.renderDeniedResponse(result)
 		return getDeniedResponse(envoy_type.StatusCode_Forbidden, body, headers), nil
 	case "error":
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason, map[string]string{"Content-Type": defaultDeniedContentType}), nil
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason, map[string]string{"Content-Type": s.config.Templates.DeniedTemplateHeaders}), nil
 	default:
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "unknown action", map[string]string{"Content-Type": defaultDeniedContentType}), nil
+		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "unknown action", map[string]string{"Content-Type": s.config.Templates.DeniedTemplateHeaders}), nil
 	}
 }
 
-func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest, req *auth.CheckRequest) (string, map[string]string) {
-	if s.deniedTemplate == nil {
+func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest) (string, map[string]string) {
+	contentType := s.config.Templates.DeniedTemplateHeaders
+
+	if s.templateStore == nil {
 		reason := result.Reason
 		if reason == "" {
 			reason = "access denied"
 		}
-		return reason, map[string]string{"Content-Type": defaultDeniedContentType}
+		return reason, map[string]string{"Content-Type": contentType}
 	}
 
-	data := buildDeniedTemplateData(result, req)
-	var buf bytes.Buffer
-	if err := s.deniedTemplate.Execute(&buf, data); err != nil {
+	data := s.buildDeniedTemplateData(result)
+	body, err := s.templateStore.RenderDenied(data)
+	if err != nil {
 		s.logger.Error("failed to render denied response template", "error", err)
 		reason := result.Reason
 		if reason == "" {
 			reason = "access denied"
 		}
-		return reason, map[string]string{"Content-Type": defaultDeniedContentType}
+		return reason, map[string]string{"Content-Type": contentType}
 	}
 
-	return buf.String(), map[string]string{"Content-Type": s.deniedContentType}
+	return body, map[string]string{"Content-Type": contentType}
 }
 
-type deniedRequestData struct {
-	Method   string
-	Path     string
-	Host     string
-	Scheme   string
-	Protocol string
-	URL      string
-	Headers  map[string]string
-}
-
-type deniedTemplateData struct {
-	IP        string
-	Reason    string
-	Action    string
-	Timestamp time.Time
-	Request   deniedRequestData
-	Decision  *models.Decision
-}
-
-func buildDeniedTemplateData(result bouncer.CheckedRequest, req *auth.CheckRequest) deniedTemplateData {
-	data := deniedTemplateData{
+func (s *Server) buildDeniedTemplateData(result bouncer.CheckedRequest) template.DeniedTemplateData {
+	data := template.DeniedTemplateData{
 		IP:        result.IP,
 		Reason:    result.Reason,
 		Action:    result.Action,
-		Timestamp: time.Now().UTC(),
+		Timestamp: s.now().UTC(),
 		Decision:  result.Decision,
 	}
 
-	data.Request.Headers = map[string]string{}
-
-	if req == nil {
+	if result.ParsedRequest == nil {
 		return data
 	}
 
-	attrs := req.GetAttributes()
-	if attrs == nil {
-		return data
+	parsed := result.ParsedRequest
+	headers := make(http.Header)
+	for k, v := range parsed.Headers {
+		headers.Set(k, v)
 	}
 
-	reqAttr := attrs.GetRequest()
-	if reqAttr == nil {
-		return data
-	}
-
-	httpReq := reqAttr.GetHttp()
-	if httpReq == nil {
-		return data
-	}
-
-	headers := make(map[string]string, len(httpReq.GetHeaders()))
-	for k, v := range httpReq.GetHeaders() {
-		headers[k] = v
-	}
-
-	method := headers[":method"]
-	path := headers[":path"]
-	host := headers[":authority"]
-	scheme := headers[":scheme"]
-	proto := httpReq.GetProtocol()
-
-	url := ""
-	if scheme != "" && host != "" {
-		url = fmt.Sprintf("%s://%s%s", scheme, host, path)
-	}
-
-	data.Request = deniedRequestData{
-		Method:   method,
-		Path:     path,
-		Host:     host,
-		Scheme:   scheme,
-		Protocol: proto,
-		URL:      url,
+	data.Request = template.DeniedRequest{
+		Method:   parsed.Method,
+		Path:     parsed.URL.Path,
+		Host:     parsed.URL.Host,
+		Scheme:   parsed.URL.Scheme,
+		Protocol: fmt.Sprintf("HTTP/%d.%d", parsed.ProtoMajor, parsed.ProtoMinor),
+		URL:      parsed.URL.String(),
 		Headers:  headers,
 	}
 

@@ -16,7 +16,6 @@ import (
 	"github.com/crowdsecurity/go-cs-lib/version"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
@@ -122,7 +121,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
 		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
-		client, err := crowdsec.NewClient(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, userAgent)
+		client, err := components.NewCrowdsecClient(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, userAgent)
 		if err != nil {
 			return nil, err
 		}
@@ -378,12 +377,25 @@ type ParsedRequest struct {
 func (e *ParseError) Error() string { return e.Reason }
 
 type CheckedRequest struct {
-	IP          string
-	Action      string
-	Reason      string
-	HTTPStatus  int
-	RedirectURL string
-	Decision    *models.Decision
+	IP            string
+	Action        string
+	Reason        string
+	HTTPStatus    int
+	RedirectURL   string
+	Decision      *models.Decision
+	ParsedRequest *ParsedRequest
+}
+
+func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest) CheckedRequest {
+	return CheckedRequest{
+		IP:            ip,
+		Action:        action,
+		Reason:        reason,
+		HTTPStatus:    httpStatus,
+		Decision:      decision,
+		RedirectURL:   redirectURL,
+		ParsedRequest: parsedRequest,
+	}
 }
 
 func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
@@ -427,11 +439,11 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.recordFinalMetric(result)
 		return result
 	case "error":
-		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: result.Reason, HTTPStatus: http.StatusForbidden}
+		finalResult := NewCheckedRequest(parsed.RealIP, "deny", result.Reason, http.StatusForbidden, nil, "", parsed)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:
-		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "deny", Reason: "unknown decision cache action", HTTPStatus: http.StatusForbidden}
+		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", http.StatusForbidden, nil, "", parsed)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
@@ -439,7 +451,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	result = b.checkWAF(ctx, parsed)
 	switch result.Action {
 	case "allow":
-		finalResult := CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "ok", HTTPStatus: http.StatusOK}
+		finalResult := NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, nil, "", parsed)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	case "captcha":
@@ -453,7 +465,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.recordFinalMetric(result)
 		return result
 	default:
-		finalResult := CheckedRequest{IP: parsed.RealIP, Action: result.Action, Reason: "unknown action", HTTPStatus: http.StatusInternalServerError}
+		finalResult := NewCheckedRequest(parsed.RealIP, result.Action, "unknown action", http.StatusInternalServerError, nil, "", parsed)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
@@ -462,24 +474,24 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.DecisionCache == nil {
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "decision cache disabled", HTTPStatus: http.StatusOK}
+		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed)
 	}
 
 	logger.Debug("running decision cache")
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
 		logger.Error("decision cache error", "error", err)
-		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "decision cache error", HTTPStatus: http.StatusInternalServerError}
+		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed)
 	}
 
 	if decision == nil {
 		logger.Debug("no decision found")
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "no decision", HTTPStatus: http.StatusOK}
+		return NewCheckedRequest(parsed.RealIP, "allow", "no decision", http.StatusOK, nil, "", parsed)
 	}
 
 	if decision.Type == nil {
 		logger.Debug("decision has no type")
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "no decision type", HTTPStatus: http.StatusOK}
+		return NewCheckedRequest(parsed.RealIP, "allow", "no decision type", http.StatusOK, nil, "", parsed)
 	}
 
 	decisionType := strings.ToLower(*decision.Type)
@@ -491,18 +503,18 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 		if decision.Scenario != nil && *decision.Scenario != "" {
 			reason = *decision.Scenario
 		}
-		return CheckedRequest{IP: parsed.RealIP, Action: "ban", Reason: reason, HTTPStatus: http.StatusForbidden, Decision: decision}
+		return NewCheckedRequest(parsed.RealIP, "ban", reason, http.StatusForbidden, decision, "", parsed)
 	case "captcha":
-		return CheckedRequest{IP: parsed.RealIP, Action: "captcha", Reason: "crowdsec captcha", HTTPStatus: http.StatusFound, Decision: decision}
+		return NewCheckedRequest(parsed.RealIP, "captcha", "crowdsec captcha", http.StatusFound, decision, "", parsed)
 	default:
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "decision allows", HTTPStatus: http.StatusOK}
+		return NewCheckedRequest(parsed.RealIP, "allow", "decision allows", http.StatusOK, nil, "", parsed)
 	}
 }
 
 func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha disabled", HTTPStatus: http.StatusOK}
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed)
 	}
 
 	logger.Debug("running captcha")
@@ -511,26 +523,20 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) Check
 	challengeURL, err := b.CaptchaService.GenerateChallengeURL(parsed.RealIP, originalURL)
 	if err != nil {
 		logger.Error("failed to generate captcha challenge", "error", err)
-		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "captcha error", HTTPStatus: http.StatusInternalServerError}
+		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed)
 	}
 
 	if challengeURL == "" {
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "captcha not required", HTTPStatus: http.StatusOK}
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", http.StatusOK, nil, "", parsed)
 	}
 
-	return CheckedRequest{
-		IP:          parsed.RealIP,
-		Action:      "captcha",
-		Reason:      "captcha required",
-		HTTPStatus:  http.StatusFound,
-		RedirectURL: challengeURL,
-	}
+	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", http.StatusFound, nil, challengeURL, parsed)
 }
 
 func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.WAF == nil {
-		return CheckedRequest{IP: parsed.RealIP, Action: "allow", Reason: "waf disabled", HTTPStatus: http.StatusOK}
+		return NewCheckedRequest(parsed.RealIP, "allow", "waf disabled", http.StatusOK, nil, "", parsed)
 	}
 
 	logger.Debug("running WAF")
@@ -549,14 +555,14 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
-		return CheckedRequest{IP: parsed.RealIP, Action: "error", Reason: "error", HTTPStatus: http.StatusInternalServerError}
+		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed)
 	}
 
 	if wafResult.Action != "allow" {
-		return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "ban", HTTPStatus: http.StatusForbidden}
+		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", http.StatusForbidden, nil, "", parsed)
 	}
 
-	return CheckedRequest{IP: parsed.RealIP, Action: wafResult.Action, Reason: "ok", HTTPStatus: http.StatusOK}
+	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed)
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.

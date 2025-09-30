@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	Server         Server   `yaml:"server" json:"server"`
-	Bouncer        Bouncer  `yaml:"bouncer" json:"bouncer"`
-	WAF            WAF      `yaml:"waf" json:"waf"`
-	Captcha        Captcha  `yaml:"captcha" json:"captcha"`
-	TrustedProxies []string `yaml:"trustedProxies" json:"trustedProxies"`
+	Server         Server    `yaml:"server" json:"server"`
+	Bouncer        Bouncer   `yaml:"bouncer" json:"bouncer"`
+	WAF            WAF       `yaml:"waf" json:"waf"`
+	Captcha        Captcha   `yaml:"captcha" json:"captcha"`
+	TrustedProxies []string  `yaml:"trustedProxies" json:"trustedProxies"`
+	Templates      Templates `yaml:"templates" json:"templates"`
 }
 
 type Server struct {
@@ -48,6 +49,13 @@ type WAF struct {
 	Enabled   bool   `yaml:"enabled" json:"enabled"`
 	AppSecURL string `yaml:"appSecURL" json:"appSecURL"`
 	ApiKey    string `yaml:"apiKey" json:"apiKey"`
+}
+
+type Templates struct {
+	DeniedTemplatePath     string `yaml:"deniedTemplatePath" json:"deniedTemplatePath"`
+	DeniedTemplateHeaders  string `yaml:"deniedTemplateHeaders" json:"deniedTemplateHeaders"`
+	CaptchaTemplatePath    string `yaml:"captchaTemplatePath" json:"captchaTemplatePath"`
+	CaptchaTemplateHeaders string `yaml:"captchaTemplateHeaders" json:"captchaTemplateHeaders"`
 }
 
 func New(v *viper.Viper) (Config, error) {
