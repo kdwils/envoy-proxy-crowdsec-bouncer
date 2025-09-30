@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,17 +52,7 @@ func (s *Server) ServeDual(ctx context.Context) error {
 	errChan := make(chan error, 2)
 
 	grpcPort := s.config.Server.GRPCPort
-	if grpcPort == 0 {
-		grpcPort = s.config.Server.Port
-		if grpcPort == 0 {
-			grpcPort = 8080
-		}
-	}
-
 	httpPort := s.config.Server.HTTPPort
-	if httpPort == 0 {
-		httpPort = grpcPort + 1
-	}
 
 	wg.Add(1)
 	go func() {
@@ -166,22 +156,8 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionID := r.FormValue("session")
-
-	var captchaResponse string
-	switch s.captcha.GetProviderName() {
-	case "recaptcha":
-		captchaResponse = r.FormValue("g-recaptcha-response")
-	case "turnstile":
-		captchaResponse = r.FormValue("cf-turnstile-response")
-	}
-
 	if sessionID == "" {
 		http.Error(w, "session id is required", http.StatusBadRequest)
-		return
-	}
-
-	if captchaResponse == "" {
-		http.Error(w, "captcha response is required", http.StatusBadRequest)
 		return
 	}
 
@@ -191,7 +167,20 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	verificationResult, err := s.captcha.VerifyResponse(r.Context(), components.VerificationRequest{
+	var captchaResponse string
+	switch strings.ToLower(session.Provider) {
+	case "recaptcha":
+		captchaResponse = r.FormValue("g-recaptcha-response")
+	case "turnstile":
+		captchaResponse = r.FormValue("cf-turnstile-response")
+	}
+
+	if captchaResponse == "" {
+		http.Error(w, "captcha response is required", http.StatusBadRequest)
+		return
+	}
+
+	verificationResult, err := s.captcha.VerifyResponse(r.Context(), session.ID, components.VerificationRequest{
 		Response: captchaResponse,
 		IP:       session.IP,
 	})
@@ -206,14 +195,18 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.captcha.DeleteSession(sessionID)
-
 	http.Redirect(w, r, session.OriginalURL, http.StatusFound)
 }
 
 func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) {
 	if !s.config.Captcha.Enabled {
 		http.Error(w, "Captcha not enabled", http.StatusNotFound)
+		return
+	}
+
+	if s.templateStore == nil {
+		s.logger.Error("template store not available")
+		http.Error(w, "Template store not available", http.StatusInternalServerError)
 		return
 	}
 
@@ -233,21 +226,27 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Invalid or expired session", http.StatusForbidden)
 		return
 	}
+	if session == nil {
+		http.Error(w, "Invalid or expired session", http.StatusForbidden)
+		return
+	}
 
-	callbackURL := s.config.Captcha.CallbackURL + "/captcha"
-	html, err := s.captcha.RenderChallenge(
-		s.config.Captcha.SiteKey,
-		callbackURL,
-		session.OriginalURL,
-		sessionID,
-	)
+	data := template.CaptchaTemplateData{
+		Provider:    session.Provider,
+		SiteKey:     session.SiteKey,
+		CallbackURL: session.CallbackURL,
+		RedirectURL: session.RedirectURL,
+		SessionID:   session.ID,
+	}
+
+	html, err := s.templateStore.RenderCaptcha(data)
 	if err != nil {
 		s.logger.Error("failed to render captcha challenge", "error", err)
 		http.Error(w, "Failed to render captcha", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", s.config.Templates.CaptchaTemplateHeaders)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(html))
 }
@@ -259,7 +258,7 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
 	if s.bouncer == nil {
-		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil))
+		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil, nil))
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, body, headers), nil
 	}
 	result := s.bouncer.Check(ctx, req)
@@ -281,13 +280,14 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 
 func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest) (string, map[string]string) {
 	contentType := s.config.Templates.DeniedTemplateHeaders
+	headers := map[string]string{"Content-Type": contentType}
 
 	if s.templateStore == nil {
 		reason := result.Reason
 		if reason == "" {
 			reason = "access denied"
 		}
-		return reason, map[string]string{"Content-Type": contentType}
+		return reason, headers
 	}
 
 	data := s.buildDeniedTemplateData(result)
@@ -298,10 +298,10 @@ func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest) (string, ma
 		if reason == "" {
 			reason = "access denied"
 		}
-		return reason, map[string]string{"Content-Type": contentType}
+		return reason, headers
 	}
 
-	return body, map[string]string{"Content-Type": contentType}
+	return body, headers
 }
 
 func (s *Server) buildDeniedTemplateData(result bouncer.CheckedRequest) template.DeniedTemplateData {
@@ -318,10 +318,6 @@ func (s *Server) buildDeniedTemplateData(result bouncer.CheckedRequest) template
 	}
 
 	parsed := result.ParsedRequest
-	headers := make(http.Header)
-	for k, v := range parsed.Headers {
-		headers.Set(k, v)
-	}
 
 	data.Request = template.DeniedRequest{
 		Method:   parsed.Method,
@@ -330,7 +326,6 @@ func (s *Server) buildDeniedTemplateData(result bouncer.CheckedRequest) template
 		Scheme:   parsed.URL.Scheme,
 		Protocol: fmt.Sprintf("HTTP/%d.%d", parsed.ProtoMajor, parsed.ProtoMinor),
 		URL:      parsed.URL.String(),
-		Headers:  headers,
 	}
 
 	return data

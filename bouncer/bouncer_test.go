@@ -637,7 +637,32 @@ func TestBouncer_Check(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "5.6.7.8").Return(nil, fmt.Errorf("boom"))
 
 		got := r.Check(context.Background(), req)
-		want := CheckedRequest{IP: "5.6.7.8", Action: "deny", Reason: "decision cache error", HTTPStatus: 403}
+		want := CheckedRequest{
+			IP:          "5.6.7.8",
+			Action:      "deny",
+			Reason:      "decision cache error",
+			HTTPStatus:  403,
+			RedirectURL: "",
+			Decision:    nil,
+			ParsedRequest: &ParsedRequest{
+				IP:         "5.6.7.8",
+				RealIP:     "5.6.7.8",
+				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Headers: map[string]string{
+					":scheme":    "http",
+					":authority": "example.com",
+					":path":      "/foo",
+					":method":    "GET",
+					"user-agent": "UT",
+				},
+			},
+			CaptchaSession: nil,
+		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
@@ -885,7 +910,31 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "3.3.3.3").Return(nil, fmt.Errorf("bouncer failed"))
 
 		got := r.Check(context.Background(), req)
-		want := CheckedRequest{IP: "3.3.3.3", Action: "deny", Reason: "decision cache error", HTTPStatus: 403}
+		want := CheckedRequest{
+			IP:          "3.3.3.3",
+			Action:      "deny",
+			Reason:      "decision cache error",
+			HTTPStatus:  403,
+			RedirectURL: "",
+			Decision:    nil,
+			ParsedRequest: &ParsedRequest{
+				IP:         "3.3.3.3",
+				RealIP:     "3.3.3.3",
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Headers: map[string]string{
+					":scheme":    "https",
+					":authority": "example.com",
+					":path":      "/test",
+					":method":    "GET",
+				},
+			},
+			CaptchaSession: nil,
+		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %+v, want %+v", got, want)
 		}
@@ -1065,7 +1114,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().GenerateChallengeURL("12.12.12.12", "https://example.com/test").Return("", nil)
+		mc.EXPECT().CreateSession("12.12.12.12", "https://example.com/test").Return(nil, nil)
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "allow" || got.Reason != "captcha not required" || got.HTTPStatus != 200 || got.IP != "12.12.12.12" {
@@ -1087,7 +1136,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().GenerateChallengeURL("13.13.13.13", "https://example.com/test").Return("", fmt.Errorf("session creation failed"))
+		mc.EXPECT().CreateSession("13.13.13.13", "https://example.com/test").Return(nil, fmt.Errorf("session creation failed"))
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "error" || got.Reason != "captcha error" || got.HTTPStatus != 500 || got.IP != "13.13.13.13" {
@@ -1109,7 +1158,9 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "14.14.14.14").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().GenerateChallengeURL("14.14.14.14", "https://example.com/test").Return("https://bouncer.example.com/captcha/challenge?session=abc123", nil)
+		mc.EXPECT().CreateSession("14.14.14.14", "https://example.com/test").Return(&components.CaptchaSession{
+			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123",
+		}, nil)
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "captcha" || got.Reason != "captcha required" || got.HTTPStatus != 302 || got.IP != "14.14.14.14" || got.RedirectURL != "https://bouncer.example.com/captcha/challenge?session=abc123" {
@@ -1140,7 +1191,9 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: ptr("captcha")}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().GenerateChallengeURL("15.15.15.15", "https://example.com/test").Return("https://bouncer.example.com/captcha/challenge?session=crowdsec123", nil)
+		mc.EXPECT().CreateSession("15.15.15.15", "https://example.com/test").Return(&components.CaptchaSession{
+			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
+		}, nil)
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
@@ -1149,6 +1202,26 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Reason:      "captcha required",
 			HTTPStatus:  302,
 			RedirectURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
+			Decision:    &models.Decision{Type: ptr("captcha")},
+			ParsedRequest: &ParsedRequest{
+				IP:         "15.15.15.15",
+				RealIP:     "15.15.15.15",
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Headers: map[string]string{
+					":scheme":    "https",
+					":authority": "example.com",
+					":path":      "/test",
+					":method":    "GET",
+				},
+			},
+			CaptchaSession: &components.CaptchaSession{
+				ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
+			},
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("got %+v, want %+v", got, want)
@@ -1206,7 +1279,9 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().GenerateChallengeURL("1.2.3.4", "https://example.com/test").Return("https://bouncer.example.com/captcha/challenge?session=session123", nil)
+		mc.EXPECT().CreateSession("1.2.3.4", "https://example.com/test").Return(&components.CaptchaSession{
+			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=session123",
+		}, nil)
 
 		got := r.Check(context.Background(), req)
 

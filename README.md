@@ -75,10 +75,10 @@ captcha:
   provider: "recaptcha" # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
-  timeout: "10s"                           # Request timeout for CAPTCHA provider verification
+  timeout: "10s"                            # Request timeout for CAPTCHA provider verification
   callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks
                                             # If the bouncer is hosted at https://my-domain.com the callbackURL should be https://my-domain.com
-  sessionDuration: "15m"                   # How long captcha verification is valid
+  sessionDuration: "15m"                    # How long captcha verification is valid
   cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 ```
 
@@ -124,7 +124,6 @@ export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
 export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
-export ENVOY_BOUNCER_CAPTCHA_CACHECLEANUPINTERVAL=5m
 ```
 
 ### Configuration Precedence
@@ -187,7 +186,6 @@ captcha:
   enabled: false
   timeout: "10s"
   sessionDuration: "15m"
-  cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 ```
 
 ### Denied Response Templates

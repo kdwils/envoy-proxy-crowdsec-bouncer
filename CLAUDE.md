@@ -25,6 +25,7 @@ go test ./...               # Run all tests
 go test -v ./remediation/   # Run specific package tests with verbose output
 go test -race ./...         # Run tests with race detection
 go test -cover ./...        # Run tests with coverage
+go test -tags functional ./tests/... -v  # Run functional tests
 ```
 
 ### Linting & Type Checking

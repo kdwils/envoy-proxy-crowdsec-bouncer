@@ -17,7 +17,8 @@ func TestNew(t *testing.T) {
 
 	t.Run("valid viper config", func(t *testing.T) {
 		v := viper.New()
-		v.Set("server.port", 8080)
+		v.Set("server.grpcPort", 8080)
+		v.Set("server.httpPort", 8081)
 		v.Set("server.logLevel", "debug")
 		v.Set("bouncer.apiKey", "test-key")
 		v.Set("bouncer.lapiURL", "http://test.com")
@@ -31,7 +32,8 @@ func TestNew(t *testing.T) {
 
 		c, err := New(v)
 		assert.NoError(t, err)
-		assert.Equal(t, 8080, c.Server.Port)
+		assert.Equal(t, 8080, c.Server.GRPCPort)
+		assert.Equal(t, 8081, c.Server.HTTPPort)
 		assert.Equal(t, "debug", c.Server.LogLevel)
 		assert.Equal(t, "test-key", c.Bouncer.ApiKey)
 		assert.Equal(t, "http://test.com", c.Bouncer.LAPIURL)

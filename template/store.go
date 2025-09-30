@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"fmt"
 	"html/template"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -80,7 +79,6 @@ type DeniedRequest struct {
 	Scheme   string
 	Protocol string
 	URL      string
-	Headers  http.Header
 }
 
 func (s *Store) RenderDenied(data DeniedTemplateData) (string, error) {

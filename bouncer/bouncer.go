@@ -56,13 +56,10 @@ type DecisionCache interface {
 //go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
 type CaptchaService interface {
 	IsEnabled() bool
-	GenerateChallengeURL(ip, originalURL string) (string, error)
-	GetProviderName() string
+	CreateSession(ip, originalURL string) (*components.CaptchaSession, error)
 	GetSession(sessionID string) (*components.CaptchaSession, bool)
-	VerifyResponse(ctx context.Context, req components.VerificationRequest) (*components.VerificationResult, error)
-	DeleteSession(sessionID string)
+	VerifyResponse(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error)
 	StartCleanup(ctx context.Context)
-	RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error)
 }
 
 type MetricsProvider interface {
@@ -377,24 +374,26 @@ type ParsedRequest struct {
 func (e *ParseError) Error() string { return e.Reason }
 
 type CheckedRequest struct {
-	IP            string
-	Action        string
-	Reason        string
-	HTTPStatus    int
-	RedirectURL   string
-	Decision      *models.Decision
-	ParsedRequest *ParsedRequest
+	IP             string
+	Action         string
+	Reason         string
+	HTTPStatus     int
+	RedirectURL    string
+	Decision       *models.Decision
+	ParsedRequest  *ParsedRequest
+	CaptchaSession *components.CaptchaSession
 }
 
-func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest) CheckedRequest {
+func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *components.CaptchaSession) CheckedRequest {
 	return CheckedRequest{
-		IP:            ip,
-		Action:        action,
-		Reason:        reason,
-		HTTPStatus:    httpStatus,
-		Decision:      decision,
-		RedirectURL:   redirectURL,
-		ParsedRequest: parsedRequest,
+		IP:             ip,
+		Action:         action,
+		Reason:         reason,
+		HTTPStatus:     httpStatus,
+		Decision:       decision,
+		RedirectURL:    redirectURL,
+		ParsedRequest:  parsedRequest,
+		CaptchaSession: session,
 	}
 }
 
@@ -425,47 +424,47 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	parsed := b.ParseCheckRequest(ctx, req)
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
 
-	result := b.checkDecisionCache(ctx, parsed)
-	switch result.Action {
+	bouncerResult := b.checkDecisionCache(ctx, parsed)
+	switch bouncerResult.Action {
 	case "allow":
 	case "captcha":
-		captchaResult := b.checkCaptcha(ctx, parsed)
+		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
 	case "deny", "ban":
-		if result.HTTPStatus == 0 {
-			result.HTTPStatus = http.StatusForbidden
+		if bouncerResult.HTTPStatus == 0 {
+			bouncerResult.HTTPStatus = http.StatusForbidden
 		}
-		b.recordFinalMetric(result)
-		return result
+		b.recordFinalMetric(bouncerResult)
+		return bouncerResult
 	case "error":
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", result.Reason, http.StatusForbidden, nil, "", parsed)
+		finalResult := NewCheckedRequest(parsed.RealIP, "deny", bouncerResult.Reason, http.StatusForbidden, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", http.StatusForbidden, nil, "", parsed)
+		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", http.StatusForbidden, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
 
-	result = b.checkWAF(ctx, parsed)
-	switch result.Action {
+	wafResult := b.checkWAF(ctx, parsed)
+	switch wafResult.Action {
 	case "allow":
-		finalResult := NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, nil, "", parsed)
+		finalResult := NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, bouncerResult.Decision, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	case "captcha":
-		captchaResult := b.checkCaptcha(ctx, parsed)
+		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
 	case "deny", "ban":
-		b.recordFinalMetric(result)
-		return result
+		b.recordFinalMetric(wafResult)
+		return wafResult
 	case "error":
-		b.recordFinalMetric(result)
-		return result
+		b.recordFinalMetric(wafResult)
+		return wafResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, result.Action, "unknown action", http.StatusInternalServerError, nil, "", parsed)
+		finalResult := NewCheckedRequest(parsed.RealIP, wafResult.Action, "unknown action", http.StatusInternalServerError, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
@@ -474,24 +473,24 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.DecisionCache == nil {
-		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed, nil)
 	}
 
 	logger.Debug("running decision cache")
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
 		logger.Error("decision cache error", "error", err)
-		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
 	if decision == nil {
 		logger.Debug("no decision found")
-		return NewCheckedRequest(parsed.RealIP, "allow", "no decision", http.StatusOK, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "allow", "no decision", http.StatusOK, nil, "", parsed, nil)
 	}
 
 	if decision.Type == nil {
 		logger.Debug("decision has no type")
-		return NewCheckedRequest(parsed.RealIP, "allow", "no decision type", http.StatusOK, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "allow", "no decision type", http.StatusOK, nil, "", parsed, nil)
 	}
 
 	decisionType := strings.ToLower(*decision.Type)
@@ -503,40 +502,37 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 		if decision.Scenario != nil && *decision.Scenario != "" {
 			reason = *decision.Scenario
 		}
-		return NewCheckedRequest(parsed.RealIP, "ban", reason, http.StatusForbidden, decision, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "ban", reason, http.StatusForbidden, decision, "", parsed, nil)
 	case "captcha":
-		return NewCheckedRequest(parsed.RealIP, "captcha", "crowdsec captcha", http.StatusFound, decision, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "captcha", "crowdsec captcha", http.StatusFound, decision, "", parsed, nil)
 	default:
-		return NewCheckedRequest(parsed.RealIP, "allow", "decision allows", http.StatusOK, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "allow", "decision allows", http.StatusOK, nil, "", parsed, nil)
 	}
 }
 
-func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decision *models.Decision) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
-		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed, nil)
 	}
 
 	logger.Debug("running captcha")
 	originalURL := parsed.URL.String()
 
-	challengeURL, err := b.CaptchaService.GenerateChallengeURL(parsed.RealIP, originalURL)
+	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL)
 	if err != nil {
-		logger.Error("failed to generate captcha challenge", "error", err)
-		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
-
-	if challengeURL == "" {
-		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", http.StatusOK, nil, "", parsed)
+	if session == nil {
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", http.StatusOK, nil, "", parsed, nil)
 	}
-
-	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", http.StatusFound, nil, challengeURL, parsed)
+	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", http.StatusFound, decision, session.ChallengeURL, parsed, session)
 }
 
 func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
 	if b.WAF == nil {
-		return NewCheckedRequest(parsed.RealIP, "allow", "waf disabled", http.StatusOK, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "allow", "waf disabled", http.StatusOK, nil, "", parsed, nil)
 	}
 
 	logger.Debug("running WAF")
@@ -555,14 +551,14 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
-		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
 	if wafResult.Action != "allow" {
-		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", http.StatusForbidden, nil, "", parsed)
+		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", http.StatusForbidden, nil, "", parsed, nil)
 	}
 
-	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed)
+	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.

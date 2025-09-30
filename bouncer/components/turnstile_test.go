@@ -182,21 +182,3 @@ func TestTurnstileProvider_Verify(t *testing.T) {
 	})
 }
 
-func TestTurnstileProvider_RenderChallenge(t *testing.T) {
-	t.Run("successful render", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-
-		provider := &TurnstileProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}
-
-		html, err := provider.RenderChallenge("site-key", "http://localhost/callback", "http://localhost/redirect", "session-123")
-
-		assert.NoError(t, err)
-		assert.Contains(t, html, "site-key")
-		assert.Contains(t, html, "http://localhost/callback")
-		assert.Contains(t, html, "session-123")
-		assert.Contains(t, html, "turnstile")
-		assert.Contains(t, html, "challenges.cloudflare.com")
-	})
-}

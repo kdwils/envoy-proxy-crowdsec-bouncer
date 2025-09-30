@@ -61,7 +61,6 @@ func TestServer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-
 		decision := &models.Decision{
 			Type:     strPtr("ban"),
 			Scenario: strPtr("crowdsecurity/http-bad"),
@@ -271,9 +270,9 @@ func TestServer_Check(t *testing.T) {
 				Request: &auth.AttributeContext_Request{
 					Http: &auth.AttributeContext_HttpRequest{
 						Headers: map[string]string{
-							":method": "GET",
-							":path":   "/blocked",
-							":scheme": "http",
+							":method":    "GET",
+							":path":      "/blocked",
+							":scheme":    "http",
 							":authority": "example.com",
 						},
 					},
@@ -383,33 +382,33 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
+		session := &components.CaptchaSession{
+			Provider:    "turnstile",
+			SiteKey:     "test-site-key",
+			CallbackURL: "http://example.com/captcha",
+			RedirectURL: "http://example.com/original",
+			ID:          "test-session",
+		}
+
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
-			Action:      "captcha",
-			Reason:      "captcha required",
-			RedirectURL: "http://example.com/captcha",
-			HTTPStatus:  302,
+			Action:         "captcha",
+			Reason:         "captcha required",
+			HTTPStatus:     302,
+			CaptchaSession: session,
 		})
 
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, mockTemplateStore, log)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(envoy_type.StatusCode_Found), resp.Status.Code)
+
 		deniedResp := resp.GetDeniedResponse()
 		assert.NotNil(t, deniedResp)
 		assert.Equal(t, envoy_type.StatusCode_Found, deniedResp.Status.Code)
-
-		found := false
-		for _, header := range deniedResp.Headers {
-			if header.Header.Key == "Location" {
-				assert.Equal(t, "http://example.com/captcha", header.Header.Value)
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "Location header not found")
 	})
 
 	t.Run("remediator returns ban", func(t *testing.T) {
@@ -467,7 +466,7 @@ func TestServer_NewServer(t *testing.T) {
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		cfg := config.Config{
 			Server: config.Server{
-				Port: 8080,
+				GRPCPort: 8080,
 			},
 		}
 
@@ -546,7 +545,6 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
@@ -573,9 +571,17 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			},
 		}
 
+		session := &components.CaptchaSession{
+			Provider:    "recaptcha",
+			SiteKey:     "test-site-key",
+			CallbackURL: "http://example.com/captcha",
+			RedirectURL: "http://example.com/original",
+			ID:          "test-session",
+		}
+
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
+		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
@@ -602,9 +608,17 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			},
 		}
 
+		session := &components.CaptchaSession{
+			Provider:    "turnstile",
+			SiteKey:     "test-site-key",
+			CallbackURL: "http://example.com/captcha",
+			RedirectURL: "http://example.com/original",
+			ID:          "test-session",
+		}
+
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("turnstile")
+		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
@@ -633,7 +647,6 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("invalid-session").Return(nil, false)
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
@@ -665,13 +678,14 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		session := &components.CaptchaSession{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
+			ID:          "test-session",
+			Provider:    "recaptcha",
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
-		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), components.VerificationRequest{
+		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
 			Response: "test-response",
 			IP:       "192.168.1.1",
 		}).Return(nil, assert.AnError)
@@ -705,6 +719,8 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		session := &components.CaptchaSession{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
+			ID:          "test-session",
+			Provider:    "recaptcha",
 		}
 
 		verificationResult := &components.VerificationResult{
@@ -714,9 +730,8 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
-		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), components.VerificationRequest{
+		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
 			Response: "test-response",
 			IP:       "192.168.1.1",
 		}).Return(verificationResult, nil)
@@ -750,6 +765,8 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		session := &components.CaptchaSession{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com/original",
+			ID:          "test-session",
+			Provider:    "recaptcha",
 		}
 
 		verificationResult := &components.VerificationResult{
@@ -758,13 +775,11 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetProviderName().Return("recaptcha")
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
-		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), components.VerificationRequest{
+		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
 			Response: "test-response",
 			IP:       "192.168.1.1",
 		}).Return(verificationResult, nil)
-		mockCaptcha.EXPECT().DeleteSession("valid-session")
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 

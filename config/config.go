@@ -17,23 +17,20 @@ type Config struct {
 }
 
 type Server struct {
-	GRPCPort        int    `yaml:"grpcPort" json:"grpcPort"`
-	HTTPPort        int    `yaml:"httpPort" json:"httpPort"`
-	LogLevel        string `yaml:"logLevel" json:"logLevel"`
-	BanTemplatePath string `yaml:"banTemplatePath" json:"banTemplatePath"`
-	// Deprecated: Use GRPCPort instead
-	Port int `yaml:"port" json:"port"`
+	GRPCPort int    `yaml:"grpcPort" json:"grpcPort"`
+	HTTPPort int    `yaml:"httpPort" json:"httpPort"`
+	LogLevel string `yaml:"logLevel" json:"logLevel"`
 }
 
 type Captcha struct {
-	Enabled              bool          `yaml:"enabled" json:"enabled"`
-	Provider             string        `yaml:"provider" json:"provider"`
-	SiteKey              string        `yaml:"siteKey" json:"siteKey"`
-	SecretKey            string        `yaml:"secretKey" json:"secretKey"`
-	SessionDuration      time.Duration `yaml:"sessionDuration" json:"sessionDuration"`
-	CallbackURL          string        `yaml:"callbackURL" json:"callbackURL"`
-	Timeout              time.Duration `yaml:"timeout" json:"timeout"`
-	CacheCleanupInterval time.Duration `yaml:"cacheCleanupInterval" json:"cacheCleanupInterval"`
+	Enabled           bool          `yaml:"enabled" json:"enabled"`
+	Provider          string        `yaml:"provider" json:"provider"`
+	SiteKey           string        `yaml:"siteKey" json:"siteKey"`
+	SecretKey         string        `yaml:"secretKey" json:"secretKey"`
+	CallbackURL       string        `yaml:"callbackURL" json:"callbackURL"`
+	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
+	ChallengeDuration time.Duration `yaml:"challengeDuration" json:"challengeDuration"`
+	SessionDuration   time.Duration `yaml:"sessionDuration" json:"sessionDuration"`
 }
 
 type Bouncer struct {
