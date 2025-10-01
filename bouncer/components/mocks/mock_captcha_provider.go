@@ -54,21 +54,6 @@ func (mr *MockCaptchaProviderMockRecorder) GetProviderName() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProviderName", reflect.TypeOf((*MockCaptchaProvider)(nil).GetProviderName))
 }
 
-// RenderChallenge mocks base method.
-func (m *MockCaptchaProvider) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RenderChallenge", siteKey, callbackURL, redirectURL, sessionID)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RenderChallenge indicates an expected call of RenderChallenge.
-func (mr *MockCaptchaProviderMockRecorder) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenderChallenge", reflect.TypeOf((*MockCaptchaProvider)(nil).RenderChallenge), siteKey, callbackURL, redirectURL, sessionID)
-}
-
 // Verify mocks base method.
 func (m *MockCaptchaProvider) Verify(ctx context.Context, response, remoteIP string) (bool, error) {
 	m.ctrl.T.Helper()

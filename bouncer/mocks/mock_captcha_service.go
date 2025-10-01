@@ -41,45 +41,19 @@ func (m *MockCaptchaService) EXPECT() *MockCaptchaServiceMockRecorder {
 	return m.recorder
 }
 
-// DeleteSession mocks base method.
-func (m *MockCaptchaService) DeleteSession(sessionID string) {
+// CreateSession mocks base method.
+func (m *MockCaptchaService) CreateSession(ip, originalURL string) (*components.CaptchaSession, error) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "DeleteSession", sessionID)
-}
-
-// DeleteSession indicates an expected call of DeleteSession.
-func (mr *MockCaptchaServiceMockRecorder) DeleteSession(sessionID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSession", reflect.TypeOf((*MockCaptchaService)(nil).DeleteSession), sessionID)
-}
-
-// GenerateChallengeURL mocks base method.
-func (m *MockCaptchaService) GenerateChallengeURL(ip, originalURL string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateChallengeURL", ip, originalURL)
-	ret0, _ := ret[0].(string)
+	ret := m.ctrl.Call(m, "CreateSession", ip, originalURL)
+	ret0, _ := ret[0].(*components.CaptchaSession)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GenerateChallengeURL indicates an expected call of GenerateChallengeURL.
-func (mr *MockCaptchaServiceMockRecorder) GenerateChallengeURL(ip, originalURL any) *gomock.Call {
+// CreateSession indicates an expected call of CreateSession.
+func (mr *MockCaptchaServiceMockRecorder) CreateSession(ip, originalURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateChallengeURL", reflect.TypeOf((*MockCaptchaService)(nil).GenerateChallengeURL), ip, originalURL)
-}
-
-// GetProviderName mocks base method.
-func (m *MockCaptchaService) GetProviderName() string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetProviderName")
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// GetProviderName indicates an expected call of GetProviderName.
-func (mr *MockCaptchaServiceMockRecorder) GetProviderName() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProviderName", reflect.TypeOf((*MockCaptchaService)(nil).GetProviderName))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSession", reflect.TypeOf((*MockCaptchaService)(nil).CreateSession), ip, originalURL)
 }
 
 // GetSession mocks base method.
@@ -111,21 +85,6 @@ func (mr *MockCaptchaServiceMockRecorder) IsEnabled() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsEnabled", reflect.TypeOf((*MockCaptchaService)(nil).IsEnabled))
 }
 
-// RenderChallenge mocks base method.
-func (m *MockCaptchaService) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RenderChallenge", siteKey, callbackURL, redirectURL, sessionID)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RenderChallenge indicates an expected call of RenderChallenge.
-func (mr *MockCaptchaServiceMockRecorder) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenderChallenge", reflect.TypeOf((*MockCaptchaService)(nil).RenderChallenge), siteKey, callbackURL, redirectURL, sessionID)
-}
-
 // StartCleanup mocks base method.
 func (m *MockCaptchaService) StartCleanup(ctx context.Context) {
 	m.ctrl.T.Helper()
@@ -139,16 +98,16 @@ func (mr *MockCaptchaServiceMockRecorder) StartCleanup(ctx any) *gomock.Call {
 }
 
 // VerifyResponse mocks base method.
-func (m *MockCaptchaService) VerifyResponse(ctx context.Context, req components.VerificationRequest) (*components.VerificationResult, error) {
+func (m *MockCaptchaService) VerifyResponse(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "VerifyResponse", ctx, req)
+	ret := m.ctrl.Call(m, "VerifyResponse", ctx, sessionID, req)
 	ret0, _ := ret[0].(*components.VerificationResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // VerifyResponse indicates an expected call of VerifyResponse.
-func (mr *MockCaptchaServiceMockRecorder) VerifyResponse(ctx, req any) *gomock.Call {
+func (mr *MockCaptchaServiceMockRecorder) VerifyResponse(ctx, sessionID, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VerifyResponse", reflect.TypeOf((*MockCaptchaService)(nil).VerifyResponse), ctx, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VerifyResponse", reflect.TypeOf((*MockCaptchaService)(nil).VerifyResponse), ctx, sessionID, req)
 }
