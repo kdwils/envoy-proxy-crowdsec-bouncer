@@ -88,7 +88,3 @@ func (r *RecaptchaProvider) GetProviderName() string {
 	return "recaptcha"
 }
 
-// RenderChallenge renders the reCAPTCHA challenge HTML
-func (r *RecaptchaProvider) RenderChallenge(siteKey, callbackURL, redirectURL, sessionID string) (string, error) {
-	return RenderCaptchaTemplate("recaptcha", siteKey, callbackURL, redirectURL, sessionID)
-}

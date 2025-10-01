@@ -6,12 +6,12 @@ image:
   tag: "" # @schema default: ".Chart.AppVersion"
 
 imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
+nameOverride: "" # @schema default: ""
+fullnameOverride: "" # @schema default: ""
 
 serviceAccount:
   create: true # @schema default: true
-  name: ""
+  name: "" # @schema default: ""
 
 podSecurityContext: {}
 
@@ -39,6 +39,7 @@ config:
     grpcPort: 8080 # @schema default: 8080
     httpPort: 8081 # @schema default: 8081
     logLevel: "info" # @schema default: "info"
+
   trustedProxies: [] # @schema default: []
 
   bouncer:
@@ -68,10 +69,16 @@ config:
     secretKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
       key: "" # @schema default: ""
-    sessionDuration: "15m" # @schema default: "15m"
     timeout: "10s" # @schema default: "10s"
-    cacheCleanupInterval: "5m" # @schema default: "5m"
+    challengeDuration: "5m" # @schema default: "5m"
+    sessionDuration: "15m" # @schema default: "15m"
     callbackURL: "" # @schema default: ""
+
+  templates:
+    deniedTemplatePath: "" # @schema default: ""
+    deniedTemplateHeaders: "" # @schema default: ""
+    captchaTemplatePath: "" # @schema default: ""
+    captchaTemplateHeaders: "" # @schema default: ""
 
 autoscaling:
   enabled: false # @schema default: false
@@ -89,4 +96,3 @@ httproute:
 referenceGrant:
   create: false # @schema default: false
   fromNamespaces: [] # @schema default: []
-
