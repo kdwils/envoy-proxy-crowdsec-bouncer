@@ -585,12 +585,27 @@ func TestBouncer_Check(t *testing.T) {
 		// WAF should not be called when bouncer denies
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "ban" || got.Reason != "crowdsec ban" || got.HTTPStatus != 403 || got.IP != "1.2.3.4" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:            "1.2.3.4",
+			Action:        "ban",
+			Reason:        "crowdsec ban",
+			HTTPStatus:    403,
+			RedirectURL:   "",
+			Decision:      &models.Decision{Type: ptr("ban")},
+			ParsedRequest: &ParsedRequest{
+				IP:         "1.2.3.4",
+				RealIP:     "1.2.3.4",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
+			CaptchaSession: nil,
 		}
-		if got.Decision == nil {
-			t.Fatalf("expected decision to be set")
-		}
+		require.Equal(t, want, got)
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
@@ -616,12 +631,27 @@ func TestBouncer_Check(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban"), Scenario: ptr("crowdsecurity/test"), Origin: ptr("CAPI"), Duration: ptr("1h"), Scope: ptr("Ip"), Value: ptr("2.2.2.2")}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Reason != "crowdsecurity/test" {
-			t.Fatalf("expected scenario reason, got %q", got.Reason)
+		want := CheckedRequest{
+			IP:            "2.2.2.2",
+			Action:        "ban",
+			Reason:        "crowdsecurity/test",
+			HTTPStatus:    403,
+			RedirectURL:   "",
+			Decision:      &models.Decision{Type: ptr("ban"), Scenario: ptr("crowdsecurity/test"), Origin: ptr("CAPI"), Duration: ptr("1h"), Scope: ptr("Ip"), Value: ptr("2.2.2.2")},
+			ParsedRequest: &ParsedRequest{
+				IP:         "2.2.2.2",
+				RealIP:     "2.2.2.2",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
+			CaptchaSession: nil,
 		}
-		if got.Decision == nil || got.Decision.Scenario == nil || *got.Decision.Scenario != "crowdsecurity/test" {
-			t.Fatalf("expected decision scenario to be preserved")
-		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("bouncer error", func(t *testing.T) {
@@ -663,9 +693,7 @@ func TestBouncer_Check(t *testing.T) {
 			},
 			CaptchaSession: nil,
 		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %+v, want %+v", got, want)
-		}
+		require.Equal(t, want, got)
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
@@ -692,9 +720,26 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "ban" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "9.9.9.9" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:            "9.9.9.9",
+			Action:        "ban",
+			Reason:        "ban",
+			HTTPStatus:    403,
+			RedirectURL:   "",
+			ParsedRequest: &ParsedRequest{
+				IP:         "9.9.9.9",
+				RealIP:     "9.9.9.9",
+				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
+				Method:     "POST",
+				UserAgent:  "UT",
+				Body:       []byte("abc"),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
+			},
+			CaptchaSession: nil,
 		}
+		require.Equal(t, want, got)
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
@@ -721,9 +766,24 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "error" || got.HTTPStatus != 500 || got.IP != "10.0.0.1" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "10.0.0.1",
+			Action:     "error",
+			Reason:     "error",
+			HTTPStatus: 500,
+			ParsedRequest: &ParsedRequest{
+				IP:         "10.0.0.1",
+				RealIP:     "10.0.0.1",
+				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("allow both", func(t *testing.T) {
@@ -740,9 +800,24 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "allow"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "allow" || got.Reason != "ok" || got.HTTPStatus != 200 || got.IP != "7.7.7.7" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "7.7.7.7",
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:         "7.7.7.7",
+				RealIP:     "7.7.7.7",
+				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
+			},
 		}
+		require.Equal(t, want, got)
 
 		// Verify metrics: 1 processed request (allowed through)
 		expectedMetrics := Metrics{
@@ -770,9 +845,24 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "deny"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "deny" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "8.8.8.8" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "8.8.8.8",
+			Action:     "deny",
+			Reason:     "ban",
+			HTTPStatus: 403,
+			ParsedRequest: &ParsedRequest{
+				IP:         "8.8.8.8",
+				RealIP:     "8.8.8.8",
+				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
+				Method:     "POST",
+				UserAgent:  "UT",
+				Body:       []byte("abc"),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("waf returns error action", func(t *testing.T) {
@@ -789,9 +879,24 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "11.11.11.11" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "11.11.11.11",
+			Action:     "error",
+			Reason:     "ban",
+			HTTPStatus: 403,
+			ParsedRequest: &ParsedRequest{
+				IP:         "11.11.11.11",
+				RealIP:     "11.11.11.11",
+				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("waf returns unknown action", func(t *testing.T) {
@@ -808,9 +913,24 @@ func TestBouncer_Check(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "unknown"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "unknown" || got.Reason != "unknown action" || got.HTTPStatus != 500 || got.IP != "12.12.12.12" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "12.12.12.12",
+			Action:     "unknown",
+			Reason:     "unknown action",
+			HTTPStatus: 500,
+			ParsedRequest: &ParsedRequest{
+				IP:         "12.12.12.12",
+				RealIP:     "12.12.12.12",
+				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("waf disabled", func(t *testing.T) {
@@ -825,9 +945,24 @@ func TestBouncer_Check(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "allow" || got.Reason != "ok" || got.HTTPStatus != 200 || got.IP != "13.13.13.13" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "13.13.13.13",
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:         "13.13.13.13",
+				RealIP:     "13.13.13.13",
+				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 }
 
@@ -861,9 +996,24 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "allow" || got.Reason != "ok" || got.HTTPStatus != 200 || got.IP != "1.1.1.1" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "1.1.1.1",
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:         "1.1.1.1",
+				RealIP:     "1.1.1.1",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
 		}
+		require.Equal(t, want, got)
 
 		// Verify metrics: 1 processed request (everything disabled)
 		expectedMetrics := Metrics{
@@ -891,9 +1041,25 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban")}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "ban" || got.Reason != "crowdsec ban" || got.HTTPStatus != 403 || got.IP != "2.2.2.2" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "2.2.2.2",
+			Action:     "ban",
+			Reason:     "crowdsec ban",
+			HTTPStatus: 403,
+			Decision:   &models.Decision{Type: ptr("ban")},
+			ParsedRequest: &ParsedRequest{
+				IP:         "2.2.2.2",
+				RealIP:     "2.2.2.2",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("bouncer error - short circuit", func(t *testing.T) {
@@ -935,9 +1101,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			},
 			CaptchaSession: nil,
 		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %+v, want %+v", got, want)
-		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("bouncer allows - waf denies", func(t *testing.T) {
@@ -955,9 +1119,24 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "deny"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "deny" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "4.4.4.4" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "4.4.4.4",
+			Action:     "deny",
+			Reason:     "ban",
+			HTTPStatus: 403,
+			ParsedRequest: &ParsedRequest{
+				IP:         "4.4.4.4",
+				RealIP:     "4.4.4.4",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("bouncer allows - waf bans", func(t *testing.T) {
@@ -975,9 +1154,24 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "ban" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "5.5.5.5" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "5.5.5.5",
+			Action:     "ban",
+			Reason:     "ban",
+			HTTPStatus: 403,
+			ParsedRequest: &ParsedRequest{
+				IP:         "5.5.5.5",
+				RealIP:     "5.5.5.5",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("bouncer allows - waf errors", func(t *testing.T) {
@@ -995,9 +1189,24 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf connection failed"))
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "error" || got.HTTPStatus != 500 || got.IP != "6.6.6.6" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "6.6.6.6",
+			Action:     "error",
+			Reason:     "error",
+			HTTPStatus: 500,
+			ParsedRequest: &ParsedRequest{
+				IP:         "6.6.6.6",
+				RealIP:     "6.6.6.6",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("bouncer allows - waf returns error action", func(t *testing.T) {
@@ -1076,9 +1285,24 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mc.EXPECT().IsEnabled().Return(false)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "allow" || got.Reason != "captcha disabled" || got.HTTPStatus != 200 || got.IP != "10.10.10.10" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "10.10.10.10",
+			Action:     "allow",
+			Reason:     "captcha disabled",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:         "10.10.10.10",
+				RealIP:     "10.10.10.10",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
 		}
+		require.Equal(t, want, got)
 	})
 
 	t.Run("bouncer allows - waf captcha - captcha nil", func(t *testing.T) {
@@ -1223,9 +1447,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
 			},
 		}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %+v, want %+v", got, want)
-		}
+		require.Equal(t, want, got)
 
 		expectedMetrics := Metrics{
 			Remediation: map[string]RemediationMetrics{
