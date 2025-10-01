@@ -41,7 +41,6 @@ func initConfig() {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", ""))
 	viper.AutomaticEnv()
 
-
 	viper.SetDefault("server.grpcPort", 8080)
 	viper.SetDefault("server.httpPort", 8081)
 	viper.SetDefault("server.logLevel", slog.LevelInfo)
@@ -65,4 +64,6 @@ func initConfig() {
 	viper.SetDefault("captcha.cacheCleanupInterval", "5m")
 	viper.SetDefault("captcha.callbackURL", "")
 	viper.SetDefault("captcha.timeout", "10s")
+
+	viper.SetDefault("trustedProxies", []string{})
 }
