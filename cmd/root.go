@@ -41,7 +41,6 @@ func initConfig() {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", ""))
 	viper.AutomaticEnv()
 
-	viper.SetDefault("trustedProxies", []string{"127.0.0.1", "::1"})
 
 	viper.SetDefault("server.grpcPort", 8080)
 	viper.SetDefault("server.httpPort", 8081)
@@ -50,7 +49,7 @@ func initConfig() {
 
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.lapiURL", "")
-	viper.SetDefault("bouncer.enabled", false)
+	viper.SetDefault("bouncer.enabled", true)
 	viper.SetDefault("bouncer.metrics", false)
 	viper.SetDefault("bouncer.tickerInterval", "10s")
 	viper.SetDefault("bouncer.metricsInterval", "10m")

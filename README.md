@@ -20,8 +20,8 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 The bouncer subscribes to decisions from CrowdSec via the Stream API and processes each request through multiple stages:
 
 1. IP Extraction: Determines the real client IP from forwarded headers, respecting trusted proxy configuration.
-2. Bouncer Check: Checks CrowdSec decision cache for IP-based decisions (ban, captcha, allow). Updates to cached decisions are real-time from the Stream API.
-3. WAF Analysis: If no blocking decision, forwards request to CrowdSec AppSec for analysis.
+2. Bouncer Check: Checks CrowdSec decision cache for IP-based decisions (ban, captcha, allow). Updates to cached decisions are received in real-time from the Stream API.
+3. WAF Analysis: If there is no blocking decision, the request is forwarded to CrowdSec AppSec for analysis.
 4. Decision Application: Applies the final decision:
    - Allow: Request proceeds normally
    - Ban/Deny: Returns 403 Forbidden
@@ -32,7 +32,7 @@ When a captcha decision is made:
 1. CrowdSec or WAF returns "captcha" action for suspicious request
 2. Bouncer creates session and redirects to `/captcha/challenge?session=<id>`
 3. User completes CAPTCHA and submits to `/captcha/verify`
-4. On success, IP is cached (15 minutes by default) and user redirected to original URL
+4. On success, the IP is cached and the user is redirected to the original URL
 
 ## Configuration
 
@@ -51,14 +51,14 @@ server:
   httpPort: 8081 # Port for HTTP (CAPTCHA endpoints)
   logLevel: "info"
 
-trustedProxies:
-  - 192.168.0.1
-  - 2001:db8::1
-  - 10.0.0.0/8
-  - 100.64.0.0/10
+trustedProxies: []  # No default trusted proxies - configure as needed
+  # - 192.168.0.1
+  # - 2001:db8::1
+  # - 10.0.0.0/8
+  # - 100.64.0.0/10
 
 bouncer:
-  enabled: true
+  enabled: true                             # CrowdSec integration (enabled by default)
   metrics: false
   tickerInterval: "10s"                     # How often to fetch decisions from LAPI
   metricsInterval: "10m"                    # How often to report metrics to LAPI
@@ -66,7 +66,7 @@ bouncer:
   apiKey: "<lapi-key>"
 
 waf:
-  enabled: true
+  enabled: false                            # Set to true to enable WAF inspection
   appSecURL: "http://appsec:7422"
   apiKey: "<lapi-key>"
 
@@ -100,7 +100,7 @@ export ENVOY_BOUNCER_SERVER_LOGLEVEL=debug
 # Deprecated - use GRPCPORT instead
 export ENVOY_BOUNCER_SERVER_PORT=8080
 
-# Bouncer configuration
+# Bouncer configuration (enabled by default)
 export ENVOY_BOUNCER_BOUNCER_ENABLED=true
 export ENVOY_BOUNCER_BOUNCER_APIKEY=your-lapi-bouncer-api-key
 export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
@@ -108,16 +108,16 @@ export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=10s
 export ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL=10m
 export ENVOY_BOUNCER_BOUNCER_METRICS=false
 
-# Trusted proxies (comma-separated)
-export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
+# Trusted proxies (comma-separated) - no defaults
+# export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
 
-# WAF configuration
-export ENVOY_BOUNCER_WAF_ENABLED=true
+# WAF configuration (disabled by default)
+export ENVOY_BOUNCER_WAF_ENABLED=true      # Set to true to enable
 export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:7422
 export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 
-# CAPTCHA configuration
-export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
+# CAPTCHA configuration (disabled by default)
+export ENVOY_BOUNCER_CAPTCHA_ENABLED=true  # Set to true to enable
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
@@ -138,10 +138,11 @@ The configuration is loaded in the following order (last wins):
 
 A minimal configuration requires:
 
-When bouncer is enabled:
+**Note**: The bouncer component is enabled by default. WAF and CAPTCHA are disabled by default.
 
-- `bouncer.apiKey`
-- `bouncer.lapiURL`
+When bouncer is enabled (default):
+- `bouncer.apiKey` (required)
+- `bouncer.lapiURL` (required)
 
 When WAF is enabled:
 
@@ -149,7 +150,7 @@ When WAF is enabled:
 - `waf.appSecURL`
 
 When CAPTCHA is enabled:
-
+- `captcha.enabled: true`
 - `captcha.provider`
 - `captcha.siteKey`
 - `captcha.secretKey`
@@ -167,14 +168,14 @@ server:
   httpPort: 8081 # Only used when captcha is enabled
   logLevel: "info"
 
-trustedProxies:
-  - 192.168.0.1
-  - 2001:db8::1
-  - 10.0.0.0/8
-  - 100.64.0.0/10
+trustedProxies: []  # No default trusted proxies - configure as needed
+  # - 192.168.0.1
+  # - 2001:db8::1
+  # - 10.0.0.0/8
+  # - 100.64.0.0/10
 
 bouncer:
-  enabled: false
+  enabled: true
   metrics: false
   tickerInterval: "10s"
   metricsInterval: "10m"
@@ -325,7 +326,7 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   --set config.bouncer.enabled=true \
   --set config.bouncer.apiKey=<lapi-key> \
   --set config.bouncer.lapiURL=<your-crowdsec-host>:<port> \
-  --set config.trustedProxies=<your-trusted-proxies>
+  --set config.trustedProxies=<your-trusted-proxies>  # Optional - no defaults
 ```
 
 For cross-namespace SecurityPolicy access, enable the ReferenceGrant:
@@ -351,8 +352,7 @@ SecurityPolicies must be created at the HTTPRoute level to ensure proper functio
 4. Port: Use port 8080 for the gRPC ext_authz service
 5. Target Multiple Routes: You can target multiple HTTPRoutes in the same SecurityPolicy
 
-If an a set of HTTPRoutes exist like so:
-
+If a set of HTTPRoutes exist like so:
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -439,7 +439,6 @@ If you were previously using gateway-level SecurityPolicies:
 2. Create namespace-specific SecurityPolicies targeting individual HTTPRoutes
 3. Ensure CAPTCHA endpoints (`/captcha/*`) are accessible and not protected by the bouncer
 
-Acknowledgements:
-
-- Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
-- Helm docs generated with [helm-docs](https://github.com/norwoodj/helm-docs)
+Acknowledgments:
+* Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
+* Helm docs generated with [helm-docs](https://github.com/norwoodj/helm-docs)
