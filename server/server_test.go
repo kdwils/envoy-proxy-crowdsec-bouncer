@@ -588,6 +588,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		form := url.Values{}
 		form.Add("session", "test-session")
+		form.Add("csrf_token", "valid-csrf-token")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
