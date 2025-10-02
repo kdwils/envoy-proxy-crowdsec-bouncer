@@ -33,6 +33,7 @@ type CaptchaSession struct {
 	CallbackURL  string
 	RedirectURL  string
 	ChallengeURL string
+	CSRFToken    string
 }
 
 // CaptchaService handles captcha verification and challenge management
@@ -183,6 +184,11 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		return nil, fmt.Errorf("failed to generate session token: %w", err)
 	}
 
+	csrfToken, err := generateSecureToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate CSRF token: %w", err)
+	}
+
 	redirectParams := make(url.Values)
 	redirectParams.Set("session", sessionID)
 
@@ -202,6 +208,7 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		ID:           sessionID,
 		CreatedAt:    t,
 		ExpiresAt:    t.Add(s.Config.ChallengeDuration),
+		CSRFToken:    csrfToken,
 	}
 
 	s.ChallengeSessionCache.Set(sessionID, session)

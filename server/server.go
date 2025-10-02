@@ -167,6 +167,17 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	csrfToken := r.FormValue("csrf_token")
+	if csrfToken == "" {
+		http.Error(w, "CSRF token is required", http.StatusBadRequest)
+		return
+	}
+
+	if csrfToken != session.CSRFToken {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+
 	var captchaResponse string
 	switch strings.ToLower(session.Provider) {
 	case "recaptcha":
@@ -237,6 +248,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		CallbackURL: session.CallbackURL,
 		RedirectURL: session.RedirectURL,
 		SessionID:   session.ID,
+		CSRFToken:   session.CSRFToken,
 	}
 
 	html, err := s.templateStore.RenderCaptcha(data)
