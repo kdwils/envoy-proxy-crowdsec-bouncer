@@ -40,20 +40,6 @@ Use `if` to conditionally display content:
 {{ end }}
 ```
 
-### Loops
-
-Iterate over arrays or slices:
-
-```html
-{{ range .Items }}
-  <li>{{ . }}</li>
-{{ end }}
-```
-
-### HTML Safety
-
-Go templates automatically escape HTML to prevent XSS attacks. All user-provided data (like IP addresses) is safe to display.
-
 ## Ban Template
 
 ### Available Data Fields
@@ -87,76 +73,6 @@ When `.Decision` is not nil, you can access:
 | `.Decision.Duration` | string | Duration of the ban | `"4h"` |
 | `.Decision.Until` | string | Timestamp when ban expires | `"2025-10-02T18:30:00Z"` |
 
-### Example Ban Template
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Access Blocked</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      min-height: 100vh;
-      align-items: center;
-      justify-content: center;
-    }
-    main {
-      max-width: 560px;
-      padding: 2rem;
-      background: rgba(15, 23, 42, 0.85);
-      border-radius: 12px;
-      box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.75);
-    }
-    h1 { margin-top: 0; font-size: 2rem; }
-    .details {
-      margin: 1.5rem 0;
-      padding: 1rem;
-      background: rgba(15, 23, 42, 0.6);
-      border-radius: 8px;
-    }
-    dt { font-weight: bold; }
-    dd { margin: 0 0 0.75rem 0; }
-    footer { font-size: 0.85rem; color: #94a3b8; margin-top: 1.5rem; }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Access Blocked</h1>
-    <p>Your request was stopped by CrowdSec to protect this service.</p>
-    <section class="details">
-      <dl>
-        <dt>IP Address</dt>
-        <dd>{{ .IP }}</dd>
-        {{ if .Decision }}
-        <dt>Reason</dt>
-        <dd>{{ .Decision.Scenario }}</dd>
-        <dt>Decision Scope</dt>
-        <dd>{{ .Decision.Scope }} &mdash; {{ .Decision.Value }}</dd>
-        {{ if .Decision.Until }}
-        <dt>Decision Expires</dt>
-        <dd>{{ .Decision.Until }}</dd>
-        {{ end }}
-        {{ end }}
-        {{ if .Request.Path }}
-        <dt>Request Path</dt>
-        <dd>{{ .Request.Path }}</dd>
-        {{ end }}
-      </dl>
-    </section>
-    <p>If you believe this is a mistake, contact the site administrator and include the timestamp below.</p>
-    <footer>Reference: {{ .Timestamp }}</footer>
-  </main>
-</body>
-</html>
-```
-
 ## CAPTCHA Template
 
 ### Available Data Fields
@@ -172,104 +88,7 @@ The CAPTCHA template receives a `CaptchaTemplateData` struct with the following 
 | `.SessionID` | string | Session ID for this CAPTCHA challenge | `"abc123..."` |
 | `.CSRFToken` | string | CSRF token for form submission | `"xyz789..."` |
 
-### Important Requirements
-
-Your CAPTCHA template **must** include:
-
-1. **Form submission to verification endpoint**: `{{.CallbackURL}}/verify`
-2. **Hidden session field**: `<input type="hidden" name="session" value="{{.SessionID}}" />`
-3. **Hidden CSRF token field**: `<input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />`
-4. **Provider-specific JavaScript**: Load the correct CAPTCHA provider library
-5. **CAPTCHA widget rendering**: Render the CAPTCHA widget with your site key
-
-### Example CAPTCHA Template
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Verification</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            max-width: 400px;
-            width: 90%;
-        }
-        .submit-btn {
-            background-color: #f48120;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 1rem;
-            width: 100%;
-        }
-        .submit-btn:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Security Verification</h1>
-        <p>Please complete the security verification to continue.</p>
-
-        <form method="POST" action="{{.CallbackURL}}/verify">
-            <div id="captcha-container"></div>
-            <input type="hidden" name="session" value="{{.SessionID}}" />
-            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-            <button type="submit" id="submit-btn" class="submit-btn" disabled>Verify</button>
-        </form>
-    </div>
-
-    {{if eq .Provider "recaptcha"}}
-    <script src="https://www.google.com/recaptcha/api.js" defer></script>
-    <script>
-        function onCaptchaSuccess(token) {
-            document.getElementById('submit-btn').disabled = false;
-        }
-        window.onload = function () {
-            grecaptcha.render('captcha-container', {
-                'sitekey': '{{.SiteKey}}',
-                'callback': onCaptchaSuccess
-            });
-        };
-    </script>
-    {{else if eq .Provider "turnstile"}}
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
-    <script>
-        function onTurnstileSuccess(token) {
-            document.getElementById('submit-btn').disabled = false;
-        }
-        window.onload = function () {
-            turnstile.render('#captcha-container', {
-                sitekey: '{{.SiteKey}}',
-                callback: onTurnstileSuccess
-            });
-        };
-    </script>
-    {{end}}
-</body>
-</html>
-```
+The default CAPTCHA template lives 
 
 ## Configuration
 
@@ -343,68 +162,26 @@ services:
 
 ### Kubernetes/Helm Deployment
 
-#### Method 1: Inline Templates (Recommended)
+#### Method 1: Inline Templates
 
-The Helm chart can automatically create and mount a ConfigMap from inline template content. This is the simplest method:
+The Helm chart can automatically create and mount a ConfigMap from inline template content.
 
 ```yaml
-# values.yaml
 config:
   bouncer:
     apiKey: your-api-key
     lapiURL: http://crowdsec:8080
 
 templates:
-  deniedTemplateContent: |
+  denied.html: |
     <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="utf-8">
-      <title>Custom Ban Page</title>
-      <style>
-        body { font-family: Arial; background: #f5f5f5; }
-        .container { max-width: 600px; margin: 50px auto; padding: 2rem; background: white; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>Access Blocked</h1>
-        <p>Your IP: {{ .IP }}</p>
-        {{ if .Decision }}
-        <p>Reason: {{ .Decision.Scenario }}</p>
-        {{ end }}
-        <p>Timestamp: {{ .Timestamp }}</p>
-      </div>
-    </body>
+    <html>
+    <!-- Your custom ban template -->
     </html>
-
-  captchaTemplateContent: |
+  captcha.html: |
     <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="utf-8">
-      <title>Security Verification</title>
-    </head>
-    <body>
-      <h1>Security Verification</h1>
-      <form method="POST" action="{{.CallbackURL}}/verify">
-        <div id="captcha-container"></div>
-        <input type="hidden" name="session" value="{{.SessionID}}" />
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-        <button type="submit">Verify</button>
-      </form>
-      {{if eq .Provider "recaptcha"}}
-      <script src="https://www.google.com/recaptcha/api.js" defer></script>
-      <script>
-        grecaptcha.render('captcha-container', {'sitekey': '{{.SiteKey}}'});
-      </script>
-      {{else if eq .Provider "turnstile"}}
-      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
-      <script>
-        turnstile.render('#captcha-container', {sitekey: '{{.SiteKey}}'});
-      </script>
-      {{end}}
-    </body>
+    <html>
+    <!-- Your custom CAPTCHA template -->
     </html>
 ```
 
@@ -503,91 +280,6 @@ Or via environment variables:
 export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS="text/html; charset=utf-8"
 export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS="text/html; charset=utf-8"
 ```
-
-## Testing Your Templates
-
-### Local Testing
-
-1. Create your custom template files
-2. Configure the bouncer to use them
-3. Start the bouncer locally
-4. Trigger a ban or CAPTCHA challenge
-5. View the rendered page in your browser
-
-### Template Validation
-
-Ensure your template is valid Go HTML:
-
-```bash
-# Install Go if not already installed
-go install golang.org/x/tools/cmd/present@latest
-
-# Basic syntax check (create a test file)
-cat > test_template.go <<EOF
-package main
-import "html/template"
-func main() {
-    template.Must(template.ParseFiles("your-template.html"))
-}
-EOF
-
-go run test_template.go
-```
-
-## Troubleshooting
-
-### Template Not Loading
-
-**Symptoms**: Default template still displays
-
-**Solutions**:
-- Verify file path is correct and accessible by the bouncer process
-- Check file permissions (readable by the user running the bouncer)
-- Check logs for template loading errors
-- Ensure environment variables or config file is correctly set
-
-### Template Parse Errors
-
-**Symptoms**: Error logs about template parsing
-
-**Solutions**:
-- Validate Go template syntax
-- Ensure all `{{` have matching `}}`
-- Check for typos in field names (case-sensitive)
-- Verify conditionals have proper `{{ end }}` tags
-
-### CAPTCHA Not Working
-
-**Symptoms**: CAPTCHA challenge doesn't display or verify
-
-**Solutions**:
-- Ensure form posts to `{{.CallbackURL}}/verify`
-- Include hidden `session` field with `{{.SessionID}}`
-- Include hidden `csrf_token` field with `{{.CSRFToken}}`
-- Load correct provider JavaScript library
-- Verify site key matches your CAPTCHA provider configuration
-- Check browser console for JavaScript errors
-
-### Missing Data
-
-**Symptoms**: Template fields show as empty
-
-**Solutions**:
-- Check if field is available (e.g., `.Decision` may be nil)
-- Use conditionals: `{{ if .Decision }}...{{ end }}`
-- Review available fields in this documentation
-- Check bouncer logs for data population issues
-
-## Best Practices
-
-1. **Keep templates simple**: Complex logic should be in the application, not templates
-2. **Use conditionals**: Always check if optional fields exist before using them
-3. **Test thoroughly**: Test with various ban scenarios and CAPTCHA providers
-4. **Maintain accessibility**: Ensure your custom pages are accessible (WCAG guidelines)
-5. **Mobile responsive**: Test on mobile devices and use responsive CSS
-6. **Security**: Never include sensitive information in templates
-7. **Version control**: Keep your custom templates in version control
-8. **Documentation**: Document any custom fields or special requirements
 
 ## Examples
 
