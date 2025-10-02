@@ -629,7 +629,6 @@ func TestBouncerWithCaptcha(t *testing.T) {
 			return session, exists
 		}).AnyTimes()
 
-
 	mockCaptchaService.EXPECT().VerifyResponse(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error) {
 			success := req.Response == "success"
@@ -877,10 +876,56 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.Contains(t, string(body), "IP address mismatch")
 	})
 
+	t.Run("Test rate limiting on captcha endpoints", func(t *testing.T) {
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected-ratelimit-test", "my-host.com", nil))
+
+		check, err := client.Check(context.TODO(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(302), check.Status.Code)
+
+		deniedResponse := check.GetDeniedResponse()
+		require.NotNil(t, deniedResponse)
+		require.Len(t, deniedResponse.Headers, 1)
+
+		locationHeader := deniedResponse.Headers[0].Header.Value
+		locationURL, err := url.Parse(locationHeader)
+		require.NoError(t, err)
+
+		sessionID := locationURL.Query().Get("session")
+		require.NotEmpty(t, sessionID)
+
+		challengeURL := "http://localhost:8081/captcha/challenge?session=" + sessionID
+		httpClient := &http.Client{}
+
+		successCount := 0
+		rateLimitCount := 0
+
+		for range 25 {
+			req, err := http.NewRequest("GET", challengeURL, nil)
+			require.NoError(t, err)
+			req.Header.Set("X-Forwarded-For", "192.168.1.100")
+
+			resp, err := httpClient.Do(req)
+			require.NoError(t, err)
+			resp.Body.Close()
+
+			switch resp.StatusCode {
+			case http.StatusOK:
+				successCount++
+			case http.StatusTooManyRequests:
+				rateLimitCount++
+			}
+		}
+
+		require.Greater(t, successCount, 0)
+		require.Greater(t, rateLimitCount, 0)
+	})
+
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		localMetrics := testBouncer.GetMetrics()
 		require.Equal(t, int64(1), localMetrics.Remediation["CAPI:bypass"].Count)
-		require.Equal(t, int64(4), localMetrics.Remediation["CAPI:captcha"].Count)
+		require.Equal(t, int64(5), localMetrics.Remediation["CAPI:captcha"].Count)
 
 		allMetrics := testBouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
 		require.Len(t, allMetrics.RemediationComponents, 1)
