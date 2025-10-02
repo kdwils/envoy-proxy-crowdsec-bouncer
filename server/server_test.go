@@ -561,6 +561,83 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "session id is required")
 	})
 
+	t.Run("missing csrf token", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Config{
+			Captcha: config.Captcha{
+				Enabled: true,
+			},
+		}
+
+		session := &components.CaptchaSession{
+			Provider:    "recaptcha",
+			SiteKey:     "test-site-key",
+			CallbackURL: "http://example.com/captcha",
+			RedirectURL: "http://example.com/original",
+			ID:          "test-session",
+			CSRFToken:   "valid-csrf-token",
+		}
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
+
+		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
+
+		form := url.Values{}
+		form.Add("session", "test-session")
+
+		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		s.handleCaptchaVerify(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "CSRF token is required")
+	})
+
+	t.Run("invalid csrf token", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Config{
+			Captcha: config.Captcha{
+				Enabled: true,
+			},
+		}
+
+		session := &components.CaptchaSession{
+			Provider:    "recaptcha",
+			SiteKey:     "test-site-key",
+			CallbackURL: "http://example.com/captcha",
+			RedirectURL: "http://example.com/original",
+			ID:          "test-session",
+			CSRFToken:   "valid-csrf-token",
+		}
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
+
+		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
+
+		form := url.Values{}
+		form.Add("session", "test-session")
+		form.Add("csrf_token", "invalid-token")
+
+		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		s.handleCaptchaVerify(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Contains(t, w.Body.String(), "Invalid CSRF token")
+	})
+
 	t.Run("missing captcha response - recaptcha", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -577,6 +654,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			CallbackURL: "http://example.com/captcha",
 			RedirectURL: "http://example.com/original",
 			ID:          "test-session",
+			CSRFToken:   "valid-csrf-token",
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
@@ -587,6 +665,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		form := url.Values{}
 		form.Add("session", "test-session")
+		form.Add("csrf_token", "valid-csrf-token")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -614,6 +693,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			CallbackURL: "http://example.com/captcha",
 			RedirectURL: "http://example.com/original",
 			ID:          "test-session",
+			CSRFToken:   "valid-csrf-token",
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
@@ -624,6 +704,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		form := url.Values{}
 		form.Add("session", "test-session")
+		form.Add("csrf_token", "valid-csrf-token")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -680,6 +761,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			OriginalURL: "http://example.com",
 			ID:          "test-session",
 			Provider:    "recaptcha",
+			CSRFToken:   "valid-csrf-token",
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
@@ -694,6 +776,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		form := url.Values{}
 		form.Add("session", "valid-session")
+		form.Add("csrf_token", "valid-csrf-token")
 		form.Add("g-recaptcha-response", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
@@ -721,6 +804,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			OriginalURL: "http://example.com",
 			ID:          "test-session",
 			Provider:    "recaptcha",
+			CSRFToken:   "valid-csrf-token",
 		}
 
 		verificationResult := &components.VerificationResult{
@@ -740,6 +824,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		form := url.Values{}
 		form.Add("session", "valid-session")
+		form.Add("csrf_token", "valid-csrf-token")
 		form.Add("g-recaptcha-response", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
@@ -767,6 +852,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			OriginalURL: "http://example.com/original",
 			ID:          "test-session",
 			Provider:    "recaptcha",
+			CSRFToken:   "valid-csrf-token",
 		}
 
 		verificationResult := &components.VerificationResult{
@@ -785,6 +871,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		form := url.Values{}
 		form.Add("session", "valid-session")
+		form.Add("csrf_token", "valid-csrf-token")
 		form.Add("g-recaptcha-response", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))

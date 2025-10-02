@@ -22,8 +22,8 @@ import (
 	bouncermocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
+	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -607,6 +607,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		func(ip, originalURL string) (*components.CaptchaSession, error) {
 			sessionCounter++
 			sessionID := fmt.Sprintf("test-session-%d", sessionCounter)
+			csrfToken := fmt.Sprintf("csrf-token-%d", sessionCounter)
 			session := &components.CaptchaSession{
 				IP:           ip,
 				OriginalURL:  originalURL,
@@ -616,6 +617,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 				SiteKey:      "test-site-key",
 				CallbackURL:  "http://localhost/captcha",
 				ChallengeURL: fmt.Sprintf("http://localhost/captcha/challenge?session=%s", sessionID),
+				CSRFToken:    csrfToken,
 			}
 			sessions[sessionID] = session
 			return session, nil
@@ -732,6 +734,46 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.Contains(t, string(body), "test-site-key")
 	})
 
+	t.Run("Test CSRF token validation - invalid token", func(t *testing.T) {
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected-csrf-test", "my-host.com", nil))
+
+		check, err := client.Check(context.TODO(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(302), check.Status.Code)
+
+		deniedResponse := check.GetDeniedResponse()
+		require.NotNil(t, deniedResponse)
+		require.Len(t, deniedResponse.Headers, 1)
+
+		locationHeader := deniedResponse.Headers[0].Header.Value
+		locationURL, err := url.Parse(locationHeader)
+		require.NoError(t, err)
+
+		sessionID := locationURL.Query().Get("session")
+		require.NotEmpty(t, sessionID)
+
+		session, exists := sessions[sessionID]
+		require.True(t, exists)
+		require.NotEmpty(t, session.CSRFToken)
+
+		form := url.Values{}
+		form.Add("session", sessionID)
+		form.Add("csrf_token", "invalid-csrf-token")
+		form.Add("g-recaptcha-response", "success")
+
+		verifyURL := "http://localhost:8081/captcha/verify"
+		resp, err := http.PostForm(verifyURL, form)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "Invalid CSRF token")
+	})
+
 	t.Run("Test WAF trigger captcha flow", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.1", createHttpRequest("GET", "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", "my-host.com", nil))
 
@@ -772,7 +814,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		localMetrics := testBouncer.GetMetrics()
 		require.Equal(t, int64(1), localMetrics.Remediation["CAPI:bypass"].Count)
-		require.Equal(t, int64(2), localMetrics.Remediation["CAPI:captcha"].Count)
+		require.Equal(t, int64(3), localMetrics.Remediation["CAPI:captcha"].Count)
 
 		allMetrics := testBouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
 		require.Len(t, allMetrics.RemediationComponents, 1)
