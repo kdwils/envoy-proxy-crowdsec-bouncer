@@ -31,12 +31,12 @@ The bouncer integrates with Envoy Proxy as an external authorization service, si
     - If enabled and no blocking decision exists then the request is forwarded to Crowdsec AppSec for inspection
 4. **Decision Enforcement**
     - **Allow** - Request proceeds to backend
-    - **Ban** - Returns 403 with customizable ban page
+    - **Ban** - Returns 403 with ban page
     - **Captcha** - Creates session and redirects to challenge
 
 ### Ban Flow
 
-When a banned IP attempts access, they receive a 403 response with a customizable ban page:
+When a banned IP attempts access, they receive a 403 response with a ban page:
 
 ![Ban Page](docs/images/ban.jpeg)
 
