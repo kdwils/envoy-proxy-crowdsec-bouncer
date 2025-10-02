@@ -23,6 +23,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/server/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -281,6 +282,7 @@ func TestServer_Check(t *testing.T) {
 		}
 
 		resp, err := s.Check(context.Background(), req)
+		require.NoError(t, err)
 
 		expectedHTML, err := os.ReadFile("testing/denied_with_template.html")
 		if err != nil {
@@ -588,7 +590,6 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		form := url.Values{}
 		form.Add("session", "test-session")
-		form.Add("csrf_token", "valid-csrf-token")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

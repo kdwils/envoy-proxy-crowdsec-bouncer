@@ -33,6 +33,7 @@ type Server struct {
 	logger        *slog.Logger
 	templateStore TemplateStore
 	now           func() time.Time
+	rateLimiter   *RateLimiter
 }
 
 func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateStore TemplateStore, logger *slog.Logger) *Server {
@@ -43,6 +44,7 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateS
 		captcha:       captcha,
 		templateStore: templateStore,
 		now:           time.Now,
+		rateLimiter:   NewRateLimiter(10, 20),
 	}
 }
 
@@ -114,6 +116,17 @@ func (s *Server) serveGRPC(ctx context.Context, port int) error {
 	return grpcServer.Serve(lis)
 }
 
+func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := s.bouncer.ExtractRealIPFromHTTP(r)
+		if !s.rateLimiter.Allow(ip) {
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) serveHTTP(ctx context.Context, port int) error {
 	r := mux.NewRouter()
 	r.HandleFunc("/captcha/verify", s.handleCaptchaVerify).Methods("POST", "OPTIONS")
@@ -125,9 +138,11 @@ func (s *Server) serveHTTP(ctx context.Context, port int) error {
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 	)(r)
 
+	rateLimitedHandler := s.rateLimitMiddleware(corsHandler)
+
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: corsHandler,
+		Handler: rateLimitedHandler,
 	}
 
 	go func() {
