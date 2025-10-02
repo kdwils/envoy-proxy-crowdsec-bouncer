@@ -178,6 +178,13 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	clientIP := s.bouncer.ExtractRealIPFromHTTP(r)
+	if clientIP != session.IP {
+		s.logger.Warn("IP mismatch during captcha verification", "session_ip", session.IP, "client_ip", clientIP)
+		http.Error(w, "IP address mismatch", http.StatusForbidden)
+		return
+	}
+
 	var captchaResponse string
 	switch strings.ToLower(session.Provider) {
 	case "recaptcha":

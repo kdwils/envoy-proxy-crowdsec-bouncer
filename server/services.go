@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
@@ -13,6 +14,7 @@ type Bouncer interface {
 	Check(ctx context.Context, req *auth.CheckRequest) bouncer.CheckedRequest
 	Sync(ctx context.Context) error
 	Metrics(ctx context.Context) error
+	ExtractRealIPFromHTTP(r *http.Request) string
 }
 
 //go:generate mockgen -destination=mocks/mock_template_store.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/server TemplateStore

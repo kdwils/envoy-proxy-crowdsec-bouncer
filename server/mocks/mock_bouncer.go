@@ -11,6 +11,7 @@ package mocks
 
 import (
 	context "context"
+	http "net/http"
 	reflect "reflect"
 
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -54,6 +55,20 @@ func (m *MockBouncer) Check(ctx context.Context, req *authv3.CheckRequest) bounc
 func (mr *MockBouncerMockRecorder) Check(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Check", reflect.TypeOf((*MockBouncer)(nil).Check), ctx, req)
+}
+
+// ExtractRealIPFromHTTP mocks base method.
+func (m *MockBouncer) ExtractRealIPFromHTTP(r *http.Request) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExtractRealIPFromHTTP", r)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// ExtractRealIPFromHTTP indicates an expected call of ExtractRealIPFromHTTP.
+func (mr *MockBouncerMockRecorder) ExtractRealIPFromHTTP(r any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExtractRealIPFromHTTP", reflect.TypeOf((*MockBouncer)(nil).ExtractRealIPFromHTTP), r)
 }
 
 // Metrics mocks base method.

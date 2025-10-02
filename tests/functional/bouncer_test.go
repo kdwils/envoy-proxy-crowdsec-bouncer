@@ -831,10 +831,56 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.Contains(t, err.Error(), "invalid redirect URL")
 	})
 
+	t.Run("Test IP mismatch during verification", func(t *testing.T) {
+		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected-ip-test", "my-host.com", nil))
+
+		check, err := client.Check(context.TODO(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(302), check.Status.Code)
+
+		deniedResponse := check.GetDeniedResponse()
+		require.NotNil(t, deniedResponse)
+		require.Len(t, deniedResponse.Headers, 1)
+
+		locationHeader := deniedResponse.Headers[0].Header.Value
+		locationURL, err := url.Parse(locationHeader)
+		require.NoError(t, err)
+
+		sessionID := locationURL.Query().Get("session")
+		require.NotEmpty(t, sessionID)
+
+		session, exists := sessions[sessionID]
+		require.True(t, exists)
+		require.NotEmpty(t, session.CSRFToken)
+
+		form := url.Values{}
+		form.Add("session", sessionID)
+		form.Add("csrf_token", session.CSRFToken)
+		form.Add("g-recaptcha-response", "success")
+
+		verifyURL := "http://localhost:8081/captcha/verify"
+		httpClient := &http.Client{}
+		req2, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
+		require.NoError(t, err)
+		req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req2.Header.Set("X-Forwarded-For", "10.0.0.1")
+
+		resp, err := httpClient.Do(req2)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "IP address mismatch")
+	})
+
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		localMetrics := testBouncer.GetMetrics()
 		require.Equal(t, int64(1), localMetrics.Remediation["CAPI:bypass"].Count)
-		require.Equal(t, int64(3), localMetrics.Remediation["CAPI:captcha"].Count)
+		require.Equal(t, int64(4), localMetrics.Remediation["CAPI:captcha"].Count)
 
 		allMetrics := testBouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
 		require.Len(t, allMetrics.RemediationComponents, 1)
