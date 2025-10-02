@@ -153,9 +153,9 @@ func TestExtractRealIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractRealIP(tt.ip, tt.headers, tt.trustedProxies)
+			got := ExtractRealIP(tt.ip, tt.headers, tt.trustedProxies)
 			if got != tt.want {
-				t.Errorf("extractRealIP() = %q, want %q", got, tt.want)
+				t.Errorf("ExtractRealIP() = %q, want %q", got, tt.want)
 			}
 		})
 	}

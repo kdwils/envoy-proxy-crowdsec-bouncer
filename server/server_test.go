@@ -649,6 +649,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 
 		session := &components.CaptchaSession{
+			IP:          "192.0.2.1",
 			Provider:    "recaptcha",
 			SiteKey:     "test-site-key",
 			CallbackURL: "http://example.com/captcha",
@@ -660,6 +661,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
+		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.0.2.1")
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
@@ -688,6 +690,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 
 		session := &components.CaptchaSession{
+			IP:          "192.0.2.1",
 			Provider:    "turnstile",
 			SiteKey:     "test-site-key",
 			CallbackURL: "http://example.com/captcha",
@@ -699,6 +702,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
+		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.0.2.1")
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
@@ -767,6 +771,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
+		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
 			Response: "test-response",
 			IP:       "192.168.1.1",
@@ -815,6 +820,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
+		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
 			Response: "test-response",
 			IP:       "192.168.1.1",
@@ -835,6 +841,46 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Contains(t, w.Body.String(), "Verification failed")
+	})
+
+	t.Run("IP mismatch", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Config{
+			Captcha: config.Captcha{
+				Enabled: true,
+			},
+		}
+
+		session := &components.CaptchaSession{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com/original",
+			ID:          "test-session",
+			Provider:    "recaptcha",
+			CSRFToken:   "valid-csrf-token",
+		}
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
+		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("10.0.0.1")
+
+		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
+
+		form := url.Values{}
+		form.Add("session", "valid-session")
+		form.Add("csrf_token", "valid-csrf-token")
+		form.Add("g-recaptcha-response", "test-response")
+
+		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		s.handleCaptchaVerify(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Contains(t, w.Body.String(), "IP address mismatch")
 	})
 
 	t.Run("successful verification", func(t *testing.T) {
@@ -862,6 +908,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
+		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
 			Response: "test-response",
 			IP:       "192.168.1.1",

@@ -306,9 +306,22 @@ func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
 	}
 }
 
-// extractRealIP determines the real client IP from headers and socket address, matching bouncer logic.
+// ExtractRealIPFromHTTP extracts the real client IP from an HTTP request using trusted proxy logic.
+func (b *Bouncer) ExtractRealIPFromHTTP(r *http.Request) string {
+	headers := make(map[string]string)
+	for k, v := range r.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
+		}
+	}
+
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return ExtractRealIP(host, headers, b.TrustedProxies)
+}
+
+// ExtractRealIP determines the real client IP from headers and socket address, matching bouncer logic.
 // Headers are checked case-insensitively to handle both normalized and original casing.
-func extractRealIP(ip string, headers map[string]string, trustedProxies []*net.IPNet) string {
+func ExtractRealIP(ip string, headers map[string]string, trustedProxies []*net.IPNet) string {
 	for k, v := range headers {
 		if strings.EqualFold(k, "x-forwarded-for") && v != "" {
 			ips := strings.Split(v, ",")
@@ -598,7 +611,7 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		}
 	}
 
-	parsedRequest.RealIP = extractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies)
+	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies)
 
 	url := url.URL{
 		Scheme: parsedRequest.Headers[":scheme"],
