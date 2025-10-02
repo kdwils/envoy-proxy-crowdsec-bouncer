@@ -75,12 +75,12 @@
                 "captcha": {
                     "type": "object",
                     "properties": {
-                        "cacheCleanupInterval": {
-                            "default": "5m",
-                            "type": "string"
-                        },
                         "callbackURL": {
                             "default": "",
+                            "type": "string"
+                        },
+                        "challengeDuration": {
+                            "default": "5m",
                             "type": "string"
                         },
                         "enabled": {
@@ -139,6 +139,27 @@
                         }
                     }
                 },
+                "templates": {
+                    "type": "object",
+                    "properties": {
+                        "captchaTemplateHeaders": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "captchaTemplatePath": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "deniedTemplateHeaders": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "deniedTemplatePath": {
+                            "default": "",
+                            "type": "string"
+                        }
+                    }
+                },
                 "trustedProxies": {
                     "default": [],
                     "type": "array"
@@ -176,6 +197,7 @@
             }
         },
         "fullnameOverride": {
+            "default": "",
             "type": "string"
         },
         "httproute": {
@@ -220,6 +242,7 @@
             "type": "array"
         },
         "nameOverride": {
+            "default": "",
             "type": "string"
         },
         "podSecurityContext": {
@@ -311,6 +334,7 @@
                     "type": "boolean"
                 },
                 "name": {
+                    "default": "",
                     "type": "string"
                 }
             }
