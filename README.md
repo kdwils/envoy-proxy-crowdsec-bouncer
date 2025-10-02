@@ -25,7 +25,7 @@ The bouncer integrates with Envoy Proxy as an external authorization service, si
 2. **Bouncer Check** - Queries the local decision cache for IP-based actions (ban, captcha, allow)
    - Decisions are streamed in real-time from CrowdSec via the Stream API
    - Low-latency lookups using in-memory cache
-3. **WAF Analysis** *(optional)* - If enabled and no blocking decision exists, forwards the request to CrowdSec AppSec for inspection
+3. **WAF Analysis** - If enabled and no blocking decision exists, forwards the request to CrowdSec AppSec for inspection
 4. **Decision Enforcement** - Applies the final decision:
    - **Allow** - Request proceeds to backend
    - **Ban** - Returns 403 with customizable ban page
