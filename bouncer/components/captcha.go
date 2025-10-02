@@ -43,6 +43,8 @@ type CaptchaService struct {
 	VerifiedCache         *cache.Cache[time.Time]
 	ChallengeSessionCache *cache.Cache[CaptchaSession]
 	RequestTimeout        time.Duration
+	generateToken         func() (string, error)
+	nowFunc               func() time.Time
 }
 
 // VerificationRequest represents a captcha verification request
@@ -70,6 +72,8 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 		VerifiedCache:         cache.New(cache.WithCleanupInterval[time.Time](cfg.SessionDuration)),
 		ChallengeSessionCache: cache.New(cache.WithCleanupInterval[CaptchaSession](cfg.ChallengeDuration)),
 		RequestTimeout:        timeout,
+		generateToken:         generateSecureToken,
+		nowFunc:               time.Now,
 	}
 
 	if !cfg.Enabled {
@@ -183,12 +187,12 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		return nil, fmt.Errorf("invalid redirect URL: %s", originalURL)
 	}
 
-	sessionID, err := generateSecureToken()
+	sessionID, err := s.generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate session token: %w", err)
 	}
 
-	csrfToken, err := generateSecureToken()
+	csrfToken, err := s.generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate CSRF token: %w", err)
 	}
@@ -200,13 +204,14 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 
 	callbackURL := s.Config.CallbackURL + "/captcha"
 
-	t := time.Now()
+	t := s.nowFunc()
 
 	session := CaptchaSession{
 		IP:           ip,
 		Provider:     s.Provider.GetProviderName(),
 		SiteKey:      s.Config.SiteKey,
 		CallbackURL:  callbackURL,
+		OriginalURL:  originalURL,
 		RedirectURL:  originalURL,
 		ChallengeURL: challengeURL,
 		ID:           sessionID,

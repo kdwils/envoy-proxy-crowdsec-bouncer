@@ -611,6 +611,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 			session := &components.CaptchaSession{
 				IP:           ip,
 				OriginalURL:  originalURL,
+				RedirectURL:  originalURL,
 				CreatedAt:    time.Now(),
 				ID:           sessionID,
 				Provider:     "recaptcha",
@@ -713,6 +714,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.True(t, exists)
 		require.Equal(t, "192.168.1.100", session.IP)
 		require.Equal(t, "http://my-host.com/protected", session.OriginalURL)
+		require.Equal(t, "http://my-host.com/protected", session.RedirectURL)
 
 		// Test that the captcha challenge page is served correctly
 		challengeURL := fmt.Sprintf("http://localhost:8081/captcha/challenge?session=%s", captchaSessionID)
@@ -799,6 +801,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.True(t, exists)
 		require.Equal(t, "192.168.1.1", session.IP)
 		require.Equal(t, "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", session.OriginalURL)
+		require.Equal(t, "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", session.RedirectURL)
 	})
 
 	t.Run("Test non-captcha decision allows through", func(t *testing.T) {
