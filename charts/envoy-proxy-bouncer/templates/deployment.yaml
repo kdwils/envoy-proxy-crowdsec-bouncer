@@ -137,6 +137,22 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_CALLBACKURL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .templates.deniedTemplatePath }}
+            - name: ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .templates.deniedTemplateHeaders }}
+            - name: ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .templates.captchaTemplatePath }}
+            - name: ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .templates.captchaTemplateHeaders }}
+            - name: ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS
+              value: {{ . | quote }}
+            {{- end }}
           {{- end }}
             - name: ENVOY_BOUNCER_SERVER_GRPCPORT
               value: {{ .Values.config.server.grpcPort | default (.Values.config.server.port | default .Values.service.port) | quote }}
