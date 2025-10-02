@@ -46,7 +46,6 @@ func initConfig() {
 	viper.SetDefault("server.grpcPort", 8080)
 	viper.SetDefault("server.httpPort", 8081)
 	viper.SetDefault("server.logLevel", slog.LevelInfo)
-	viper.SetDefault("server.banTemplatePath", "/ban.html")
 
 	viper.SetDefault("bouncer.apiKey", "")
 	viper.SetDefault("bouncer.lapiURL", "")
@@ -63,11 +62,13 @@ func initConfig() {
 	viper.SetDefault("captcha.provider", "")
 	viper.SetDefault("captcha.siteKey", "")
 	viper.SetDefault("captcha.secretKey", "")
-	viper.SetDefault("captcha.sessionDuration", "15m")
-	viper.SetDefault("captcha.cacheCleanupInterval", "5m")
 	viper.SetDefault("captcha.callbackURL", "")
 	viper.SetDefault("captcha.timeout", "10s")
+	viper.SetDefault("captcha.challengeDuration", "5m")
+	viper.SetDefault("captcha.sessionDuration", "15m")
 
+	viper.SetDefault("templates.deniedTemplatePath", "")
 	viper.SetDefault("templates.deniedTemplateHeaders", "text/html; charset=utf-8")
+	viper.SetDefault("templates.captchaTemplatePath", "")
 	viper.SetDefault("templates.captchaTemplateHeaders", "text/html; charset=utf-8")
 }
