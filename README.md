@@ -1,4 +1,4 @@
-jgo![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
+![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)
 ![Build](https://img.shields.io/github/actions/workflow/status/kdwils/envoy-proxy-crowdsec-bouncer/ci.yaml?branch=main)
 ![License](https://img.shields.io/github/license/kdwils/envoy-proxy-crowdsec-bouncer)
 
