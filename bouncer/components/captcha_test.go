@@ -266,4 +266,60 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		assert.Equal(t, "http://example.com/original", session.RedirectURL)
 		assert.NotEmpty(t, session.ID)
 	})
+
+	t.Run("rejects javascript URL", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Captcha{
+			Enabled:     true,
+			Provider:    "turnstile",
+			SiteKey:     "test-site-key",
+			SecretKey:   "test-secret",
+			CallbackURL: "http://localhost:8081",
+		}
+
+		provider := mocks.NewMockCaptchaProvider(ctrl)
+
+		service := &CaptchaService{
+			Config:                cfg,
+			Provider:              provider,
+			VerifiedCache:         cache.New(cache.WithCleanupInterval[time.Time](time.Minute)),
+			ChallengeSessionCache: cache.New(cache.WithCleanupInterval[CaptchaSession](time.Minute)),
+		}
+
+		session, err := service.CreateSession("192.168.1.1", "javascript:alert('xss')")
+
+		assert.Error(t, err)
+		assert.Nil(t, session)
+		assert.Contains(t, err.Error(), "invalid redirect URL")
+	})
+
+	t.Run("rejects URL without host", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Captcha{
+			Enabled:     true,
+			Provider:    "turnstile",
+			SiteKey:     "test-site-key",
+			SecretKey:   "test-secret",
+			CallbackURL: "http://localhost:8081",
+		}
+
+		provider := mocks.NewMockCaptchaProvider(ctrl)
+
+		service := &CaptchaService{
+			Config:                cfg,
+			Provider:              provider,
+			VerifiedCache:         cache.New(cache.WithCleanupInterval[time.Time](time.Minute)),
+			ChallengeSessionCache: cache.New(cache.WithCleanupInterval[CaptchaSession](time.Minute)),
+		}
+
+		session, err := service.CreateSession("192.168.1.1", "/relative/path")
+
+		assert.Error(t, err)
+		assert.Nil(t, session)
+		assert.Contains(t, err.Error(), "invalid redirect URL")
+	})
 }

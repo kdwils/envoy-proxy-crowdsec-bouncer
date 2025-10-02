@@ -179,6 +179,10 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		return nil, nil
 	}
 
+	if !isValidRedirectURL(originalURL) {
+		return nil, fmt.Errorf("invalid redirect URL: %s", originalURL)
+	}
+
 	sessionID, err := generateSecureToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate session token: %w", err)
@@ -223,4 +227,21 @@ func generateSecureToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func isValidRedirectURL(redirectURL string) bool {
+	parsed, err := url.Parse(redirectURL)
+	if err != nil {
+		return false
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+
+	if parsed.Host == "" {
+		return false
+	}
+
+	return true
 }

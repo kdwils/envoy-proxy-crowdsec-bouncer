@@ -811,6 +811,26 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.Equal(t, int32(0), check.Status.Code)
 	})
 
+	t.Run("Test invalid redirect URL is rejected", func(t *testing.T) {
+		captchaService, err := components.NewCaptchaService(config.Captcha, &http.Client{})
+		require.NoError(t, err)
+
+		session, err := captchaService.CreateSession("192.168.1.100", "javascript:alert('xss')")
+		require.Error(t, err)
+		require.Nil(t, session)
+		require.Contains(t, err.Error(), "invalid redirect URL")
+
+		session, err = captchaService.CreateSession("192.168.1.100", "/relative/path")
+		require.Error(t, err)
+		require.Nil(t, session)
+		require.Contains(t, err.Error(), "invalid redirect URL")
+
+		session, err = captchaService.CreateSession("192.168.1.100", "ftp://example.com/file")
+		require.Error(t, err)
+		require.Nil(t, session)
+		require.Contains(t, err.Error(), "invalid redirect URL")
+	})
+
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		localMetrics := testBouncer.GetMetrics()
 		require.Equal(t, int64(1), localMetrics.Remediation["CAPI:bypass"].Count)
