@@ -17,24 +17,34 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 
 ## How It Works
 
-The bouncer subscribes to decisions from CrowdSec via the Stream API and processes each request through multiple stages:
+The bouncer integrates with Envoy Proxy as an external authorization service, sitting between Envoy and your backend applications. It evaluates every request through a multi-stage security pipeline:
 
-1. IP Extraction: Determines the real client IP from forwarded headers, respecting trusted proxy configuration.
-2. Bouncer Check: Checks CrowdSec decision cache for IP-based decisions (ban, captcha, allow). Updates to cached decisions are received in real-time from the Stream API.
-3. WAF Analysis: If there is no blocking decision, the request is forwarded to CrowdSec AppSec for analysis.
-4. Decision Application: Applies the final decision:
-   - Allow: Request proceeds normally
-   - Ban/Deny: Returns 403 Forbidden
-   - Captcha: Creates session and redirects to challenge page
+### Request Processing Flow
+
+1. **IP Extraction** - Extracts the real client IP from forwarded headers, respecting trusted proxy configuration
+2. **Bouncer Check** - Queries the local decision cache for IP-based actions (ban, captcha, allow)
+   - Decisions are streamed in real-time from CrowdSec via the Stream API
+   - Low-latency lookups using in-memory cache
+3. **WAF Analysis** *(optional)* - If enabled and no blocking decision exists, forwards the request to CrowdSec AppSec for inspection
+4. **Decision Enforcement** - Applies the final decision:
+   - **Allow** - Request proceeds to backend
+   - **Ban** - Returns 403 with customizable ban page
+   - **Captcha** - Creates session and redirects to challenge
+
+### Ban Flow
+
+When a banned IP attempts access, they receive a 403 response with a customizable ban page:
 
 ![Ban Page](docs/images/ban.jpeg)
 
-When a captcha decision is made:
+### CAPTCHA Flow
 
-1. CrowdSec or WAF returns "captcha" action for suspicious request
-2. Bouncer creates session and redirects to `/captcha/challenge?session=<id>`
-3. User completes CAPTCHA and submits to `/captcha/verify`
-4. On success, the IP is cached and the user is redirected to the original URL
+When CAPTCHA is enabled and a suspicious request is detected:
+
+1. Bouncer creates a secure session and redirects to `/captcha/challenge?session=<id>`
+2. User completes the CAPTCHA challenge (reCAPTCHA v2 or Cloudflare Turnstile)
+3. Challenge response is verified at `/captcha/verify`
+4. On success, the IP is allowlisted and user is redirected to their original destination
 
 ## Documentation
 
