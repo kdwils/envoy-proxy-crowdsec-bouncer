@@ -5,10 +5,10 @@ kind: ServiceAccount
 metadata:
   name: release-name-envoy-proxy-bouncer
   labels:
-    helm.sh/chart: envoy-proxy-bouncer-0.0.1
+    helm.sh/chart: envoy-proxy-bouncer-0.2.3
     app.kubernetes.io/name: envoy-proxy-bouncer
     app.kubernetes.io/instance: release-name
-    app.kubernetes.io/version: "0.0.1"
+    app.kubernetes.io/version: "v0.2.2"
     app.kubernetes.io/managed-by: Helm
 ---
 # Source: envoy-proxy-bouncer/templates/service.yaml
@@ -17,18 +17,18 @@ kind: Service
 metadata:
   name: release-name-envoy-proxy-bouncer
   labels:
-    helm.sh/chart: envoy-proxy-bouncer-0.0.1
+    helm.sh/chart: envoy-proxy-bouncer-0.2.3
     app.kubernetes.io/name: envoy-proxy-bouncer
     app.kubernetes.io/instance: release-name
-    app.kubernetes.io/version: "0.0.1"
+    app.kubernetes.io/version: "v0.2.2"
     app.kubernetes.io/managed-by: Helm
 spec:
   type: ClusterIP
   ports:
     - port: 8080
-      targetPort: http
+      targetPort: grpc
       protocol: TCP
-      name: http
+      name: grpc
   selector:
     app.kubernetes.io/name: envoy-proxy-bouncer
     app.kubernetes.io/instance: release-name
@@ -39,10 +39,10 @@ kind: Deployment
 metadata:
   name: release-name-envoy-proxy-bouncer
   labels:
-    helm.sh/chart: envoy-proxy-bouncer-0.0.1
+    helm.sh/chart: envoy-proxy-bouncer-0.2.3
     app.kubernetes.io/name: envoy-proxy-bouncer
     app.kubernetes.io/instance: release-name
-    app.kubernetes.io/version: "0.0.1"
+    app.kubernetes.io/version: "v0.2.2"
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
@@ -53,10 +53,10 @@ spec:
   template:
     metadata:
       labels:
-        helm.sh/chart: envoy-proxy-bouncer-0.0.1
+        helm.sh/chart: envoy-proxy-bouncer-0.2.3
         app.kubernetes.io/name: envoy-proxy-bouncer
         app.kubernetes.io/instance: release-name
-        app.kubernetes.io/version: "0.0.1"
+        app.kubernetes.io/version: "v0.2.2"
         app.kubernetes.io/managed-by: Helm
     spec:
       serviceAccountName: release-name-envoy-proxy-bouncer
@@ -71,24 +71,31 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 1000
-          image: "ghcr.io/kdwils/envoy-proxy-bouncer:0.0.1"
+          image: "ghcr.io/kdwils/envoy-proxy-bouncer:v0.2.2"
           imagePullPolicy: IfNotPresent
           ports:
-            - name: http
+            - name: grpc
               containerPort: 8080
               protocol: TCP
           env:
-            - name: ENVOY_BOUNCER_BOUNCER_APIURL
-              value: http://crowdsec-service:8080
-            - name: ENVOY_BOUNCER_SERVER_PORT
+            - name: ENVOY_BOUNCER_BOUNCER_LAPIURL
+              value: "http://crowdsec-service:8080"
+            - name: ENVOY_BOUNCER_BOUNCER_ENABLED
+              value: "true"
+            - name: ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL
+              value: "10s"
+            - name: ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL
+              value: "10m"
+            - name: ENVOY_BOUNCER_WAF_APPSECURL
+              value: "http://crowdsec-appsec-service:7422"
+            - name: ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION
+              value: "15m"
+            - name: ENVOY_BOUNCER_CAPTCHA_TIMEOUT
+              value: "10s"
+            - name: ENVOY_BOUNCER_SERVER_GRPCPORT
               value: "8080"
             - name: ENVOY_BOUNCER_SERVER_LOGLEVEL
               value: info
-            - name: ENVOY_BOUNCER_BOUNCER_APIKEY
-              valueFrom:
-                secretKeyRef:
-                  name: crowdsec-api-key-secret
-                  key: api-key
           resources:
             limits:
               cpu: 100m

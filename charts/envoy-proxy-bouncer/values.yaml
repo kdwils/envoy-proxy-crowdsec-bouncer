@@ -96,3 +96,7 @@ httproute:
 referenceGrant:
   create: false # @schema default: false
   fromNamespaces: [] # @schema default: []
+
+templates:
+  deniedTemplateContent: "" # @schema default: ""
+  captchaTemplateContent: "" # @schema default: ""

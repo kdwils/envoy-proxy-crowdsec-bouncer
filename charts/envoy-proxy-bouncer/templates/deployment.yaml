@@ -137,17 +137,25 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_CALLBACKURL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .templates.deniedTemplatePath }}
+            {{- if or $.Values.templates.deniedTemplateContent .templates.deniedTemplatePath }}
             - name: ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH
-              value: {{ . | quote }}
+              {{- if $.Values.templates.deniedTemplateContent }}
+              value: "/app/template/html/denied.html"
+              {{- else }}
+              value: {{ .templates.deniedTemplatePath | quote }}
+              {{- end }}
             {{- end }}
             {{- with .templates.deniedTemplateHeaders }}
             - name: ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS
               value: {{ . | quote }}
             {{- end }}
-            {{- with .templates.captchaTemplatePath }}
+            {{- if or $.Values.templates.captchaTemplateContent .templates.captchaTemplatePath }}
             - name: ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH
-              value: {{ . | quote }}
+              {{- if $.Values.templates.captchaTemplateContent }}
+              value: "/app/template/html/captcha.html"
+              {{- else }}
+              value: {{ .templates.captchaTemplatePath | quote }}
+              {{- end }}
             {{- end }}
             {{- with .templates.captchaTemplateHeaders }}
             - name: ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS
@@ -164,13 +172,27 @@ spec:
               value: {{ .Values.config.server.logLevel }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- with .Values.volumeMounts }}
+          {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent .Values.volumeMounts }}
           volumeMounts:
+          {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent }}
+            - name: custom-templates
+              mountPath: /app/template/html
+              readOnly: true
+          {{- end }}
+          {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- with .Values.volumes }}
+          {{- end }}
+      {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent .Values.volumes }}
       volumes:
+      {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent }}
+        - name: custom-templates
+          configMap:
+            name: {{ include "envoy-proxy-bouncer.fullname" . }}-templates
+      {{- end }}
+      {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

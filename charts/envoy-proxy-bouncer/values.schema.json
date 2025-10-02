@@ -338,6 +338,19 @@
                     "type": "string"
                 }
             }
+        },
+        "templates": {
+            "type": "object",
+            "properties": {
+                "captchaTemplateContent": {
+                    "default": "",
+                    "type": "string"
+                },
+                "deniedTemplateContent": {
+                    "default": "",
+                    "type": "string"
+                }
+            }
         }
     }
 }
