@@ -149,6 +149,18 @@ Controls CrowdSec bouncer integration.
 
 **Note**: Generate API key with `cscli bouncers add <name>` on your CrowdSec instance.
 
+#### Metrics Reporting
+
+Enable metrics reporting to track bouncer effectiveness:
+
+```yaml
+bouncer:
+  metrics: true
+  metricsInterval: "10m"
+```
+
+Metrics can be viewed using `cscli metrics` on your CrowdSec instance.
+
 ### WAF
 
 Controls CrowdSec AppSec (WAF) integration.
@@ -266,74 +278,6 @@ captcha:
 templates:
   deniedTemplateHeaders: "text/html; charset=utf-8"
   captchaTemplateHeaders: "text/html; charset=utf-8"
-```
-
-## Validation
-
-The bouncer will validate configuration on startup and fail if:
-
-- Required fields are missing when a component is enabled
-- Invalid duration formats are provided
-- Invalid URLs are provided
-- Template files cannot be read or parsed
-
-Check logs for detailed error messages if the bouncer fails to start.
-
-## Examples
-
-### Production Configuration
-
-```yaml
-server:
-  grpcPort: 8080
-  httpPort: 8081
-  logLevel: "info"
-
-trustedProxies:
-  - 10.0.0.0/8
-  - 172.16.0.0/12
-
-bouncer:
-  enabled: true
-  metrics: true
-  lapiURL: "http://crowdsec.monitoring.svc:8080"
-  apiKey: "your-api-key"
-  tickerInterval: "10s"
-  metricsInterval: "10m"
-
-waf:
-  enabled: true
-  appSecURL: "http://crowdsec-appsec.monitoring.svc:7422"
-  apiKey: "your-api-key"
-
-captcha:
-  enabled: true
-  provider: "turnstile"
-  siteKey: "0x4AAAAAAAA..."
-  secretKey: "0x4AAAAAAAA..."
-  callbackURL: "https://auth.example.com"
-  sessionDuration: "15m"
-```
-
-### Development Configuration
-
-```yaml
-server:
-  grpcPort: 8080
-  httpPort: 8081
-  logLevel: "debug"
-
-bouncer:
-  enabled: true
-  metrics: false
-  lapiURL: "http://localhost:8080"
-  apiKey: "dev-api-key"
-
-waf:
-  enabled: false
-
-captcha:
-  enabled: false
 ```
 
 ## See Also

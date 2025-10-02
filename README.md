@@ -21,12 +21,15 @@ The bouncer integrates with Envoy Proxy as an external authorization service, si
 
 ### Request Processing Flow
 
-1. **IP Extraction** - Extracts the real client IP from forwarded headers, respecting trusted proxy configuration
-2. **Bouncer Check** - Queries the local decision cache for IP-based actions (ban, captcha, allow)
+1. **IP Extraction**
+  - Extracts the real client IP from forwarded headers, respecting trusted proxy configuration
+2. **Bouncer Check**
+  - Queries the local decision cache for IP-based actions (ban or captcha)
    - Decisions are streamed in real-time from CrowdSec via the Stream API
    - Low-latency lookups using in-memory cache
-3. **WAF Analysis** - If enabled and no blocking decision exists, forwards the request to CrowdSec AppSec for inspection
-4. **Decision Enforcement** - Applies the final decision:
+3. **WAF Analysis**
+  - If enabled and no blocking decision exists, forwards the request to CrowdSec AppSec for inspection
+4. **Decision Enforcement**
    - **Allow** - Request proceeds to backend
    - **Ban** - Returns 403 with customizable ban page
    - **Captcha** - Creates session and redirects to challenge
