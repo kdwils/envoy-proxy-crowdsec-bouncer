@@ -1,0 +1,17 @@
+{{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "envoy-proxy-bouncer.fullname" . }}-templates
+  labels:
+    {{- include "envoy-proxy-bouncer.labels" . | nindent 4 }}
+data:
+  {{- if .Values.templates.deniedTemplateContent }}
+  denied.html: |
+{{ .Values.templates.deniedTemplateContent | indent 4 }}
+  {{- end }}
+  {{- if .Values.templates.captchaTemplateContent }}
+  captcha.html: |
+{{ .Values.templates.captchaTemplateContent | indent 4 }}
+  {{- end }}
+{{- end }}

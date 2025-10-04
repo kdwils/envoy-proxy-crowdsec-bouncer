@@ -1,0 +1,214 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bouncer-custom-templates
+  namespace: envoy-gateway-system
+data:
+  ban.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>Access Blocked</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          background: #f5f5f5;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          margin: 0;
+        }
+        .container {
+          background: white;
+          padding: 2rem;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          max-width: 600px;
+        }
+        h1 { color: #d32f2f; margin-top: 0; }
+        .info { background: #f5f5f5; padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+        .info dt { font-weight: bold; margin-top: 0.5rem; }
+        .info dd { margin: 0 0 0.5rem 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Access Blocked</h1>
+        <p>Your request has been blocked by our security system.</p>
+        <div class="info">
+          <dl>
+            <dt>Your IP Address:</dt>
+            <dd>{{ .IP }}</dd>
+            {{ if .Decision }}
+            <dt>Block Reason:</dt>
+            <dd>{{ .Decision.Scenario }}</dd>
+            {{ if .Decision.Until }}
+            <dt>Expires:</dt>
+            <dd>{{ .Decision.Until }}</dd>
+            {{ end }}
+            {{ end }}
+            <dt>Timestamp:</dt>
+            <dd>{{ .Timestamp }}</dd>
+          </dl>
+        </div>
+        <p>If you believe this is an error, please contact support with the timestamp above.</p>
+      </div>
+    </body>
+    </html>
+  captcha.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Security Verification</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                background-color: #f5f5f5;
+            }
+            .container {
+                background: white;
+                padding: 2rem;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                text-align: center;
+                max-width: 400px;
+                width: 90%;
+            }
+            h1 { color: #333; margin-top: 0; }
+            .submit-btn {
+                background-color: #1976d2;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-top: 1rem;
+                width: 100%;
+            }
+            .submit-btn:disabled {
+                background-color: #ccc;
+                cursor: not-allowed;
+            }
+            #captcha-container {
+                margin: 1rem 0;
+                display: flex;
+                justify-content: center;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Security Verification</h1>
+            <p>Please complete the verification below to continue.</p>
+            <form method="POST" action="{{.CallbackURL}}/verify">
+                <div id="captcha-container"></div>
+                <input type="hidden" name="session" value="{{.SessionID}}" />
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+                <button type="submit" id="submit-btn" class="submit-btn" disabled>Verify</button>
+            </form>
+        </div>
+
+        {{if eq .Provider "recaptcha"}}
+        <script src="https://www.google.com/recaptcha/api.js" defer></script>
+        <script>
+            function onCaptchaSuccess(token) {
+                document.getElementById('submit-btn').disabled = false;
+            }
+            window.onload = function () {
+                grecaptcha.render('captcha-container', {
+                    'sitekey': '{{.SiteKey}}',
+                    'callback': onCaptchaSuccess
+                });
+            };
+        </script>
+        {{else if eq .Provider "turnstile"}}
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
+        <script>
+            function onTurnstileSuccess(token) {
+                document.getElementById('submit-btn').disabled = false;
+            }
+            window.onload = function () {
+                turnstile.render('#captcha-container', {
+                    sitekey: '{{.SiteKey}}',
+                    callback: onTurnstileSuccess
+                });
+            };
+        </script>
+        {{end}}
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-bouncer
+  namespace: envoy-gateway-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: envoy-bouncer
+  template:
+    metadata:
+      labels:
+        app: envoy-bouncer
+    spec:
+      containers:
+        - name: bouncer
+          image: ghcr.io/kdwils/envoy-proxy-bouncer:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: grpc
+            - containerPort: 8081
+              name: http
+          env:
+            - name: ENVOY_BOUNCER_BOUNCER_APIKEY
+              valueFrom:
+                secretKeyRef:
+                  name: crowdsec-api-key-secret
+                  key: ENVOY_BOUNCER_BOUNCER_APIKEY
+            - name: ENVOY_BOUNCER_BOUNCER_LAPIURL
+              value: "http://crowdsec-service.crowdsec:8080"
+            - name: ENVOY_BOUNCER_SERVER_LOGLEVEL
+              value: "info"
+            - name: ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH
+              value: "/templates/ban.html"
+            - name: ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH
+              value: "/templates/captcha.html"
+          volumeMounts:
+            - name: custom-templates
+              mountPath: /templates
+              readOnly: true
+      volumes:
+        - name: custom-templates
+          configMap:
+            name: bouncer-custom-templates
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-bouncer
+  namespace: envoy-gateway-system
+spec:
+  selector:
+    app: envoy-bouncer
+  ports:
+    - name: grpc
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: http
+      port: 8081
+      targetPort: 8081
+      protocol: TCP

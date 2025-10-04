@@ -1,18 +1,21 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
-  name: envoy-bouncer-policy
-  namespace: envoy-gateway-system
+  name: media-security
+  namespace: media
 spec:
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: <your-gateway-name>
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: plex
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: overseerr
   extAuth:
     grpc:
       backendRefs:
         - group: ""
           kind: Service
-          name: envoy-bouncer
+          name: envoy-proxy-bouncer
           port: 8080
           namespace: envoy-gateway-system
