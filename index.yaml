@@ -2,6 +2,16 @@ apiVersion: v1
 entries:
   envoy-proxy-bouncer:
   - apiVersion: v2
+    appVersion: v0.3.0
+    created: "2025-10-05T19:48:18.810679045Z"
+    description: A Helm chart for CrowdSec Envoy Proxy Bouncer
+    digest: 1bc04e26f9493cea4b99f8d8f5a5ecd98aa6320190a2c7a7b42d3f9a353d62d8
+    name: envoy-proxy-bouncer
+    type: application
+    urls:
+    - https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/releases/download/envoy-proxy-bouncer-0.3.0/envoy-proxy-bouncer-0.3.0.tgz
+    version: 0.3.0
+  - apiVersion: v2
     appVersion: v0.2.0
     created: "2025-09-21T23:01:22.563047909Z"
     description: A Helm chart for CrowdSec Envoy Proxy Bouncer
@@ -71,4 +81,4 @@ entries:
     urls:
     - https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/releases/download/envoy-proxy-bouncer-0.0.1/envoy-proxy-bouncer-0.0.1.tgz
     version: 0.0.1
-generated: "2025-09-29T17:08:57.800686496Z"
+generated: "2025-10-05T19:48:18.810718759Z"
