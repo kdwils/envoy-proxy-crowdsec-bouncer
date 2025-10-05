@@ -46,8 +46,8 @@ captcha:
   secretKey: "<your-captcha-secret-key>"
   timeout: "10s"                            # Request timeout for CAPTCHA provider verification
   callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks
+  challengeDuration: "5m"                   # How long before a CAPTCHA challenge expires
   sessionDuration: "15m"                    # How long captcha verification is valid
-  cacheCleanupInterval: "5m"                # How often to clean up expired IP verification cache entries
 
 templates:
   deniedTemplatePath: ""                    # Path to custom ban page template
@@ -95,6 +95,7 @@ export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
 export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_CHALLENGEDURATION=5m
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
 
 # Template configuration
@@ -185,8 +186,8 @@ Controls CAPTCHA challenge functionality.
 | `secretKey` | string | `""` | Yes (when enabled) | CAPTCHA secret key |
 | `callbackURL` | string | `""` | Yes (when enabled) | Base URL for CAPTCHA callbacks |
 | `timeout` | duration | `"10s"` | No | Timeout for CAPTCHA provider verification |
+| `challengeDuration` | duration | `"5m"` | No | How long before a CAPTCHA challenge expires |
 | `sessionDuration` | duration | `"15m"` | No | How long CAPTCHA verification is valid |
-| `cacheCleanupInterval` | duration | `"5m"` | No | Interval to clean up expired sessions |
 
 See [CAPTCHA.md](CAPTCHA.md) for detailed CAPTCHA configuration.
 
@@ -272,8 +273,8 @@ waf:
 captcha:
   enabled: false
   timeout: "10s"
+  challengeDuration: "5m"
   sessionDuration: "15m"
-  cacheCleanupInterval: "5m"
 
 templates:
   deniedTemplateHeaders: "text/html; charset=utf-8"
