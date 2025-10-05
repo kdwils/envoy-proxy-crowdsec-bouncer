@@ -65,26 +65,25 @@ spec:
             - name: ENVOY_BOUNCER_BOUNCER_ENABLED
               value: {{ . | quote }}
             {{- end }}
-            {{- with .bouncer.metrics }}
+            {{- if .bouncer.metrics }}
             - name: ENVOY_BOUNCER_BOUNCER_METRICS
+              value: {{ .bouncer.metrics | quote }}
+            {{- with .bouncer.metricsInterval }}
+            - name: ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL
               value: {{ . | quote }}
+            {{- end }}
             {{- end }}
             {{- with .bouncer.tickerInterval }}
             - name: ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .bouncer.metricsInterval }}
-            - name: ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL
               value: {{ . | quote }}
             {{- end }}
             {{- with .trustedProxies }}
             - name: ENVOY_BOUNCER_TRUSTEDPROXIES
               value: {{ join "," . | quote }}
             {{- end }}
-            {{- with .waf.enabled }}
+            {{- if .waf.enabled }}
             - name: ENVOY_BOUNCER_WAF_ENABLED
-              value: {{ . | quote }}
-            {{- end }}
+              value: {{ .waf.enabled | quote }}
             {{- if and .waf.apiKeySecretRef .waf.apiKeySecretRef.name .waf.apiKeySecretRef.key }}
             - name: ENVOY_BOUNCER_WAF_APIKEY
               valueFrom:
@@ -99,10 +98,10 @@ spec:
             - name: ENVOY_BOUNCER_WAF_APPSECURL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .captcha.enabled }}
-            - name: ENVOY_BOUNCER_CAPTCHA_ENABLED
-              value: {{ . | quote }}
             {{- end }}
+            {{- if .captcha.enabled }}
+            - name: ENVOY_BOUNCER_CAPTCHA_ENABLED
+              value: {{ .captcha.enabled | quote }}
             {{- with .captcha.provider }}
             - name: ENVOY_BOUNCER_CAPTCHA_PROVIDER
               value: {{ . | quote }}
@@ -137,17 +136,26 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_CALLBACKURL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .templates.deniedTemplatePath }}
+            {{- end }}
+            {{- if or $.Values.templates.deniedTemplateContent .templates.deniedTemplatePath }}
             - name: ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH
-              value: {{ . | quote }}
+              {{- if $.Values.templates.deniedTemplateContent }}
+              value: "/app/template/html/denied.html"
+              {{- else }}
+              value: {{ .templates.deniedTemplatePath | quote }}
+              {{- end }}
             {{- end }}
             {{- with .templates.deniedTemplateHeaders }}
             - name: ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS
               value: {{ . | quote }}
             {{- end }}
-            {{- with .templates.captchaTemplatePath }}
+            {{- if or $.Values.templates.captchaTemplateContent .templates.captchaTemplatePath }}
             - name: ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH
-              value: {{ . | quote }}
+              {{- if $.Values.templates.captchaTemplateContent }}
+              value: "/app/template/html/captcha.html"
+              {{- else }}
+              value: {{ .templates.captchaTemplatePath | quote }}
+              {{- end }}
             {{- end }}
             {{- with .templates.captchaTemplateHeaders }}
             - name: ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS
@@ -164,13 +172,27 @@ spec:
               value: {{ .Values.config.server.logLevel }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- with .Values.volumeMounts }}
+          {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent .Values.volumeMounts }}
           volumeMounts:
+          {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent }}
+            - name: custom-templates
+              mountPath: /app/template/html
+              readOnly: true
+          {{- end }}
+          {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- with .Values.volumes }}
+          {{- end }}
+      {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent .Values.volumes }}
       volumes:
+      {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent }}
+        - name: custom-templates
+          configMap:
+            name: {{ include "envoy-proxy-bouncer.fullname" . }}-templates
+      {{- end }}
+      {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

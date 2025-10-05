@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./main.go
+    binary: envoy-proxy-bouncer
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+changelog:
+  use: github
+  sort: asc
+  format: "{{ .Message }} (@{{ .AuthorUsername }})"
+  filters:
+    exclude:
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
+      - "^typo"
+      - "^verbiage"
+      - "^remove typo"
+      - "^remove optional tag"
+      - "^version bumps"
+  groups:
+    - title: "Features"
+      regexp: "^(Feature|feature|feat).*?$"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^(Bugfix|bugfix|fix).*?$"
+      order: 1
+    - title: "Documentation"
+      regexp: "^(Docs|docs|documentation).*?$"
+      order: 2
+    - title: "Maintenance"
+      regexp: "^(Chore|chore).*?$"
+      order: 3
+    - title: "Dependency Updates"
+      regexp: "^(Bump|bump).*?$"
+      order: 4
+    - title: "Other Changes"
+      order: 999
+
+release:
+  github:
+    owner: kdwils
+    name: envoy-proxy-crowdsec-bouncer
+  header: |
+    ## What's Changed
+
+    This release adds support for...
+    * captcha challenges for reCaptcha and cloudflare Turnstile 
+    * custom html templates for captcha challenges
+    * a default denied html template for denied requests supplied from @hydazz
+    * custom html templates for denied requests
+    * metrics in the crowdsec dashboard for the number of dropped requests
+    * metrics in the crowdsec dashboard for the number of active decisions the bouncer is using
+
+    ![Denied](https://raw.githubusercontent.com/kdwils/envoy-proxy-crowdsec-bouncer/main/docs/images/ban.jpeg)
+
+  footer: |
+    **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
