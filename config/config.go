@@ -40,6 +40,7 @@ type Bouncer struct {
 	MetricsInterval time.Duration `yaml:"metricsInterval" json:"metricsInterval"`
 	ApiKey          string        `yaml:"apiKey" json:"apiKey"`
 	LAPIURL         string        `yaml:"lapiUrl" json:"lapiUrl"`
+	BanStatusCode   int           `yaml:"banStatusCode" json:"banStatusCode"`
 }
 
 type WAF struct {

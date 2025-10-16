@@ -1040,6 +1040,76 @@ func TestServer_getRedirectResponse(t *testing.T) {
 	})
 }
 
+func TestCustomBanStatusCode(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	log := logger.FromContext(context.Background())
+
+	mockBouncer := mocks.NewMockBouncer(ctrl)
+	mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
+		Action:     "ban",
+		Reason:     "crowdsecurity/http-bad",
+		HTTPStatus: 418, // I'm a teapot
+		IP:         "192.0.2.1",
+	})
+
+	config := getDefaultConfig()
+	config.Bouncer.BanStatusCode = 418
+
+	s := NewServer(config, mockBouncer, nil, nil, log)
+	req := &auth.CheckRequest{
+		Attributes: &auth.AttributeContext{
+			Source: &auth.AttributeContext_Peer{
+				Address: &core.Address{
+					Address: &core.Address_SocketAddress{
+						SocketAddress: &core.SocketAddress{Address: "192.0.2.1"},
+					},
+				},
+			},
+			Request: &auth.AttributeContext_Request{
+				Http: &auth.AttributeContext_HttpRequest{
+					Headers: map[string]string{
+						":method": "GET",
+						":path":   "/test",
+					},
+				},
+			},
+		},
+	}
+
+	resp, err := s.Check(context.Background(), req)
+	assert.NoError(t, err)
+	assert.Equal(t, int32(418), resp.Status.Code)
+
+	deny := resp.GetDeniedResponse()
+	if assert.NotNil(t, deny) {
+		assert.Equal(t, envoy_type.StatusCode(418), deny.Status.Code)
+		assert.Equal(t, "crowdsecurity/http-bad", deny.Body)
+	}
+}
+
+func TestHttpStatusToEnvoyStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		httpStatus int
+		expected   envoy_type.StatusCode
+	}{
+		{"Standard Forbidden", 403, envoy_type.StatusCode_Forbidden},
+		{"I'm a teapot", 418, envoy_type.StatusCode(418)},
+		{"Custom code 999", 999, envoy_type.StatusCode(999)},
+		{"OK", 200, envoy_type.StatusCode_OK},
+		{"Internal Server Error", 500, envoy_type.StatusCode_InternalServerError},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := httpStatusToEnvoyStatus(tt.httpStatus)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func findHeader(headers []*core.HeaderValueOption, key string) (string, bool) {
 	for _, h := range headers {
 		if h == nil || h.Header == nil {

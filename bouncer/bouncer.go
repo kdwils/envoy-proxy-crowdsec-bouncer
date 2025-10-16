@@ -446,16 +446,16 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		return captchaResult
 	case "deny", "ban":
 		if bouncerResult.HTTPStatus == 0 {
-			bouncerResult.HTTPStatus = http.StatusForbidden
+			bouncerResult.HTTPStatus = b.config.Bouncer.BanStatusCode
 		}
 		b.recordFinalMetric(bouncerResult)
 		return bouncerResult
 	case "error":
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", bouncerResult.Reason, http.StatusForbidden, nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "deny", bouncerResult.Reason, b.config.Bouncer.BanStatusCode, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", http.StatusForbidden, nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", b.config.Bouncer.BanStatusCode, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
