@@ -578,7 +578,16 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+		r := Bouncer{
+			DecisionCache: mb,
+			WAF:           mw,
+			metrics:       cache.New[RemediationMetrics](),
+			config: config.Config{
+				Bouncer: config.Bouncer{
+					BanStatusCode: 403,
+				},
+			},
+		}
 
 		req := mkReq("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -625,7 +634,16 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+		r := Bouncer{
+			DecisionCache: mb,
+			WAF:           mw,
+			metrics:       cache.New[RemediationMetrics](),
+			config: config.Config{
+				Bouncer: config.Bouncer{
+					BanStatusCode: 403,
+				},
+			},
+		}
 
 		req := mkReq("2.2.2.2", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -722,7 +740,16 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+		r := Bouncer{
+			DecisionCache: mb,
+			WAF:           mw,
+			metrics:       cache.New[RemediationMetrics](),
+			config: config.Config{
+				Bouncer: config.Bouncer{
+					BanStatusCode: 403,
+				},
+			},
+		}
 
 		req := mkReq("9.9.9.9", "https", "host", "/bar", "POST", "HTTP/2", "abc")
 
