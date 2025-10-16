@@ -304,7 +304,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		return getRedirectResponse(result.RedirectURL), nil
 	case "deny", "ban":
 		body, headers := s.renderDeniedResponse(result)
-		return getDeniedResponse(envoy_type.StatusCode_Forbidden, body, headers), nil
+		return getDeniedResponse(httpStatusToEnvoyStatus(result.HTTPStatus), body, headers), nil
 	case "error":
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason, map[string]string{"Content-Type": s.config.Templates.DeniedTemplateHeaders}), nil
 	default:
@@ -383,6 +383,10 @@ func buildHeaderValues(headers map[string]string) []*envoy_core.HeaderValueOptio
 	}
 
 	return values
+}
+
+func httpStatusToEnvoyStatus(httpStatus int) envoy_type.StatusCode {
+	return envoy_type.StatusCode(httpStatus)
 }
 
 func getAllowedResponse() *auth.CheckResponse {

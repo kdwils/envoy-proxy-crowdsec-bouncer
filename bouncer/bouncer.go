@@ -446,16 +446,16 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		return captchaResult
 	case "deny", "ban":
 		if bouncerResult.HTTPStatus == 0 {
-			bouncerResult.HTTPStatus = http.StatusForbidden
+			bouncerResult.HTTPStatus = b.getBanStatusCode()
 		}
 		b.recordFinalMetric(bouncerResult)
 		return bouncerResult
 	case "error":
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", bouncerResult.Reason, http.StatusForbidden, nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "error", bouncerResult.Reason, http.StatusInternalServerError, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", http.StatusForbidden, nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", b.getBanStatusCode(), nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
@@ -515,12 +515,19 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 		if decision.Scenario != nil && *decision.Scenario != "" {
 			reason = *decision.Scenario
 		}
-		return NewCheckedRequest(parsed.RealIP, "ban", reason, http.StatusForbidden, decision, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "ban", reason, b.getBanStatusCode(), decision, "", parsed, nil)
 	case "captcha":
 		return NewCheckedRequest(parsed.RealIP, "captcha", "crowdsec captcha", http.StatusFound, decision, "", parsed, nil)
 	default:
 		return NewCheckedRequest(parsed.RealIP, "allow", "decision allows", http.StatusOK, nil, "", parsed, nil)
 	}
+}
+
+func (b *Bouncer) getBanStatusCode() int {
+	if b.config.Bouncer.BanStatusCode != 0 {
+		return b.config.Bouncer.BanStatusCode
+	}
+	return http.StatusForbidden
 }
 
 func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decision *models.Decision) CheckedRequest {
@@ -568,7 +575,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	}
 
 	if wafResult.Action != "allow" {
-		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", http.StatusForbidden, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
 	}
 
 	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)

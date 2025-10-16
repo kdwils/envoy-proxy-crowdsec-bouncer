@@ -31,6 +31,7 @@ bouncer:
   metrics: false
   tickerInterval: "10s"                     # How often to fetch decisions from LAPI
   metricsInterval: "10m"                    # How often to report metrics to LAPI
+  banStatusCode: 403                        # HTTP status code for ban responses
   lapiUrl: "http://crowdsec:8080"
   apiKey: "<lapi-key>"
 
@@ -79,6 +80,7 @@ export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
 export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=10s
 export ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL=10m
 export ENVOY_BOUNCER_BOUNCER_METRICS=false
+export ENVOY_BOUNCER_BOUNCER_BANSTATUSCODE=403
 
 # Trusted proxies (comma-separated) - no defaults
 export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
@@ -147,6 +149,7 @@ Controls CrowdSec bouncer integration.
 | `metrics` | bool | `false` | No | Enable metrics reporting to CrowdSec |
 | `tickerInterval` | duration | `"10s"` | No | Interval to fetch decisions from LAPI |
 | `metricsInterval` | duration | `"10m"` | No | Interval to report metrics to LAPI |
+| `banStatusCode` | int | `403` | No | HTTP status code for ban responses |
 
 **Note**: Generate API key with `cscli bouncers add <name>` on your CrowdSec instance.
 
@@ -161,6 +164,22 @@ bouncer:
 ```
 
 Metrics can be viewed using `cscli metrics` on your CrowdSec instance.
+
+#### Custom Ban Status Codes
+
+By default, the bouncer returns HTTP 403 (Forbidden) for banned IPs. You can customize this to avoid feedback loops when CrowdSec processes Envoy logs:
+
+```yaml
+bouncer:
+  banStatusCode: 418  # Use 418 "I'm a teapot" to distinguish from legitimate 403s
+```
+
+This is useful when CrowdSec analyzes Envoy access logs, as it can ignore ban responses (418) while still processing genuine errors (403).
+
+**Common alternatives**:
+- `418` - "I'm a teapot" (RFC 2324)
+- `429` - "Too Many Requests" 
+- `444` - Nginx-style "Connection closed without response"
 
 ### WAF
 
