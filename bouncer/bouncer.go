@@ -451,7 +451,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.recordFinalMetric(bouncerResult)
 		return bouncerResult
 	case "error":
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", bouncerResult.Reason, b.getBanStatusCode(), nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "error", bouncerResult.Reason, http.StatusInternalServerError, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:

@@ -679,16 +679,8 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{
-			DecisionCache: mb,
-			WAF:           mw,
-			metrics:       cache.New[RemediationMetrics](),
-			config: config.Config{
-				Bouncer: config.Bouncer{
-					BanStatusCode: 403,
-				},
-			},
-		}
+		mc := remediationmocks.NewMockCaptchaService(ctrl)
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
 
 		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -697,9 +689,9 @@ func TestBouncer_Check(t *testing.T) {
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
 			IP:          "5.6.7.8",
-			Action:      "deny",
+			Action:      "error",
 			Reason:      "decision cache error",
-			HTTPStatus:  403,
+			HTTPStatus:  500,
 			RedirectURL: "",
 			Decision:    nil,
 			ParsedRequest: &ParsedRequest{
@@ -1125,9 +1117,9 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
 			IP:          "3.3.3.3",
-			Action:      "deny",
+			Action:      "error",
 			Reason:      "decision cache error",
-			HTTPStatus:  403,
+			HTTPStatus:  500,
 			RedirectURL: "",
 			Decision:    nil,
 			ParsedRequest: &ParsedRequest{
