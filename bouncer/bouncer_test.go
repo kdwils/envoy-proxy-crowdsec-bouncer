@@ -15,6 +15,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -586,12 +587,12 @@ func TestBouncer_Check(t *testing.T) {
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
-			IP:            "1.2.3.4",
-			Action:        "ban",
-			Reason:        "crowdsec ban",
-			HTTPStatus:    403,
-			RedirectURL:   "",
-			Decision:      &models.Decision{Type: ptr("ban")},
+			IP:          "1.2.3.4",
+			Action:      "ban",
+			Reason:      "crowdsec ban",
+			HTTPStatus:  403,
+			RedirectURL: "",
+			Decision:    &models.Decision{Type: ptr("ban")},
 			ParsedRequest: &ParsedRequest{
 				IP:         "1.2.3.4",
 				RealIP:     "1.2.3.4",
@@ -632,12 +633,12 @@ func TestBouncer_Check(t *testing.T) {
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
-			IP:            "2.2.2.2",
-			Action:        "ban",
-			Reason:        "crowdsecurity/test",
-			HTTPStatus:    403,
-			RedirectURL:   "",
-			Decision:      &models.Decision{Type: ptr("ban"), Scenario: ptr("crowdsecurity/test"), Origin: ptr("CAPI"), Duration: ptr("1h"), Scope: ptr("Ip"), Value: ptr("2.2.2.2")},
+			IP:          "2.2.2.2",
+			Action:      "ban",
+			Reason:      "crowdsecurity/test",
+			HTTPStatus:  403,
+			RedirectURL: "",
+			Decision:    &models.Decision{Type: ptr("ban"), Scenario: ptr("crowdsecurity/test"), Origin: ptr("CAPI"), Duration: ptr("1h"), Scope: ptr("Ip"), Value: ptr("2.2.2.2")},
 			ParsedRequest: &ParsedRequest{
 				IP:         "2.2.2.2",
 				RealIP:     "2.2.2.2",
@@ -660,7 +661,16 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+		r := Bouncer{
+			DecisionCache: mb,
+			WAF:           mw,
+			metrics:       cache.New[RemediationMetrics](),
+			config: config.Config{
+				Bouncer: config.Bouncer{
+					BanStatusCode: 403,
+				},
+			},
+		}
 
 		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -721,11 +731,11 @@ func TestBouncer_Check(t *testing.T) {
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
-			IP:            "9.9.9.9",
-			Action:        "ban",
-			Reason:        "ban",
-			HTTPStatus:    403,
-			RedirectURL:   "",
+			IP:          "9.9.9.9",
+			Action:      "ban",
+			Reason:      "ban",
+			HTTPStatus:  403,
+			RedirectURL: "",
 			ParsedRequest: &ParsedRequest{
 				IP:         "9.9.9.9",
 				RealIP:     "9.9.9.9",
@@ -1069,7 +1079,17 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		r := Bouncer{
+			DecisionCache:  mb,
+			WAF:            mw,
+			CaptchaService: mc,
+			metrics:        cache.New[RemediationMetrics](),
+			config: config.Config{
+				Bouncer: config.Bouncer{
+					BanStatusCode: 403,
+				},
+			},
+		}
 
 		req := mkReq("3.3.3.3", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
