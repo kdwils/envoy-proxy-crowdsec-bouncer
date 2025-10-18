@@ -87,7 +87,7 @@ func TestBouncer(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.0",
+		Image:        "crowdsecurity/crowdsec:v1.7.1",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",
@@ -184,7 +184,7 @@ func TestBouncer(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.0",
+		Image:        "crowdsecurity/crowdsec:v1.7.1",
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{
@@ -406,7 +406,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.0",
+		Image:        "crowdsecurity/crowdsec:v1.7.1",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",
@@ -503,7 +503,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.0",
+		Image:        "crowdsecurity/crowdsec:v1.7.1",
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{
