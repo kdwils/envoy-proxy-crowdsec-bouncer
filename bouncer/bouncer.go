@@ -183,13 +183,14 @@ func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetr
 
 	startupTS := time.Now().Unix()
 
-	osName, osVersion := version.DetectOS()
+	osName, osFamily, osVersion := version.DetectOS()
 
 	version := bouncerVersion.Version
 
 	baseMetrics := &models.BaseMetrics{
 		Os: &models.OSversion{
 			Name:    &osName,
+			Family:  osFamily,
 			Version: &osVersion,
 		},
 		Version:             &version,
