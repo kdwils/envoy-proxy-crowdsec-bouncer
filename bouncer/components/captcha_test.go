@@ -7,8 +7,8 @@ import (
 	"time"
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )

@@ -128,7 +128,7 @@ Run `go generate ./...` to regenerate all mocks.
 
 ### Testing Strategy
 
-The project uses `gomock` library to avoid external dependencies during testing.
+The project uses `gomock` library for mocking and `testify` for assertions.
 
 **Component Testing**: Each security component has dedicated test files with mocks
 
@@ -147,15 +147,49 @@ mb.EXPECT().Bounce(gomock.Any(), "1.2.3.4", gomock.Any()).Return(false, nil)
 mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 ```
 
-**Test Assertions**:
-- NEVER use `require.Contains()` or `assert.Contains()` for unit tests - it's lazy and inaccurate
-- Always use exact equality checks like `require.Equal()` for precise validation
+**Test Assertions - Use testify/assert and testify/require**:
+- ALWAYS use `github.com/stretchr/testify/assert` and `github.com/stretchr/testify/require` for assertions
+- Use `require` for critical assertions where test cannot continue if it fails (e.g., checking if value exists before using it)
+- Use `assert` for non-critical assertions where test should continue to check other conditions
+- NEVER use `require.Contains()` or `assert.Contains()` - it's lazy and inaccurate
+- ALWAYS check each condition individually with clear, specific messages
 - Test exact values, not partial matches
 
+**Good Test Assertion Examples**:
+```go
+// Good - Individual assertions with clear messages
+val1, ok1 := cache.Get("key1")
+assert.True(t, ok1, "expected key1 to exist in cache")
+assert.Equal(t, "value1", val1, "expected key1 to have correct value")
+
+val2, ok2 := cache.Get("key2")
+assert.True(t, ok2, "expected key2 to exist in cache")
+assert.Equal(t, "value2", val2, "expected key2 to have correct value")
+
+// Good - Use require when you need the value to continue
+got, ok := c.Get(ip)
+require.True(t, ok, "expected to find entry for %s", ip)
+assert.Equal(t, ip, *got.Value, "expected correct IP value")
+```
+
+**Bad Test Assertion Examples**:
+```go
+// Bad - Combined conditions make it unclear which failed
+if !ok1 || !ok2 {
+    t.Error("expected entries to exist")
+}
+
+// Bad - No message indicating what's being tested
+assert.True(t, ok)
+
+// Bad - Using Contains for exact matches
+assert.Contains(t, result, "expected_value")
+```
+
 **Mock Locations**:
-- `remediation/mocks/` - Bouncer and WAF mocks
+- `bouncer/mocks/` - Bouncer and WAF mocks
 - `server/mocks/` - Captcha interface mocks
-- `remediation/components/mocks/` - CaptchaProvider mocks
+- `bouncer/components/mocks/` - CaptchaProvider mocks
 
 ### Kubernetes Integration
 

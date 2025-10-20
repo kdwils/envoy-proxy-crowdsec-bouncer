@@ -87,4 +87,3 @@ func (r *RecaptchaProvider) Verify(ctx context.Context, response, remoteIP strin
 func (r *RecaptchaProvider) GetProviderName() string {
 	return "recaptcha"
 }
-

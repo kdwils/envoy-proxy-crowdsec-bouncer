@@ -16,9 +16,9 @@ import (
 	"github.com/crowdsecurity/go-cs-lib/version"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
