@@ -89,4 +89,3 @@ func (t *TurnstileProvider) Verify(ctx context.Context, response, remoteIP strin
 func (t *TurnstileProvider) GetProviderName() string {
 	return "turnstile"
 }
-
