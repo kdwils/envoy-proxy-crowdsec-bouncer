@@ -68,12 +68,16 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 	}
 
 	service := &CaptchaService{
-		Config:                cfg,
-		VerifiedCache:         cache.New(cache.WithCleanupInterval[time.Time](cfg.SessionDuration)),
-		ChallengeSessionCache: cache.New(cache.WithCleanupInterval[CaptchaSession](cfg.ChallengeDuration)),
-		RequestTimeout:        timeout,
-		generateToken:         generateSecureToken,
-		nowFunc:               time.Now,
+		Config: cfg,
+		VerifiedCache: cache.New(cache.WithCleanup(cfg.SessionDuration, func(key string, expiry time.Time) bool {
+			return time.Now().After(expiry)
+		})),
+		ChallengeSessionCache: cache.New(cache.WithCleanup(cfg.ChallengeDuration, func(key string, session CaptchaSession) bool {
+			return time.Now().After(session.ExpiresAt)
+		})),
+		RequestTimeout: timeout,
+		generateToken:  generateSecureToken,
+		nowFunc:        time.Now,
 	}
 
 	if !cfg.Enabled {
@@ -102,12 +106,8 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 
 // StartCleanup starts the cache cleanup routine
 func (s *CaptchaService) StartCleanup(ctx context.Context) {
-	go s.VerifiedCache.Cleanup(ctx, func(key string, expiry time.Time) bool {
-		return time.Now().After(expiry)
-	})
-	go s.ChallengeSessionCache.Cleanup(ctx, func(key string, session CaptchaSession) bool {
-		return time.Now().After(session.ExpiresAt)
-	})
+	s.VerifiedCache.StartCleanup(ctx)
+	s.ChallengeSessionCache.StartCleanup(ctx)
 }
 
 // RequiresCaptcha determines if an IP needs to complete a captcha challenge

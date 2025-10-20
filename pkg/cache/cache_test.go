@@ -207,3 +207,138 @@ func TestCleanupContextCancellation(t *testing.T) {
 		t.Error("cleanup should have stopped after context cancellation")
 	}
 }
+
+func TestWithCleanup(t *testing.T) {
+	interval := 10 * time.Minute
+	cleanupFunc := func(key string, value time.Time) bool {
+		return time.Now().After(value)
+	}
+
+	c := New(WithCleanup[time.Time](interval, cleanupFunc))
+
+	if c.cleanupInterval != interval {
+		t.Errorf("expected cleanup interval %v, got %v", interval, c.cleanupInterval)
+	}
+
+	if c.cleanupFunc == nil {
+		t.Error("expected cleanup func to be set")
+	}
+}
+
+func TestStartCleanup(t *testing.T) {
+	now := time.Now()
+	pastTime := now.Add(-time.Hour)
+	futureTime := now.Add(time.Hour)
+
+	c := New(WithCleanup[time.Time](100*time.Millisecond, func(key string, expiry time.Time) bool {
+		return expiry.Before(now)
+	}))
+
+	c.Set("expired1", pastTime)
+	c.Set("expired2", pastTime)
+	c.Set("valid1", futureTime)
+	c.Set("valid2", futureTime)
+
+	if c.Size() != 4 {
+		t.Errorf("expected 4 entries before cleanup, got %d", c.Size())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	c.StartCleanup(ctx)
+
+	time.Sleep(200 * time.Millisecond)
+
+	if c.Size() != 2 {
+		t.Errorf("expected 2 entries after cleanup, got %d", c.Size())
+	}
+
+	keys := c.Keys()
+	sort.Strings(keys)
+	expected := []string{"valid1", "valid2"}
+	if !reflect.DeepEqual(keys, expected) {
+		t.Errorf("expected keys %v after cleanup, got %v", expected, keys)
+	}
+
+	val1, ok1 := c.Get("valid1")
+	val2, ok2 := c.Get("valid2")
+	if !ok1 || !ok2 {
+		t.Error("expected valid entries to remain in cache")
+	}
+	if !val1.Equal(futureTime) || !val2.Equal(futureTime) {
+		t.Error("expected valid entries to have correct values")
+	}
+
+	_, expired1Exists := c.Get("expired1")
+	_, expired2Exists := c.Get("expired2")
+	if expired1Exists || expired2Exists {
+		t.Error("expected expired entries to be removed from cache")
+	}
+}
+
+func TestStartCleanupWithNoCleanupFunc(t *testing.T) {
+	c := New(WithCleanupInterval[string](100 * time.Millisecond))
+
+	c.Set("key1", "value1")
+	c.Set("key2", "value2")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	c.StartCleanup(ctx)
+
+	time.Sleep(150 * time.Millisecond)
+
+	if c.Size() != 2 {
+		t.Errorf("expected no cleanup without cleanup func, got size %d", c.Size())
+	}
+
+	val1, ok1 := c.Get("key1")
+	val2, ok2 := c.Get("key2")
+	if !ok1 || !ok2 {
+		t.Error("expected all entries to remain without cleanup func")
+	}
+	if val1 != "value1" || val2 != "value2" {
+		t.Error("expected entries to have correct values")
+	}
+}
+
+func TestStartCleanupContextCancellation(t *testing.T) {
+	deletionCount := 0
+	c := New(WithCleanup[string](50*time.Millisecond, func(key string, value string) bool {
+		deletionCount++
+		return false
+	}))
+
+	c.Set("key1", "value1")
+	c.Set("key2", "value2")
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	c.StartCleanup(ctx)
+
+	time.Sleep(100 * time.Millisecond)
+	initialDeletionCount := deletionCount
+
+	cancel()
+
+	time.Sleep(150 * time.Millisecond)
+
+	if deletionCount > initialDeletionCount+2 {
+		t.Error("cleanup should have stopped after context cancellation")
+	}
+
+	if c.Size() != 2 {
+		t.Errorf("expected 2 entries after cancellation, got %d", c.Size())
+	}
+
+	val1, ok1 := c.Get("key1")
+	val2, ok2 := c.Get("key2")
+	if !ok1 || !ok2 {
+		t.Error("expected all entries to remain")
+	}
+	if val1 != "value1" || val2 != "value2" {
+		t.Error("expected entries to have correct values")
+	}
+}
