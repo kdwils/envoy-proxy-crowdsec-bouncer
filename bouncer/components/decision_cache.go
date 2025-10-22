@@ -140,13 +140,16 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				logger.Debug("deleting decision", "decision", decision)
 				dc.decisions.Delete(*decision.Value)
 
-				if dc.MetricsService != nil && decision.Origin != nil {
-					origin := *decision.Origin
-					key := "active_decisions:" + origin
-					dc.MetricsService.Dec(key, "active_decisions", "ip", map[string]string{
-						"origin": origin,
-					})
+				if dc.MetricsService == nil || decision.Origin == nil {
+					continue
 				}
+
+				origin := *decision.Origin
+				key := "active_decisions:" + origin
+				dc.MetricsService.Dec(key, "active_decisions", "ip", map[string]string{
+					"origin": origin,
+				})
+
 			}
 
 			for _, decision := range d.New {
@@ -156,13 +159,16 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				logger.Debug("received new decision", "decision", decision)
 				dc.decisions.Set(*decision.Value, *decision)
 
-				if dc.MetricsService != nil && decision.Origin != nil {
-					origin := *decision.Origin
-					key := "active_decisions:" + origin
-					dc.MetricsService.Inc(key, "active_decisions", "ip", map[string]string{
-						"origin": origin,
-					})
+				if dc.MetricsService == nil || decision.Origin == nil {
+					continue
 				}
+
+				origin := *decision.Origin
+				key := "active_decisions:" + origin
+				dc.MetricsService.Inc(key, "active_decisions", "ip", map[string]string{
+					"origin": origin,
+				})
+
 			}
 		}
 	}
