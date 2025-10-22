@@ -73,33 +73,6 @@ type MetricsConfig struct {
 }
 
 // NewMetricsService creates and initializes a new MetricsService instance.
-// It validates that all required configuration fields are provided.
-//
-// Example:
-//
-//	client, err := apiclient.NewDefaultClient(
-//	    &url.URL{Scheme: "http", Host: "localhost:8080"},
-//	    "/v1",
-//	    "",
-//	    &http.Client{},
-//	)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//
-//	metricsService, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
-//	    APIClient:   client,
-//	    BouncerType: "envoy-proxy",
-//	    Version:     "v1.0.0",
-//	})
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//
-//	ctx := context.Background()
-//	go metricsService.Run(ctx, 30*time.Second)
-//
-//	metricsService.Inc("requests_total", "requests_total", "count", nil)
 func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 	if cfg.APIClient == nil {
 		return nil, errors.New("api client is required")
@@ -261,6 +234,7 @@ func (mc *MetricsService) Send(ctx context.Context, metrics *models.AllMetrics) 
 // Run periodically calculates and sends metrics to CrowdSec at the specified interval.
 // It sends metrics and resets the cache on successful transmission.
 // If interval is 0, the method returns immediately without starting the loop.
+// 
 // The method blocks until the context is canceled and returns the context error.
 //
 // This method should be called in a goroutine to run in the background:
