@@ -212,6 +212,7 @@ assert.Contains(t, result, "expected_value")
 ## Code Style
 
 - DO NOT ADD ***ANY*** COMMENTS unless asked
-- DO NOT use else statements - prefer early returns, overwriting variables, or helper functions
+- NEVER use else statements - prefer early returns, overwriting variables, or helper functions
 - Set default values first, then conditionally override them instead of using if/else
 - Avoid unnecessary comments explaining what the code does
+- NEVER use else, else if, or any form of else - always use early returns or set defaults and override

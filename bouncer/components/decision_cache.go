@@ -10,24 +10,27 @@ import (
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 )
 
 type DecisionCache struct {
-	stream    *csbouncer.StreamBouncer
-	decisions *cache.Cache[models.Decision]
-	mu        *sync.RWMutex
+	stream         *csbouncer.StreamBouncer
+	decisions      *cache.Cache[models.Decision]
+	mu             *sync.RWMutex
+	MetricsService *crowdsec.MetricsService
 }
 
-func NewDecisionCache(apiKey, apiURL, tickerInterval string) (*DecisionCache, error) {
+func NewDecisionCache(apiKey, apiURL, tickerInterval string, MetricsService *crowdsec.MetricsService) (*DecisionCache, error) {
 	stream, err := newStreamBouncer(apiKey, apiURL, tickerInterval)
 	if err != nil {
 		return nil, err
 	}
 	dc := &DecisionCache{
-		stream:    stream,
-		decisions: cache.New[models.Decision](),
-		mu:        new(sync.RWMutex),
+		stream:         stream,
+		decisions:      cache.New[models.Decision](),
+		mu:             new(sync.RWMutex),
+		MetricsService: MetricsService,
 	}
 
 	return dc, nil
@@ -136,6 +139,14 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 
 				logger.Debug("deleting decision", "decision", decision)
 				dc.decisions.Delete(*decision.Value)
+
+				if dc.MetricsService != nil && decision.Origin != nil {
+					origin := *decision.Origin
+					key := "active_decisions:" + origin
+					dc.MetricsService.Dec(key, "active_decisions", "ip", map[string]string{
+						"origin": origin,
+					})
+				}
 			}
 
 			for _, decision := range d.New {
@@ -144,6 +155,14 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				}
 				logger.Debug("received new decision", "decision", decision)
 				dc.decisions.Set(*decision.Value, *decision)
+
+				if dc.MetricsService != nil && decision.Origin != nil {
+					origin := *decision.Origin
+					key := "active_decisions:" + origin
+					dc.MetricsService.Inc(key, "active_decisions", "ip", map[string]string{
+						"origin": origin,
+					})
+				}
 			}
 		}
 	}
