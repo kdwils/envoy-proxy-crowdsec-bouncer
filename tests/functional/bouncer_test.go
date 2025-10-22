@@ -382,19 +382,18 @@ func TestBouncer(t *testing.T) {
 	})
 
 	t.Run("Verify metrics after basic scenarios", func(t *testing.T) {
-		localMetrics := bouncer.GetMetrics()
-		require.Equal(t, int64(3), localMetrics.Remediation["CAPI:bypass"].Count)
-		require.Equal(t, int64(3), localMetrics.Remediation["CAPI:ban"].Count)
+		snapshot := bouncer.MetricsService.GetSnapshot()
 
-		allMetrics := bouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
-		require.Len(t, allMetrics.RemediationComponents, 1)
+		bypassMetric, ok := snapshot["CAPI:bypass"]
+		require.True(t, ok, "expected CAPI:bypass metric to exist")
+		require.Equal(t, int64(3), bypassMetric.Value)
 
-		component := allMetrics.RemediationComponents[0]
-		require.Equal(t, "envoy-proxy-crowdsec-bouncer", component.Type)
-		require.NotEmpty(t, component.Metrics)
+		banMetric, ok := snapshot["CAPI:ban"]
+		require.True(t, ok, "expected CAPI:ban metric to exist")
+		require.Equal(t, int64(3), banMetric.Value)
 
-		err := bouncer.SendMetrics(ctx, allMetrics)
-		require.NoError(t, err)
+		originCounts := bouncer.DecisionCache.GetOriginCounts()
+		require.Empty(t, originCounts, "should have no active decisions after deletion in previous test")
 	})
 }
 
@@ -926,33 +925,28 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	})
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
-		localMetrics := testBouncer.GetMetrics()
-		require.Equal(t, int64(1), localMetrics.Remediation["CAPI:bypass"].Count)
-		require.Equal(t, int64(5), localMetrics.Remediation["CAPI:captcha"].Count)
+		snapshot := testBouncer.MetricsService.GetSnapshot()
 
-		allMetrics := testBouncer.CalculateMetrics(config.Bouncer.MetricsInterval)
-		require.Len(t, allMetrics.RemediationComponents, 1)
+		bypassMetric, ok := snapshot["CAPI:bypass"]
+		require.True(t, ok, "expected CAPI:bypass metric to exist")
+		require.Equal(t, int64(1), bypassMetric.Value)
 
-		component := allMetrics.RemediationComponents[0]
-		require.Equal(t, "envoy-proxy-crowdsec-bouncer", component.Type)
-		require.NotEmpty(t, component.Metrics)
-
-		detailedMetrics := component.Metrics[0]
+		captchaMetric, ok := snapshot["CAPI:captcha"]
+		require.True(t, ok, "expected CAPI:captcha metric to exist")
+		require.Equal(t, int64(5), captchaMetric.Value)
 
 		activeDecisionsFound := false
-		for _, item := range detailedMetrics.Items {
-			if *item.Name == "active_decisions" {
+		for key, metric := range snapshot {
+			if metric.Name == "active_decisions" {
 				activeDecisionsFound = true
-				origin := item.Labels["origin"]
-				require.NotEmpty(t, origin, "active_decisions metric should have origin label")
-				require.Equal(t, "ip", *item.Unit)
-				require.GreaterOrEqual(t, *item.Value, float64(0), "active_decisions count should be non-negative")
+				origin, hasOrigin := metric.Labels["origin"]
+				require.True(t, hasOrigin, "active_decisions metric should have origin label")
+				require.NotEmpty(t, origin, "active_decisions origin should not be empty")
+				require.Equal(t, "ip", metric.Unit)
+				require.GreaterOrEqual(t, metric.Value, int64(0), "active_decisions count should be non-negative for key %s", key)
 			}
 		}
 		require.True(t, activeDecisionsFound, "should have active_decisions metrics from decision cache")
-
-		err := testBouncer.SendMetrics(ctx, allMetrics)
-		require.NoError(t, err)
 	})
 }
 
