@@ -331,12 +331,12 @@ func TestParseCheckRequest(t *testing.T) {
 		{
 			name: "nil request returns empty ParsedRequest",
 			req:  nil,
-			want: &ParsedRequest{Headers: map[string]string{}},
+			want: &ParsedRequest{Headers: map[string]string{}, Cookies: map[string]string{}},
 		},
 		{
 			name: "nil attributes returns empty ParsedRequest",
 			req:  &auth.CheckRequest{},
-			want: &ParsedRequest{Headers: map[string]string{}},
+			want: &ParsedRequest{Headers: map[string]string{}, Cookies: map[string]string{}},
 		},
 		{
 			name: "full request with Envoy pseudo-headers",
@@ -380,6 +380,7 @@ func TestParseCheckRequest(t *testing.T) {
 					"some-header":     "some-value",
 					"x-forwarded-for": "10.0.0.1,5.6.7.8",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/foo/bar"},
 				Method:     "GET",
 				UserAgent:  "TestAgent",
@@ -426,6 +427,7 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":    "POST",
 					"user-agent": "UA-From-Headers",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "host.com", Path: "/baz"},
 				Method:     "POST",
 				UserAgent:  "UA-From-Headers",
@@ -472,6 +474,7 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":    "PUT",
 					"foo":        "bar",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "nested.com", Path: "/nested"},
 				Method:     "PUT",
 				UserAgent:  "",
@@ -518,6 +521,7 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":         "GET",
 					"x-forwarded-for": "10.0.0.1, 8.8.8.8",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -603,6 +607,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "1.2.3.4",
 				RealIP:     "1.2.3.4",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -670,6 +675,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "2.2.2.2",
 				RealIP:     "2.2.2.2",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -727,6 +733,7 @@ func TestBouncer_Check(t *testing.T) {
 					":method":    "GET",
 					"user-agent": "UT",
 				},
+				Cookies: map[string]string{},
 			},
 			CaptchaSession: nil,
 		}
@@ -788,6 +795,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "9.9.9.9",
 				RealIP:     "9.9.9.9",
 				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
 				Method:     "POST",
 				UserAgent:  "UT",
@@ -845,6 +853,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "10.0.0.1",
 				RealIP:     "10.0.0.1",
 				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -887,6 +896,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "7.7.7.7",
 				RealIP:     "7.7.7.7",
 				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -943,6 +953,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "8.8.8.8",
 				RealIP:     "8.8.8.8",
 				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
 				Method:     "POST",
 				UserAgent:  "UT",
@@ -985,6 +996,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "11.11.11.11",
 				RealIP:     "11.11.11.11",
 				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -1027,6 +1039,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "12.12.12.12",
 				RealIP:     "12.12.12.12",
 				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -1067,6 +1080,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "13.13.13.13",
 				RealIP:     "13.13.13.13",
 				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -1125,6 +1139,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "1.1.1.1",
 				RealIP:     "1.1.1.1",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1182,6 +1197,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "2.2.2.2",
 				RealIP:     "2.2.2.2",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1247,6 +1263,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 					":path":      "/test",
 					":method":    "GET",
 				},
+				Cookies: map[string]string{},
 			},
 			CaptchaSession: nil,
 		}
@@ -1285,6 +1302,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "4.4.4.4",
 				RealIP:     "4.4.4.4",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1328,6 +1346,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "5.5.5.5",
 				RealIP:     "5.5.5.5",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1371,6 +1390,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "6.6.6.6",
 				RealIP:     "6.6.6.6",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1496,6 +1516,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "10.10.10.10",
 				RealIP:     "10.10.10.10",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1552,7 +1573,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("12.12.12.12", "https://example.com/test").Return(nil, nil)
+		mc.EXPECT().CreateSession("12.12.12.12", "https://example.com/test", "").Return(nil, nil)
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "allow" || got.Reason != "captcha not required" || got.HTTPStatus != 200 || got.IP != "12.12.12.12" {
@@ -1580,7 +1601,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("13.13.13.13", "https://example.com/test").Return(nil, fmt.Errorf("session creation failed"))
+		mc.EXPECT().CreateSession("13.13.13.13", "https://example.com/test", "").Return(nil, fmt.Errorf("session creation failed"))
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "error" || got.Reason != "captcha error" || got.HTTPStatus != 500 || got.IP != "13.13.13.13" {
@@ -1608,7 +1629,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "14.14.14.14").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("14.14.14.14", "https://example.com/test").Return(&components.CaptchaSession{
+		mc.EXPECT().CreateSession("14.14.14.14", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123",
 		}, nil)
 
@@ -1651,7 +1672,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: ptr("captcha")}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("15.15.15.15", "https://example.com/test").Return(&components.CaptchaSession{
+		mc.EXPECT().CreateSession("15.15.15.15", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
 		}, nil)
 
@@ -1678,6 +1699,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 					":path":      "/test",
 					":method":    "GET",
 				},
+				Cookies: map[string]string{},
 			},
 			CaptchaSession: &components.CaptchaSession{
 				ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
@@ -1747,7 +1769,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("1.2.3.4", "https://example.com/test").Return(&components.CaptchaSession{
+		mc.EXPECT().CreateSession("1.2.3.4", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=session123",
 		}, nil)
 

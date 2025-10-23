@@ -290,6 +290,125 @@ func TestJWT_RoundTrip(t *testing.T) {
 	})
 }
 
+func TestJWT_VerificationToken(t *testing.T) {
+	t.Run("creates and verifies verification token successfully", func(t *testing.T) {
+		jwt := NewJWT("test-signing-key")
+		now := time.Now()
+		expiresAt := now.Add(15 * time.Minute)
+
+		originalClaims := VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: now,
+			ExpiresAt:  expiresAt,
+		}
+
+		token, err := jwt.CreateVerificationToken(originalClaims)
+		require.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		verifiedClaims, err := jwt.VerifyVerificationToken(token)
+
+		require.NoError(t, err)
+		require.NotNil(t, verifiedClaims)
+		assert.Equal(t, originalClaims.IP, verifiedClaims.IP)
+		assert.True(t, originalClaims.VerifiedAt.Equal(verifiedClaims.VerifiedAt))
+		assert.True(t, originalClaims.ExpiresAt.Equal(verifiedClaims.ExpiresAt))
+	})
+
+	t.Run("rejects expired verification token", func(t *testing.T) {
+		jwt := NewJWT("test-signing-key")
+		now := time.Now()
+
+		claims := VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: now.Add(-20 * time.Minute),
+			ExpiresAt:  now.Add(-5 * time.Minute),
+		}
+
+		token, err := jwt.CreateVerificationToken(claims)
+		require.NoError(t, err)
+
+		verifiedClaims, err := jwt.VerifyVerificationToken(token)
+
+		assert.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
+
+	t.Run("rejects verification token with wrong signing key", func(t *testing.T) {
+		jwt1 := NewJWT("key-1")
+		jwt2 := NewJWT("key-2")
+		now := time.Now()
+
+		claims := VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: now,
+			ExpiresAt:  now.Add(15 * time.Minute),
+		}
+
+		token, err := jwt1.CreateVerificationToken(claims)
+		require.NoError(t, err)
+
+		verifiedClaims, err := jwt2.VerifyVerificationToken(token)
+
+		assert.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
+
+	t.Run("verification token is smaller than session token", func(t *testing.T) {
+		jwt := NewJWT("test-signing-key")
+		now := time.Now()
+
+		sessionClaims := SessionClaims{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com/test",
+			CreatedAt:   now,
+			ExpiresAt:   now.Add(5 * time.Minute),
+			Provider:    "recaptcha",
+			SiteKey:     "test-site-key",
+			CSRFToken:   "test-csrf-token",
+		}
+
+		verificationClaims := VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: now,
+			ExpiresAt:  now.Add(15 * time.Minute),
+		}
+
+		sessionToken, err := jwt.CreateToken(sessionClaims)
+		require.NoError(t, err)
+
+		verificationToken, err := jwt.CreateVerificationToken(verificationClaims)
+		require.NoError(t, err)
+
+		assert.Less(t, len(verificationToken), len(sessionToken))
+	})
+
+	t.Run("creates different tokens for different IPs", func(t *testing.T) {
+		jwt := NewJWT("test-signing-key")
+		now := time.Now()
+
+		claims1 := VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: now,
+			ExpiresAt:  now.Add(15 * time.Minute),
+		}
+
+		claims2 := VerificationClaims{
+			IP:         "192.168.1.2",
+			VerifiedAt: now,
+			ExpiresAt:  now.Add(15 * time.Minute),
+		}
+
+		token1, err := jwt.CreateVerificationToken(claims1)
+		require.NoError(t, err)
+
+		token2, err := jwt.CreateVerificationToken(claims2)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, token1, token2)
+	})
+}
+
 func splitToken(token string) []string {
 	var parts []string
 	var current string

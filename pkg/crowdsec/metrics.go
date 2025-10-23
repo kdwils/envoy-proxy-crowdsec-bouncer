@@ -234,7 +234,7 @@ func (mc *MetricsService) Send(ctx context.Context, metrics *models.AllMetrics) 
 // Run periodically calculates and sends metrics to CrowdSec at the specified interval.
 // It sends metrics and resets the cache on successful transmission.
 // If interval is 0, the method returns immediately without starting the loop.
-// 
+//
 // The method blocks until the context is canceled and returns the context error.
 //
 // This method should be called in a goroutine to run in the background:

@@ -278,10 +278,6 @@ func TestBouncer(t *testing.T) {
 		}()
 	}
 
-	if config.Captcha.Enabled && bouncer.CaptchaService != nil {
-		go bouncer.CaptchaService.StartCleanup(ctx)
-	}
-
 	templateStore, err := template.NewStore(template.Config{})
 	if err != nil {
 		log.Fatalf("failed to create template store: %v", err)
@@ -599,12 +595,11 @@ func TestBouncerWithCaptcha(t *testing.T) {
 
 	mockCaptchaService := bouncermocks.NewMockCaptchaService(ctrl)
 	mockCaptchaService.EXPECT().IsEnabled().Return(true).AnyTimes()
-	mockCaptchaService.EXPECT().StartCleanup(gomock.Any()).AnyTimes()
 
 	sessions := make(map[string]*components.CaptchaSession)
 	sessionCounter := 0
-	mockCaptchaService.EXPECT().CreateSession(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ip, originalURL string) (*components.CaptchaSession, error) {
+	mockCaptchaService.EXPECT().CreateSession(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ip, originalURL, verificationToken string) (*components.CaptchaSession, error) {
 			sessionCounter++
 			sessionID := fmt.Sprintf("test-session-%d", sessionCounter)
 			csrfToken := fmt.Sprintf("csrf-token-%d", sessionCounter)
@@ -650,10 +645,6 @@ func TestBouncerWithCaptcha(t *testing.T) {
 				slogger.Error("metrics error", "error", err)
 			}
 		}()
-	}
-
-	if config.Captcha.Enabled && testBouncer.CaptchaService != nil {
-		go testBouncer.CaptchaService.StartCleanup(ctx)
 	}
 
 	templateStore, err := template.NewStore(template.Config{})
@@ -817,17 +808,17 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		captchaService, err := components.NewCaptchaService(config.Captcha, &http.Client{})
 		require.NoError(t, err)
 
-		session, err := captchaService.CreateSession("192.168.1.100", "javascript:alert('xss')")
+		session, err := captchaService.CreateSession("192.168.1.100", "javascript:alert('xss')", "")
 		require.Error(t, err)
 		require.Nil(t, session)
 		require.Contains(t, err.Error(), "invalid redirect URL")
 
-		session, err = captchaService.CreateSession("192.168.1.100", "/relative/path")
+		session, err = captchaService.CreateSession("192.168.1.100", "/relative/path", "")
 		require.Error(t, err)
 		require.Nil(t, session)
 		require.Contains(t, err.Error(), "invalid redirect URL")
 
-		session, err = captchaService.CreateSession("192.168.1.100", "ftp://example.com/file")
+		session, err = captchaService.CreateSession("192.168.1.100", "ftp://example.com/file", "")
 		require.Error(t, err)
 		require.Nil(t, session)
 		require.Contains(t, err.Error(), "invalid redirect URL")

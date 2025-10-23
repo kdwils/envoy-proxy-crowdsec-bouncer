@@ -20,6 +20,12 @@ type SessionClaims struct {
 	CSRFToken   string    `json:"csrf_token"`
 }
 
+type VerificationClaims struct {
+	IP         string    `json:"ip"`
+	VerifiedAt time.Time `json:"verified_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
 type JWT struct {
 	signingKey []byte
 }
@@ -31,6 +37,14 @@ func NewJWT(signingKey string) *JWT {
 }
 
 func (j *JWT) CreateToken(claims SessionClaims) (string, error) {
+	return j.createToken(claims)
+}
+
+func (j *JWT) CreateVerificationToken(claims VerificationClaims) (string, error) {
+	return j.createToken(claims)
+}
+
+func (j *JWT) createToken(claims any) (string, error) {
 	header := map[string]string{
 		"alg": "HS256",
 		"typ": "JWT",
@@ -58,9 +72,35 @@ func (j *JWT) CreateToken(claims SessionClaims) (string, error) {
 }
 
 func (j *JWT) VerifyToken(token string) (*SessionClaims, error) {
+	var claims SessionClaims
+	if err := j.verifyToken(token, &claims); err != nil {
+		return nil, err
+	}
+
+	if time.Now().After(claims.ExpiresAt) {
+		return nil, fmt.Errorf("token expired")
+	}
+
+	return &claims, nil
+}
+
+func (j *JWT) VerifyVerificationToken(token string) (*VerificationClaims, error) {
+	var claims VerificationClaims
+	if err := j.verifyToken(token, &claims); err != nil {
+		return nil, err
+	}
+
+	if time.Now().After(claims.ExpiresAt) {
+		return nil, fmt.Errorf("token expired")
+	}
+
+	return &claims, nil
+}
+
+func (j *JWT) verifyToken(token string, claims any) error {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid token format")
+		return fmt.Errorf("invalid token format")
 	}
 
 	headerEncoded := parts[0]
@@ -73,24 +113,19 @@ func (j *JWT) VerifyToken(token string) (*SessionClaims, error) {
 	expectedSignatureEncoded := base64.RawURLEncoding.EncodeToString(expectedSignature)
 
 	if !hmac.Equal([]byte(signatureEncoded), []byte(expectedSignatureEncoded)) {
-		return nil, fmt.Errorf("invalid signature")
+		return fmt.Errorf("invalid signature")
 	}
 
 	claimsJSON, err := base64.RawURLEncoding.DecodeString(claimsEncoded)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode claims: %w", err)
+		return fmt.Errorf("failed to decode claims: %w", err)
 	}
 
-	var claims SessionClaims
-	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal claims: %w", err)
+	if err := json.Unmarshal(claimsJSON, claims); err != nil {
+		return fmt.Errorf("failed to unmarshal claims: %w", err)
 	}
 
-	if time.Now().After(claims.ExpiresAt) {
-		return nil, fmt.Errorf("token expired")
-	}
-
-	return &claims, nil
+	return nil
 }
 
 func (j *JWT) sign(message string) []byte {

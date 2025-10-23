@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/kdwils/envoy-proxy-bouncer/config"
-	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/token"
 )
 
@@ -41,7 +40,6 @@ type CaptchaSession struct {
 type CaptchaService struct {
 	Config         config.Captcha
 	Provider       CaptchaProvider
-	VerifiedCache  *cache.Cache[time.Time]
 	RequestTimeout time.Duration
 	generateToken  func() (string, error)
 	nowFunc        func() time.Time
@@ -59,6 +57,7 @@ type VerificationRequest struct {
 type VerificationResult struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Token   string `json:"token,omitempty"`
 }
 
 // NewCaptchaService creates a new captcha service with the specified configuration
@@ -73,10 +72,7 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 	}
 
 	service := &CaptchaService{
-		Config: cfg,
-		VerifiedCache: cache.New(cache.WithCleanup(cfg.SessionDuration, func(key string, expiry time.Time) bool {
-			return time.Now().After(expiry)
-		})),
+		Config:         cfg,
 		RequestTimeout: timeout,
 		generateToken:  generateSecureToken,
 		nowFunc:        time.Now,
@@ -107,19 +103,22 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 	return service, nil
 }
 
-// StartCleanup starts the cache cleanup routine
-func (s *CaptchaService) StartCleanup(ctx context.Context) {
-	s.VerifiedCache.StartCleanup(ctx)
-}
-
 // RequiresCaptcha determines if an IP needs to complete a captcha challenge
-func (s *CaptchaService) RequiresCaptcha(ip string) bool {
-	expiry, exists := s.VerifiedCache.Get(ip)
-	if !exists {
+func (s *CaptchaService) RequiresCaptcha(ip, verificationToken string) bool {
+	if verificationToken == "" {
 		return true
 	}
 
-	return time.Now().After(expiry)
+	claims, err := s.jwt.VerifyVerificationToken(verificationToken)
+	if err != nil {
+		return true
+	}
+
+	if claims.IP != ip {
+		return true
+	}
+
+	return false
 }
 
 // VerifyResponse verifies a captcha response from the user
@@ -142,11 +141,25 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, sessionID string, r
 		}, nil
 	}
 
-	s.VerifiedCache.Set(req.IP, time.Now().Add(s.Config.SessionDuration))
+	now := s.nowFunc()
+	verificationClaims := token.VerificationClaims{
+		IP:         req.IP,
+		VerifiedAt: now,
+		ExpiresAt:  now.Add(s.Config.SessionDuration),
+	}
+
+	verificationToken, err := s.jwt.CreateVerificationToken(verificationClaims)
+	if err != nil {
+		return &VerificationResult{
+			Success: false,
+			Message: "Failed to create verification token",
+		}, fmt.Errorf("failed to create verification token: %w", err)
+	}
 
 	return &VerificationResult{
 		Success: true,
 		Message: "Captcha verified successfully",
+		Token:   verificationToken,
 	}, nil
 }
 
@@ -189,8 +202,8 @@ func (s *CaptchaService) IsEnabled() bool {
 }
 
 // CreateSession creates a new session for an ip if required, otherwise returns nil
-func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession, error) {
-	if !s.RequiresCaptcha(ip) {
+func (s *CaptchaService) CreateSession(ip, originalURL, verificationToken string) (*CaptchaSession, error) {
+	if !s.RequiresCaptcha(ip, verificationToken) {
 		return nil, nil
 	}
 

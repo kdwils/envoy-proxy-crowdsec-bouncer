@@ -8,6 +8,7 @@ import (
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/token"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -22,7 +23,6 @@ func TestNewCaptchaService(t *testing.T) {
 		assert.NotNil(t, got)
 		assert.Equal(t, cfg, got.Config)
 		assert.Nil(t, got.Provider)
-		assert.NotNil(t, got.VerifiedCache)
 		assert.NotNil(t, got.jwt)
 		assert.Equal(t, 10*time.Second, got.RequestTimeout)
 		assert.NotNil(t, got.generateToken)
@@ -93,38 +93,68 @@ func TestNewCaptchaService(t *testing.T) {
 
 func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 
-	t.Run("ip not in cache", func(t *testing.T) {
+	t.Run("no verification token", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
-		got := service.RequiresCaptcha("192.168.1.1")
+		got := service.RequiresCaptcha("192.168.1.1", "")
 
 		assert.Equal(t, true, got)
 	})
 
-	t.Run("ip in cache but expired", func(t *testing.T) {
+	t.Run("expired verification token", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
-		service.VerifiedCache.Set("192.168.1.1", time.Now().Add(-1*time.Hour))
+		expiredClaims := token.VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: time.Now().Add(-2 * time.Hour),
+			ExpiresAt:  time.Now().Add(-1 * time.Hour),
+		}
+		expiredToken, err := service.jwt.CreateVerificationToken(expiredClaims)
+		assert.NoError(t, err)
 
-		got := service.RequiresCaptcha("192.168.1.1")
+		got := service.RequiresCaptcha("192.168.1.1", expiredToken)
 
 		assert.Equal(t, true, got)
 	})
 
-	t.Run("ip in cache and valid", func(t *testing.T) {
+	t.Run("valid verification token", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
-		service.VerifiedCache.Set("192.168.1.1", time.Now().Add(1*time.Hour))
+		validClaims := token.VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: time.Now(),
+			ExpiresAt:  time.Now().Add(1 * time.Hour),
+		}
+		validToken, err := service.jwt.CreateVerificationToken(validClaims)
+		assert.NoError(t, err)
 
-		got := service.RequiresCaptcha("192.168.1.1")
+		got := service.RequiresCaptcha("192.168.1.1", validToken)
 
 		assert.Equal(t, false, got)
+	})
+
+	t.Run("valid token but different IP", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		assert.NoError(t, err)
+
+		validClaims := token.VerificationClaims{
+			IP:         "192.168.1.1",
+			VerifiedAt: time.Now(),
+			ExpiresAt:  time.Now().Add(1 * time.Hour),
+		}
+		validToken, err := service.jwt.CreateVerificationToken(validClaims)
+		assert.NoError(t, err)
+
+		got := service.RequiresCaptcha("192.168.1.2", validToken)
+
+		assert.Equal(t, true, got)
 	})
 }
 
@@ -157,13 +187,15 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		assert.NoError(t, err)
 
-		want := &VerificationResult{
-			Success: true,
-			Message: "Captcha verified successfully",
-		}
+		assert.NoError(t, err)
+		assert.True(t, got.Success)
+		assert.Equal(t, "Captcha verified successfully", got.Message)
+		assert.NotEmpty(t, got.Token)
 
-		assert.Equal(t, want, got)
-		assert.False(t, service.RequiresCaptcha("192.168.1.1"))
+		claims, err := service.jwt.VerifyVerificationToken(got.Token)
+		assert.NoError(t, err)
+		assert.Equal(t, "192.168.1.1", claims.IP)
+		assert.False(t, service.RequiresCaptcha("192.168.1.1", got.Token))
 	})
 
 	t.Run("provider verification failure", func(t *testing.T) {
@@ -235,7 +267,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		assert.NoError(t, err)
 		service.Provider = provider
 
-		session, err := service.CreateSession("192.168.1.1", "http://example.com")
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		assert.NoError(t, err)
 		assert.NotNil(t, session)
 
@@ -268,7 +300,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		assert.NoError(t, err)
 		service.Provider = provider
 
-		session, err := service.CreateSession("192.168.1.1", "http://example.com")
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		assert.NoError(t, err)
 		assert.NotNil(t, session)
 
@@ -315,7 +347,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			return fixedTime
 		}
 
-		got, err := service.CreateSession("192.168.1.1", "http://example.com/original")
+		got, err := service.CreateSession("192.168.1.1", "http://example.com/original", "")
 
 		assert.NoError(t, err)
 		assert.NotNil(t, got)
@@ -345,7 +377,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
-		session, err := service.CreateSession("192.168.1.1", "javascript:alert('xss')")
+		session, err := service.CreateSession("192.168.1.1", "javascript:alert('xss')", "")
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
@@ -364,7 +396,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
-		session, err := service.CreateSession("192.168.1.1", "/relative/path")
+		session, err := service.CreateSession("192.168.1.1", "/relative/path", "")
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
