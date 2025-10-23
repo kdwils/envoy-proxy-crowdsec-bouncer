@@ -6,6 +6,9 @@
 
 A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](https://www.envoyproxy.io/) using the ext_authz filter.
 
+> [!WARNING]
+> This project is in active development and has not been tested in production environments. Use at your own risk. Breaking changes may occur between releases. For the most stable experience, use a [tagged release](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/releases) rather than the `main` branch.
+
 ## Features
 
 - Block malicious IPs streamed via CrowdSec decisions
