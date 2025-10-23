@@ -8,7 +8,6 @@ import (
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
-	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -24,7 +23,7 @@ func TestNewCaptchaService(t *testing.T) {
 		assert.Equal(t, cfg, got.Config)
 		assert.Nil(t, got.Provider)
 		assert.NotNil(t, got.VerifiedCache)
-		assert.NotNil(t, got.ChallengeSessionCache)
+		assert.NotNil(t, got.jwt)
 		assert.Equal(t, 10*time.Second, got.RequestTimeout)
 		assert.NotNil(t, got.generateToken)
 		assert.NotNil(t, got.nowFunc)
@@ -32,9 +31,10 @@ func TestNewCaptchaService(t *testing.T) {
 
 	t.Run("recaptcha provider", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:   true,
-			Provider:  "recaptcha",
-			SecretKey: "test-secret",
+			Enabled:    true,
+			Provider:   "recaptcha",
+			SecretKey:  "test-secret",
+			SigningKey: "test-signing-key",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -49,9 +49,10 @@ func TestNewCaptchaService(t *testing.T) {
 
 	t.Run("turnstile provider", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:   true,
-			Provider:  "turnstile",
-			SecretKey: "test-secret",
+			Enabled:    true,
+			Provider:   "turnstile",
+			SecretKey:  "test-secret",
+			SigningKey: "test-signing-key",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -66,22 +67,34 @@ func TestNewCaptchaService(t *testing.T) {
 
 	t.Run("unsupported provider", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:  true,
-			Provider: "unsupported",
+			Enabled:    true,
+			Provider:   "unsupported",
+			SigningKey: "test-signing-key",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 
 		assert.Error(t, err)
 		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "unsupported captcha provider")
+	})
+
+	t.Run("missing signing key when enabled", func(t *testing.T) {
+		cfg := config.Captcha{
+			Enabled:  true,
+			Provider: "recaptcha",
+		}
+
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+
+		assert.Error(t, err)
+		assert.Nil(t, service)
 	})
 }
 
 func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 
 	t.Run("ip not in cache", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
@@ -91,7 +104,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("ip in cache but expired", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
@@ -103,7 +116,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("ip in cache and valid", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
@@ -125,19 +138,13 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 			Enabled:         true,
 			Provider:        "recaptcha",
 			SecretKey:       "test",
+			SigningKey:      "test-signing-key",
 			SessionDuration: 1 * time.Hour,
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 		service.Provider = mockProvider
-
-		service.ChallengeSessionCache.Set("test", CaptchaSession{
-			IP:          "192.168.1.1",
-			ID:          "test",
-			OriginalURL: "http://example.com/test",
-			RedirectURL: "http://example.com/test",
-		})
 
 		req := VerificationRequest{
 			Response: "test-token",
@@ -157,8 +164,6 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		assert.Equal(t, want, got)
 		assert.False(t, service.RequiresCaptcha("192.168.1.1"))
-		_, ok := service.GetSession("test")
-		assert.False(t, ok)
 	})
 
 	t.Run("provider verification failure", func(t *testing.T) {
@@ -166,17 +171,10 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 		service.Provider = mockProvider
-
-		service.ChallengeSessionCache.Set("test", CaptchaSession{
-			IP:          "192.168.1.1",
-			ID:          "test",
-			OriginalURL: "http://example.com/test",
-			RedirectURL: "http://example.com/test",
-		})
 
 		req := VerificationRequest{
 			Response: "invalid-token",
@@ -195,86 +193,94 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		}
 
 		assert.Equal(t, want, got)
-		_, ok := service.GetSession("test")
-		assert.False(t, ok)
 	})
 }
 
 func TestCaptchaService_GetSession(t *testing.T) {
-	t.Run("non-existent session", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
+	t.Run("invalid JWT token", func(t *testing.T) {
+		cfg := config.Captcha{
+			Enabled:     true,
+			Provider:    "recaptcha",
+			SecretKey:   "test",
+			SigningKey:  "test-signing-key",
+			CallbackURL: "http://localhost:8081",
+		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
 
-		got, gotExists := service.GetSession("non-existent")
+		got, gotExists := service.GetSession("invalid-jwt-token")
 
-		assert.Equal(t, false, gotExists)
+		assert.False(t, gotExists)
 		assert.Nil(t, got)
 	})
 
-	t.Run("expired session", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
+	t.Run("expired JWT token", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Captcha{
+			Enabled:           true,
+			Provider:          "recaptcha",
+			SecretKey:         "test",
+			SigningKey:        "test-signing-key",
+			SiteKey:           "test-site-key",
+			CallbackURL:       "http://localhost:8081",
+			ChallengeDuration: 1 * time.Millisecond,
+		}
+
+		provider := mocks.NewMockCaptchaProvider(ctrl)
+		provider.EXPECT().GetProviderName().Return("recaptcha")
+
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
+		service.Provider = provider
 
-		now := time.Now()
-		expiredSession := CaptchaSession{
-			IP:          "192.168.1.1",
-			ID:          "expired-session",
-			OriginalURL: "http://example.com",
-			RedirectURL: "http://example.com",
-			CreatedAt:   now.Add(-15 * time.Minute),
-			ExpiresAt:   now.Add(-10 * time.Minute),
-		}
-		service.ChallengeSessionCache.Set("expired-session", expiredSession)
+		session, err := service.CreateSession("192.168.1.1", "http://example.com")
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
 
-		got, gotExists := service.GetSession("expired-session")
+		time.Sleep(10 * time.Millisecond)
 
-		assert.Equal(t, false, gotExists)
+		got, gotExists := service.GetSession(session.ID)
+
+		assert.False(t, gotExists)
 		assert.Nil(t, got)
 	})
 
-	t.Run("valid session", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test"}
+	t.Run("valid JWT token", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Captcha{
+			Enabled:           true,
+			Provider:          "recaptcha",
+			SecretKey:         "test",
+			SigningKey:        "test-signing-key",
+			SiteKey:           "test-site-key",
+			CallbackURL:       "http://localhost:8081",
+			ChallengeDuration: 24 * time.Hour,
+		}
+
+		provider := mocks.NewMockCaptchaProvider(ctrl)
+		provider.EXPECT().GetProviderName().Return("recaptcha")
+
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		assert.NoError(t, err)
+		service.Provider = provider
 
-		now := time.Now()
+		session, err := service.CreateSession("192.168.1.1", "http://example.com")
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
 
-		validSession := CaptchaSession{
-			IP:           "192.168.1.1",
-			ID:           "valid-session",
-			OriginalURL:  "http://example.com",
-			RedirectURL:  "http://example.com",
-			CreatedAt:    now,
-			ExpiresAt:    now.Add(time.Hour * 1),
-			Provider:     "recaptcha",
-			SiteKey:      "test-site-key",
-			CallbackURL:  "http://localhost:8081/captcha",
-			ChallengeURL: "http://localhost:8081/captcha/challenge?session=valid-session",
-			CSRFToken:    "csrf-token",
-		}
+		got, gotExists := service.GetSession(session.ID)
 
-		service.ChallengeSessionCache.Set("valid-session", validSession)
-
-		got, gotExists := service.GetSession("valid-session")
-
-		want := &CaptchaSession{
-			IP:           "192.168.1.1",
-			ID:           "valid-session",
-			OriginalURL:  "http://example.com",
-			RedirectURL:  "http://example.com",
-			CreatedAt:    now,
-			ExpiresAt:    now.Add(time.Hour * 1),
-			Provider:     "recaptcha",
-			SiteKey:      "test-site-key",
-			CallbackURL:  "http://localhost:8081/captcha",
-			ChallengeURL: "http://localhost:8081/captcha/challenge?session=valid-session",
-			CSRFToken:    "csrf-token",
-		}
-
-		assert.Equal(t, true, gotExists)
-		assert.Equal(t, want, got)
+		assert.True(t, gotExists)
+		assert.NotNil(t, got)
+		assert.Equal(t, "192.168.1.1", got.IP)
+		assert.Equal(t, "http://example.com", got.OriginalURL)
+		assert.Equal(t, "recaptcha", got.Provider)
+		assert.Equal(t, "test-site-key", got.SiteKey)
+		assert.Equal(t, session.CSRFToken, got.CSRFToken)
 	})
 }
 
@@ -288,6 +294,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			Provider:          "turnstile",
 			SiteKey:           "test-site-key",
 			SecretKey:         "test-secret",
+			SigningKey:        "test-signing-key",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 5 * time.Minute,
 		}
@@ -296,98 +303,70 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		provider.EXPECT().GetProviderName().Return("turnstile")
 
 		fixedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
-		tokenCounter := 0
-		tokens := []string{"test-session-id", "test-csrf-token"}
 
-		service := &CaptchaService{
-			Config:                cfg,
-			Provider:              provider,
-			VerifiedCache:         cache.New(cache.WithCleanupInterval[time.Time](time.Minute)),
-			ChallengeSessionCache: cache.New(cache.WithCleanupInterval[CaptchaSession](time.Minute)),
-			generateToken: func() (string, error) {
-				token := tokens[tokenCounter]
-				tokenCounter++
-				return token, nil
-			},
-			nowFunc: func() time.Time {
-				return fixedTime
-			},
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		assert.NoError(t, err)
+		service.Provider = provider
+
+		service.generateToken = func() (string, error) {
+			return "test-csrf-token", nil
+		}
+		service.nowFunc = func() time.Time {
+			return fixedTime
 		}
 
 		got, err := service.CreateSession("192.168.1.1", "http://example.com/original")
 
 		assert.NoError(t, err)
-
-		want := &CaptchaSession{
-			IP:           "192.168.1.1",
-			ID:           "test-session-id",
-			OriginalURL:  "http://example.com/original",
-			RedirectURL:  "http://example.com/original",
-			CreatedAt:    fixedTime,
-			ExpiresAt:    fixedTime.Add(5 * time.Minute),
-			Provider:     "turnstile",
-			SiteKey:      "test-site-key",
-			CallbackURL:  "http://localhost:8081/captcha",
-			ChallengeURL: "http://localhost:8081/captcha/challenge?session=test-session-id",
-			CSRFToken:    "test-csrf-token",
-		}
-
-		assert.Equal(t, want, got)
+		assert.NotNil(t, got)
+		assert.Equal(t, "192.168.1.1", got.IP)
+		assert.Equal(t, "http://example.com/original", got.OriginalURL)
+		assert.Equal(t, "http://example.com/original", got.RedirectURL)
+		assert.Equal(t, fixedTime, got.CreatedAt)
+		assert.Equal(t, fixedTime.Add(5*time.Minute), got.ExpiresAt)
+		assert.Equal(t, "turnstile", got.Provider)
+		assert.Equal(t, "test-site-key", got.SiteKey)
+		assert.Equal(t, "http://localhost:8081/captcha", got.CallbackURL)
+		assert.Equal(t, "test-csrf-token", got.CSRFToken)
+		assert.NotEmpty(t, got.ID)
+		assert.NotEmpty(t, got.ChallengeURL)
 	})
 
 	t.Run("rejects javascript URL", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
 		cfg := config.Captcha{
 			Enabled:     true,
 			Provider:    "turnstile",
 			SiteKey:     "test-site-key",
 			SecretKey:   "test-secret",
+			SigningKey:  "test-signing-key",
 			CallbackURL: "http://localhost:8081",
 		}
 
-		provider := mocks.NewMockCaptchaProvider(ctrl)
-
-		service := &CaptchaService{
-			Config:                cfg,
-			Provider:              provider,
-			VerifiedCache:         cache.New(cache.WithCleanupInterval[time.Time](time.Minute)),
-			ChallengeSessionCache: cache.New(cache.WithCleanupInterval[CaptchaSession](time.Minute)),
-		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		assert.NoError(t, err)
 
 		session, err := service.CreateSession("192.168.1.1", "javascript:alert('xss')")
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
-		assert.Contains(t, err.Error(), "invalid redirect URL")
 	})
 
 	t.Run("rejects URL without host", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
 		cfg := config.Captcha{
 			Enabled:     true,
 			Provider:    "turnstile",
 			SiteKey:     "test-site-key",
 			SecretKey:   "test-secret",
+			SigningKey:  "test-signing-key",
 			CallbackURL: "http://localhost:8081",
 		}
 
-		provider := mocks.NewMockCaptchaProvider(ctrl)
-
-		service := &CaptchaService{
-			Config:                cfg,
-			Provider:              provider,
-			VerifiedCache:         cache.New(cache.WithCleanupInterval[time.Time](time.Minute)),
-			ChallengeSessionCache: cache.New(cache.WithCleanupInterval[CaptchaSession](time.Minute)),
-		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		assert.NoError(t, err)
 
 		session, err := service.CreateSession("192.168.1.1", "/relative/path")
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
-		assert.Contains(t, err.Error(), "invalid redirect URL")
 	})
 }

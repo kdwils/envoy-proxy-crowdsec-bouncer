@@ -120,6 +120,16 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_SECRETKEY
               value: {{ .captcha.secretKey | quote }}
             {{- end }}
+            {{- if and .captcha.signingKeySecretRef .captcha.signingKeySecretRef.name .captcha.signingKeySecretRef.key }}
+            - name: ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .captcha.signingKeySecretRef.name | quote }}
+                  key: {{ .captcha.signingKeySecretRef.key | quote }}
+            {{- else if .captcha.signingKey }}
+            - name: ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY
+              value: {{ .captcha.signingKey | quote }}
+            {{- end }}
             {{- with .captcha.sessionDuration }}
             - name: ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION
               value: {{ . | quote }}

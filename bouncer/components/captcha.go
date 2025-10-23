@@ -11,6 +11,7 @@ import (
 
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/token"
 )
 
 //go:generate mockgen -destination=mocks/mock_captcha_provider.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer/components CaptchaProvider
@@ -38,13 +39,13 @@ type CaptchaSession struct {
 
 // CaptchaService handles captcha verification and challenge management
 type CaptchaService struct {
-	Config                config.Captcha
-	Provider              CaptchaProvider
-	VerifiedCache         *cache.Cache[time.Time]
-	ChallengeSessionCache *cache.Cache[CaptchaSession]
-	RequestTimeout        time.Duration
-	generateToken         func() (string, error)
-	nowFunc               func() time.Time
+	Config         config.Captcha
+	Provider       CaptchaProvider
+	VerifiedCache  *cache.Cache[time.Time]
+	RequestTimeout time.Duration
+	generateToken  func() (string, error)
+	nowFunc        func() time.Time
+	jwt            *token.JWT
 }
 
 // VerificationRequest represents a captcha verification request
@@ -62,6 +63,10 @@ type VerificationResult struct {
 
 // NewCaptchaService creates a new captcha service with the specified configuration
 func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaService, error) {
+	if cfg.Enabled && cfg.SigningKey == "" {
+		return nil, fmt.Errorf("signing key is required when captcha is enabled")
+	}
+
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = 10 * time.Second
@@ -72,12 +77,10 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 		VerifiedCache: cache.New(cache.WithCleanup(cfg.SessionDuration, func(key string, expiry time.Time) bool {
 			return time.Now().After(expiry)
 		})),
-		ChallengeSessionCache: cache.New(cache.WithCleanup(cfg.ChallengeDuration, func(key string, session CaptchaSession) bool {
-			return time.Now().After(session.ExpiresAt)
-		})),
 		RequestTimeout: timeout,
 		generateToken:  generateSecureToken,
 		nowFunc:        time.Now,
+		jwt:            token.NewJWT(cfg.SigningKey),
 	}
 
 	if !cfg.Enabled {
@@ -107,7 +110,6 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 // StartCleanup starts the cache cleanup routine
 func (s *CaptchaService) StartCleanup(ctx context.Context) {
 	s.VerifiedCache.StartCleanup(ctx)
-	s.ChallengeSessionCache.StartCleanup(ctx)
 }
 
 // RequiresCaptcha determines if an IP needs to complete a captcha challenge
@@ -120,7 +122,7 @@ func (s *CaptchaService) RequiresCaptcha(ip string) bool {
 	return time.Now().After(expiry)
 }
 
-// VerifyResponse verifies a captcha response from the user and deletes the challenge session from the cache if successful
+// VerifyResponse verifies a captcha response from the user
 func (s *CaptchaService) VerifyResponse(ctx context.Context, sessionID string, req VerificationRequest) (*VerificationResult, error) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, s.RequestTimeout)
 	defer cancel()
@@ -141,7 +143,6 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, sessionID string, r
 	}
 
 	s.VerifiedCache.Set(req.IP, time.Now().Add(s.Config.SessionDuration))
-	s.ChallengeSessionCache.Delete(sessionID)
 
 	return &VerificationResult{
 		Success: true,
@@ -149,24 +150,34 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, sessionID string, r
 	}, nil
 }
 
-// GetSession retrieves a session by ID
+// GetSession retrieves a session by ID (JWT token)
 func (s *CaptchaService) GetSession(sessionID string) (*CaptchaSession, bool) {
-	session, exists := s.ChallengeSessionCache.Get(sessionID)
-	if !exists {
+	claims, err := s.jwt.VerifyToken(sessionID)
+	if err != nil {
 		return nil, false
 	}
 
-	if time.Now().After(session.ExpiresAt) {
-		s.ChallengeSessionCache.Delete(sessionID)
-		return nil, false
+	callbackURL := s.Config.CallbackURL + "/captcha"
+
+	redirectParams := make(url.Values)
+	redirectParams.Set("session", sessionID)
+	challengeURL := s.Config.CallbackURL + "/captcha/challenge?" + redirectParams.Encode()
+
+	session := &CaptchaSession{
+		IP:           claims.IP,
+		ID:           sessionID,
+		OriginalURL:  claims.OriginalURL,
+		CreatedAt:    claims.CreatedAt,
+		ExpiresAt:    claims.ExpiresAt,
+		Provider:     claims.Provider,
+		SiteKey:      claims.SiteKey,
+		CallbackURL:  callbackURL,
+		RedirectURL:  claims.OriginalURL,
+		ChallengeURL: challengeURL,
+		CSRFToken:    claims.CSRFToken,
 	}
 
-	return &session, true
-}
-
-// DeleteSession removes a session
-func (s *CaptchaService) DeleteSession(sessionID string) {
-	s.ChallengeSessionCache.Delete(sessionID)
+	return session, true
 }
 
 func (s *CaptchaService) GetProviderName() string {
@@ -187,14 +198,27 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		return nil, fmt.Errorf("invalid redirect URL: %s", originalURL)
 	}
 
-	sessionID, err := s.generateToken()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate session token: %w", err)
-	}
-
 	csrfToken, err := s.generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate CSRF token: %w", err)
+	}
+
+	t := s.nowFunc()
+	providerName := s.Provider.GetProviderName()
+
+	claims := token.SessionClaims{
+		IP:          ip,
+		OriginalURL: originalURL,
+		CreatedAt:   t,
+		ExpiresAt:   t.Add(s.Config.ChallengeDuration),
+		Provider:    providerName,
+		SiteKey:     s.Config.SiteKey,
+		CSRFToken:   csrfToken,
+	}
+
+	sessionID, err := s.jwt.CreateToken(claims)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session token: %w", err)
 	}
 
 	redirectParams := make(url.Values)
@@ -204,11 +228,9 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 
 	callbackURL := s.Config.CallbackURL + "/captcha"
 
-	t := s.nowFunc()
-
 	session := CaptchaSession{
 		IP:           ip,
-		Provider:     s.Provider.GetProviderName(),
+		Provider:     providerName,
 		SiteKey:      s.Config.SiteKey,
 		CallbackURL:  callbackURL,
 		OriginalURL:  originalURL,
@@ -219,8 +241,6 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		ExpiresAt:    t.Add(s.Config.ChallengeDuration),
 		CSRFToken:    csrfToken,
 	}
-
-	s.ChallengeSessionCache.Set(sessionID, session)
 
 	return &session, nil
 }
