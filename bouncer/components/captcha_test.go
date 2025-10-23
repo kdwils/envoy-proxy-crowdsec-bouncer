@@ -6,12 +6,154 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
-	"github.com/kdwils/envoy-proxy-bouncer/pkg/token"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func TestJWTManager_ChallengeToken(t *testing.T) {
+	t.Run("creates and verifies challenge token", func(t *testing.T) {
+		manager := NewJWTManager("test-signing-key")
+		now := time.Now()
+
+		claims := ChallengeClaims{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com",
+			CSRFToken:   "csrf-123",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(now),
+			},
+		}
+
+		token, err := manager.CreateChallengeToken(claims)
+
+		require.NoError(t, err)
+		require.NotEmpty(t, token)
+
+		verifiedClaims, err := manager.VerifyChallengeToken(token)
+
+		require.NoError(t, err)
+		require.NotNil(t, verifiedClaims)
+		assert.Equal(t, "192.168.1.1", verifiedClaims.IP)
+		assert.Equal(t, "http://example.com", verifiedClaims.OriginalURL)
+		assert.Equal(t, "csrf-123", verifiedClaims.CSRFToken)
+	})
+
+	t.Run("rejects expired challenge token", func(t *testing.T) {
+		manager := NewJWTManager("test-signing-key")
+		now := time.Now()
+
+		claims := ChallengeClaims{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com",
+			CSRFToken:   "csrf-123",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
+			},
+		}
+
+		token, err := manager.CreateChallengeToken(claims)
+		require.NoError(t, err)
+
+		verifiedClaims, err := manager.VerifyChallengeToken(token)
+
+		assert.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
+
+	t.Run("rejects invalid challenge token", func(t *testing.T) {
+		manager := NewJWTManager("test-signing-key")
+
+		verifiedClaims, err := manager.VerifyChallengeToken("invalid-token")
+
+		assert.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
+
+	t.Run("rejects challenge token with wrong signing key", func(t *testing.T) {
+		manager1 := NewJWTManager("key-1")
+		manager2 := NewJWTManager("key-2")
+
+		claims := ChallengeClaims{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com",
+			CSRFToken:   "csrf-123",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+			},
+		}
+
+		token, err := manager1.CreateChallengeToken(claims)
+		require.NoError(t, err)
+
+		verifiedClaims, err := manager2.VerifyChallengeToken(token)
+
+		assert.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
+}
+
+func TestJWTManager_VerificationToken(t *testing.T) {
+	t.Run("creates and verifies verification token", func(t *testing.T) {
+		manager := NewJWTManager("test-signing-key")
+		now := time.Now()
+
+		claims := VerificationClaims{
+			IP: "192.168.1.1",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(now),
+			},
+		}
+
+		token, err := manager.CreateVerificationToken(claims)
+
+		require.NoError(t, err)
+		require.NotEmpty(t, token)
+
+		verifiedClaims, err := manager.VerifyVerificationToken(token)
+
+		require.NoError(t, err)
+		require.NotNil(t, verifiedClaims)
+		assert.Equal(t, "192.168.1.1", verifiedClaims.IP)
+	})
+
+	t.Run("rejects expired verification token", func(t *testing.T) {
+		manager := NewJWTManager("test-signing-key")
+		now := time.Now()
+
+		claims := VerificationClaims{
+			IP: "192.168.1.1",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
+			},
+		}
+
+		token, err := manager.CreateVerificationToken(claims)
+		require.NoError(t, err)
+
+		verifiedClaims, err := manager.VerifyVerificationToken(token)
+
+		assert.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
+
+	t.Run("rejects invalid verification token", func(t *testing.T) {
+		manager := NewJWTManager("test-signing-key")
+
+		verifiedClaims, err := manager.VerifyVerificationToken("invalid-token")
+
+		assert.Error(t, err)
+		assert.Nil(t, verifiedClaims)
+	})
+}
 
 func TestNewCaptchaService(t *testing.T) {
 	t.Run("disabled captcha", func(t *testing.T) {
@@ -25,7 +167,6 @@ func TestNewCaptchaService(t *testing.T) {
 		assert.Nil(t, got.Provider)
 		assert.NotNil(t, got.jwt)
 		assert.Equal(t, 10*time.Second, got.RequestTimeout)
-		assert.NotNil(t, got.generateToken)
 		assert.NotNil(t, got.nowFunc)
 	})
 
@@ -38,10 +179,9 @@ func TestNewCaptchaService(t *testing.T) {
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
 
-		assert.NoError(t, err)
-		assert.NotNil(t, service)
+		require.NoError(t, err)
+		require.NotNil(t, service)
 		assert.True(t, service.Config.Enabled)
 		assert.NotNil(t, service.Provider)
 		assert.Equal(t, "recaptcha", service.Provider.GetProviderName())
@@ -56,10 +196,9 @@ func TestNewCaptchaService(t *testing.T) {
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
 
-		assert.NoError(t, err)
-		assert.NotNil(t, service)
+		require.NoError(t, err)
+		require.NotNil(t, service)
 		assert.True(t, service.Config.Enabled)
 		assert.NotNil(t, service.Provider)
 		assert.Equal(t, "turnstile", service.Provider.GetProviderName())
@@ -92,69 +231,87 @@ func TestNewCaptchaService(t *testing.T) {
 }
 
 func TestCaptchaService_RequiresCaptcha(t *testing.T) {
-
 	t.Run("no verification token", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		got := service.RequiresCaptcha("192.168.1.1", "")
 
-		assert.Equal(t, true, got)
+		assert.True(t, got)
 	})
 
 	t.Run("expired verification token", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		expiredClaims := token.VerificationClaims{
-			IP:         "192.168.1.1",
-			VerifiedAt: time.Now().Add(-2 * time.Hour),
-			ExpiresAt:  time.Now().Add(-1 * time.Hour),
+		now := time.Now()
+		expiredClaims := VerificationClaims{
+			IP: "192.168.1.1",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
+			},
 		}
 		expiredToken, err := service.jwt.CreateVerificationToken(expiredClaims)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		got := service.RequiresCaptcha("192.168.1.1", expiredToken)
 
-		assert.Equal(t, true, got)
+		assert.True(t, got)
 	})
 
 	t.Run("valid verification token", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		validClaims := token.VerificationClaims{
-			IP:         "192.168.1.1",
-			VerifiedAt: time.Now(),
-			ExpiresAt:  time.Now().Add(1 * time.Hour),
+		now := time.Now()
+		validClaims := VerificationClaims{
+			IP: "192.168.1.1",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(now),
+			},
 		}
 		validToken, err := service.jwt.CreateVerificationToken(validClaims)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		got := service.RequiresCaptcha("192.168.1.1", validToken)
 
-		assert.Equal(t, false, got)
+		assert.False(t, got)
 	})
 
 	t.Run("valid token but different IP", func(t *testing.T) {
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		validClaims := token.VerificationClaims{
-			IP:         "192.168.1.1",
-			VerifiedAt: time.Now(),
-			ExpiresAt:  time.Now().Add(1 * time.Hour),
+		now := time.Now()
+		validClaims := VerificationClaims{
+			IP: "192.168.1.1",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(now),
+			},
 		}
 		validToken, err := service.jwt.CreateVerificationToken(validClaims)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		got := service.RequiresCaptcha("192.168.1.2", validToken)
 
-		assert.Equal(t, true, got)
+		assert.True(t, got)
+	})
+
+	t.Run("invalid verification token format", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+
+		got := service.RequiresCaptcha("192.168.1.1", "invalid-jwt-token")
+
+		assert.True(t, got)
 	})
 }
 
@@ -173,7 +330,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		service.Provider = mockProvider
 
 		req := VerificationRequest{
@@ -183,17 +340,17 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "test-token", "192.168.1.1").Return(true, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "test", req)
+		got, err := service.VerifyResponse(context.Background(), "challenge-token", req)
 
-		assert.NoError(t, err)
-
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		require.NotNil(t, got)
 		assert.True(t, got.Success)
 		assert.Equal(t, "Captcha verified successfully", got.Message)
 		assert.NotEmpty(t, got.Token)
 
 		claims, err := service.jwt.VerifyVerificationToken(got.Token)
-		assert.NoError(t, err)
+
+		require.NoError(t, err)
 		assert.Equal(t, "192.168.1.1", claims.IP)
 		assert.False(t, service.RequiresCaptcha("192.168.1.1", got.Token))
 	})
@@ -205,7 +362,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		service.Provider = mockProvider
 
 		req := VerificationRequest{
@@ -215,16 +372,13 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "invalid-token", "192.168.1.1").Return(false, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "test", req)
+		got, err := service.VerifyResponse(context.Background(), "challenge-token", req)
 
-		assert.NoError(t, err)
-
-		want := &VerificationResult{
-			Success: false,
-			Message: "Captcha verification failed",
-		}
-
-		assert.Equal(t, want, got)
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.False(t, got.Success)
+		assert.Equal(t, "Captcha verification failed", got.Message)
+		assert.Empty(t, got.Token)
 	})
 }
 
@@ -238,7 +392,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			CallbackURL: "http://localhost:8081",
 		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		got, gotExists := service.GetSession("invalid-jwt-token")
 
@@ -261,15 +415,16 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		}
 
 		provider := mocks.NewMockCaptchaProvider(ctrl)
-		provider.EXPECT().GetProviderName().Return("recaptcha")
+		provider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		service.Provider = provider
+		service.generateToken = func() (string, error) { return "csrf-token", nil }
 
 		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
-		assert.NoError(t, err)
-		assert.NotNil(t, session)
+		require.NoError(t, err)
+		require.NotNil(t, session)
 
 		time.Sleep(10 * time.Millisecond)
 
@@ -294,25 +449,26 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		}
 
 		provider := mocks.NewMockCaptchaProvider(ctrl)
-		provider.EXPECT().GetProviderName().Return("recaptcha")
+		provider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		service.Provider = provider
+		service.generateToken = func() (string, error) { return "csrf-token-123", nil }
 
 		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
-		assert.NoError(t, err)
-		assert.NotNil(t, session)
+		require.NoError(t, err)
+		require.NotNil(t, session)
 
 		got, gotExists := service.GetSession(session.ID)
 
-		assert.True(t, gotExists)
-		assert.NotNil(t, got)
+		require.True(t, gotExists)
+		require.NotNil(t, got)
 		assert.Equal(t, "192.168.1.1", got.IP)
 		assert.Equal(t, "http://example.com", got.OriginalURL)
 		assert.Equal(t, "recaptcha", got.Provider)
 		assert.Equal(t, "test-site-key", got.SiteKey)
-		assert.Equal(t, session.CSRFToken, got.CSRFToken)
+		assert.Equal(t, "csrf-token-123", got.CSRFToken)
 	})
 }
 
@@ -332,25 +488,20 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		}
 
 		provider := mocks.NewMockCaptchaProvider(ctrl)
-		provider.EXPECT().GetProviderName().Return("turnstile")
+		provider.EXPECT().GetProviderName().Return("turnstile").AnyTimes()
 
 		fixedTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		service.Provider = provider
-
-		service.generateToken = func() (string, error) {
-			return "test-csrf-token", nil
-		}
-		service.nowFunc = func() time.Time {
-			return fixedTime
-		}
+		service.generateToken = func() (string, error) { return "test-csrf-token", nil }
+		service.nowFunc = func() time.Time { return fixedTime }
 
 		got, err := service.CreateSession("192.168.1.1", "http://example.com/original", "")
 
-		assert.NoError(t, err)
-		assert.NotNil(t, got)
+		require.NoError(t, err)
+		require.NotNil(t, got)
 		assert.Equal(t, "192.168.1.1", got.IP)
 		assert.Equal(t, "http://example.com/original", got.OriginalURL)
 		assert.Equal(t, "http://example.com/original", got.RedirectURL)
@@ -364,6 +515,40 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		assert.NotEmpty(t, got.ChallengeURL)
 	})
 
+	t.Run("returns nil when verification token is valid", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		cfg := config.Captcha{
+			Enabled:    true,
+			Provider:   "recaptcha",
+			SecretKey:  "test",
+			SigningKey: "test-signing-key",
+		}
+
+		provider := mocks.NewMockCaptchaProvider(ctrl)
+
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+		service.Provider = provider
+
+		now := time.Now()
+		validClaims := VerificationClaims{
+			IP: "192.168.1.1",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(now),
+			},
+		}
+		validToken, err := service.jwt.CreateVerificationToken(validClaims)
+		require.NoError(t, err)
+
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", validToken)
+
+		require.NoError(t, err)
+		assert.Nil(t, session)
+	})
+
 	t.Run("rejects javascript URL", func(t *testing.T) {
 		cfg := config.Captcha{
 			Enabled:     true,
@@ -375,7 +560,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		session, err := service.CreateSession("192.168.1.1", "javascript:alert('xss')", "")
 
@@ -394,7 +579,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		session, err := service.CreateSession("192.168.1.1", "/relative/path", "")
 

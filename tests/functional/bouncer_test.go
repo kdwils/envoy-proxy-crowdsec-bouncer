@@ -19,7 +19,6 @@ import (
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
-	bouncermocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
@@ -29,7 +28,6 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"gopkg.in/yaml.v3"
@@ -576,6 +574,8 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	v.Set("captcha.secretKey", "test-secret-key")
 	v.Set("captcha.signingKey", "test-signing-key-for-jwt-sessions")
 	v.Set("captcha.callbackURL", "http://localhost")
+	v.Set("captcha.challengeDuration", "5m")
+	v.Set("captcha.sessionDuration", "1h")
 
 	config, err := config.New(v)
 	require.NoError(t, err)
@@ -586,58 +586,9 @@ func TestBouncerWithCaptcha(t *testing.T) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
 	testBouncer, err := bouncer.New(config)
 	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
-
-	mockCaptchaService := bouncermocks.NewMockCaptchaService(ctrl)
-	mockCaptchaService.EXPECT().IsEnabled().Return(true).AnyTimes()
-
-	sessions := make(map[string]*components.CaptchaSession)
-	sessionCounter := 0
-	mockCaptchaService.EXPECT().CreateSession(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ip, originalURL, verificationToken string) (*components.CaptchaSession, error) {
-			sessionCounter++
-			sessionID := fmt.Sprintf("test-session-%d", sessionCounter)
-			csrfToken := fmt.Sprintf("csrf-token-%d", sessionCounter)
-			session := &components.CaptchaSession{
-				IP:           ip,
-				OriginalURL:  originalURL,
-				RedirectURL:  originalURL,
-				CreatedAt:    time.Now(),
-				ID:           sessionID,
-				Provider:     "recaptcha",
-				SiteKey:      "test-site-key",
-				CallbackURL:  "http://localhost/captcha",
-				ChallengeURL: fmt.Sprintf("http://localhost/captcha/challenge?session=%s", sessionID),
-				CSRFToken:    csrfToken,
-			}
-			sessions[sessionID] = session
-			return session, nil
-		}).AnyTimes()
-
-	mockCaptchaService.EXPECT().GetSession(gomock.Any()).DoAndReturn(
-		func(sessionID string) (*components.CaptchaSession, bool) {
-			session, exists := sessions[sessionID]
-			return session, exists
-		}).AnyTimes()
-
-	mockCaptchaService.EXPECT().VerifyResponse(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error) {
-			success := req.Response == "success"
-			if success {
-				delete(sessions, sessionID)
-			}
-			return &components.VerificationResult{
-				Success: success,
-				Message: "Mock verification",
-			}, nil
-		}).AnyTimes()
-
-	testBouncer.CaptchaService = mockCaptchaService
 
 	if config.Bouncer.Metrics {
 		go func() {
@@ -701,13 +652,12 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		t.Logf("Extracted session ID: %s", captchaSessionID)
 		require.NotEmpty(t, captchaSessionID)
 
-		session, exists := sessions[captchaSessionID]
+		session, exists := testBouncer.CaptchaService.GetSession(captchaSessionID)
 		require.True(t, exists)
 		require.Equal(t, "192.168.1.100", session.IP)
 		require.Equal(t, "http://my-host.com/protected", session.OriginalURL)
 		require.Equal(t, "http://my-host.com/protected", session.RedirectURL)
 
-		// Test that the captcha challenge page is served correctly
 		challengeURL := fmt.Sprintf("http://localhost:8081/captcha/challenge?session=%s", captchaSessionID)
 		t.Logf("Making HTTP request to: %s", challengeURL)
 		resp, err := http.Get(challengeURL)
@@ -745,7 +695,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		sessionID := locationURL.Query().Get("session")
 		require.NotEmpty(t, sessionID)
 
-		session, exists := sessions[sessionID]
+		session, exists := testBouncer.CaptchaService.GetSession(sessionID)
 		require.True(t, exists)
 		require.NotEmpty(t, session.CSRFToken)
 
@@ -788,7 +738,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		sessionID := locationURL.Query().Get("session")
 		require.NotEmpty(t, sessionID)
 
-		session, exists := sessions[sessionID]
+		session, exists := testBouncer.CaptchaService.GetSession(sessionID)
 		require.True(t, exists)
 		require.Equal(t, "192.168.1.1", session.IP)
 		require.Equal(t, "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", session.OriginalURL)
@@ -843,7 +793,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		sessionID := locationURL.Query().Get("session")
 		require.NotEmpty(t, sessionID)
 
-		session, exists := sessions[sessionID]
+		session, exists := testBouncer.CaptchaService.GetSession(sessionID)
 		require.True(t, exists)
 		require.NotEmpty(t, session.CSRFToken)
 

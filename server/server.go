@@ -56,24 +56,20 @@ func (s *Server) ServeDual(ctx context.Context) error {
 	grpcPort := s.config.Server.GRPCPort
 	httpPort := s.config.Server.HTTPPort
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		s.logger.Info("starting gRPC server", "port", grpcPort)
 		if err := s.serveGRPC(ctx, grpcPort); err != nil {
 			errChan <- fmt.Errorf("gRPC server error: %w", err)
 		}
-	}()
+	})
 
 	if s.config.Captcha.Enabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			s.logger.Info("starting HTTP server", "port", httpPort)
 			if err := s.serveHTTP(ctx, httpPort); err != nil {
 				errChan <- fmt.Errorf("HTTP server error: %w", err)
 			}
-		}()
+		})
 	}
 
 	go func() {
@@ -170,13 +166,13 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionID := r.FormValue("session")
-	if sessionID == "" {
+	challengeToken := r.FormValue("session")
+	if challengeToken == "" {
 		http.Error(w, "session id is required", http.StatusBadRequest)
 		return
 	}
 
-	session, ok := s.captcha.GetSession(sessionID)
+	session, ok := s.captcha.GetSession(challengeToken)
 	if !ok {
 		http.Error(w, "Invalid or expired session", http.StatusForbidden)
 		return
@@ -213,7 +209,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	verificationResult, err := s.captcha.VerifyResponse(r.Context(), session.ID, components.VerificationRequest{
+	verificationResult, err := s.captcha.VerifyResponse(r.Context(), challengeToken, components.VerificationRequest{
 		Response: captchaResponse,
 		IP:       session.IP,
 	})
@@ -227,6 +223,17 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, verificationResult.Message, http.StatusForbidden)
 		return
 	}
+
+	cookie := &http.Cookie{
+		Name:     "captcha_verified",
+		Value:    verificationResult.Token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(s.config.Captcha.SessionDuration.Seconds()),
+	}
+	http.SetCookie(w, cookie)
 
 	http.Redirect(w, r, session.OriginalURL, http.StatusFound)
 }
