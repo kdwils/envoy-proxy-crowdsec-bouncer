@@ -224,12 +224,13 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isSecure := r.URL.Scheme == "https" || r.Header.Get("X-Forwarded-Proto") == "https"
 	cookie := &http.Cookie{
 		Name:     "captcha_verified",
 		Value:    verificationResult.Token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(s.config.Captcha.SessionDuration.Seconds()),
 	}
