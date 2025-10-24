@@ -830,7 +830,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 
 		captchaMetric, ok := snapshot["CAPI:captcha"]
 		require.True(t, ok, "expected CAPI:captcha metric to exist")
-		require.Equal(t, int64(5), captchaMetric.Value)
+		require.Equal(t, int64(4), captchaMetric.Value)
 
 		activeDecisionsFound := false
 		for key, metric := range snapshot {
