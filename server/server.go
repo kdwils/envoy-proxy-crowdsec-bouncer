@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"net"
@@ -184,7 +185,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if csrfToken != session.CSRFToken {
+	if subtle.ConstantTimeCompare([]byte(csrfToken), []byte(session.CSRFToken)) != 1 {
 		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}

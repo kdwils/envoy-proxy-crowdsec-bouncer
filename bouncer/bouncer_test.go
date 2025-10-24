@@ -1802,3 +1802,77 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		assert.Equal(t, wantMetric, metric)
 	})
 }
+
+
+func Test_parseCookies(t *testing.T) {
+	tests := []struct {
+		name         string
+		cookieHeader string
+		want         map[string]string
+	}{
+		{
+			name:         "empty string returns empty map",
+			cookieHeader: "",
+			want:         map[string]string{},
+		},
+		{
+			name:         "single cookie",
+			cookieHeader: "session_id=abc123",
+			want: map[string]string{
+				"session_id": "abc123",
+			},
+		},
+		{
+			name:         "multiple cookies",
+			cookieHeader: "session_id=abc123; user_id=42; theme=dark",
+			want: map[string]string{
+				"session_id": "abc123",
+				"user_id":    "42",
+				"theme":      "dark",
+			},
+		},
+		{
+			name:         "cookies with spaces",
+			cookieHeader: "session_id=abc123 ; user_id=42 ;theme=dark",
+			want: map[string]string{
+				"session_id": "abc123",
+				"user_id":    "42",
+				"theme":      "dark",
+			},
+		},
+		{
+			name:         "cookie with URL-encoded value stays encoded",
+			cookieHeader: "redirect_url=https%3A%2F%2Fexample.com%2Fpath",
+			want: map[string]string{
+				"redirect_url": "https%3A%2F%2Fexample.com%2Fpath",
+			},
+		},
+		{
+			name:         "cookie with equals in value",
+			cookieHeader: "data=key=value",
+			want: map[string]string{
+				"data": "key=value",
+			},
+		},
+		{
+			name:         "cookie with special characters",
+			cookieHeader: "token=abc-123_456.789",
+			want: map[string]string{
+				"token": "abc-123_456.789",
+			},
+		},
+		{
+			name:         "captcha_verified cookie",
+			cookieHeader: "captcha_verified=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpcCI6IjEyNy4wLjAuMSJ9.abc123",
+			want: map[string]string{
+				"captcha_verified": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpcCI6IjEyNy4wLjAuMSJ9.abc123",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseCookies(tt.cookieHeader)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

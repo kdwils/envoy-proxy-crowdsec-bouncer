@@ -333,6 +333,18 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		require.NoError(t, err)
 		service.Provider = mockProvider
 
+		challengeClaims := ChallengeClaims{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com",
+			CSRFToken:   "csrf-token",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+			},
+		}
+		challengeToken, err := service.jwt.CreateChallengeToken(challengeClaims)
+		require.NoError(t, err)
+
 		req := VerificationRequest{
 			Response: "test-token",
 			IP:       "192.168.1.1",
@@ -340,7 +352,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "test-token", "192.168.1.1").Return(true, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "challenge-token", req)
+		got, err := service.VerifyResponse(context.Background(), challengeToken, req)
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -365,6 +377,18 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		require.NoError(t, err)
 		service.Provider = mockProvider
 
+		challengeClaims := ChallengeClaims{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com",
+			CSRFToken:   "csrf-token",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+			},
+		}
+		challengeToken, err := service.jwt.CreateChallengeToken(challengeClaims)
+		require.NoError(t, err)
+
 		req := VerificationRequest{
 			Response: "invalid-token",
 			IP:       "192.168.1.1",
@@ -372,13 +396,61 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "invalid-token", "192.168.1.1").Return(false, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "challenge-token", req)
+		got, err := service.VerifyResponse(context.Background(), challengeToken, req)
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.False(t, got.Success)
 		assert.Equal(t, "Captcha verification failed", got.Message)
 		assert.Empty(t, got.Token)
+	})
+
+	t.Run("invalid challenge token", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+
+		req := VerificationRequest{
+			Response: "test-token",
+			IP:       "192.168.1.1",
+		}
+
+		got, err := service.VerifyResponse(context.Background(), "invalid-token", req)
+
+		assert.Error(t, err)
+		require.NotNil(t, got)
+		assert.False(t, got.Success)
+		assert.Equal(t, "Invalid or expired challenge token", got.Message)
+	})
+
+	t.Run("IP mismatch between challenge and request", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+
+		challengeClaims := ChallengeClaims{
+			IP:          "192.168.1.1",
+			OriginalURL: "http://example.com",
+			CSRFToken:   "csrf-token",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+			},
+		}
+		challengeToken, err := service.jwt.CreateChallengeToken(challengeClaims)
+		require.NoError(t, err)
+
+		req := VerificationRequest{
+			Response: "test-token",
+			IP:       "192.168.1.2",
+		}
+
+		got, err := service.VerifyResponse(context.Background(), challengeToken, req)
+
+		assert.Error(t, err)
+		require.NotNil(t, got)
+		assert.False(t, got.Success)
+		assert.Equal(t, "IP mismatch", got.Message)
 	})
 }
 

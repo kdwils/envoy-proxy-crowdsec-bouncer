@@ -194,6 +194,21 @@ func (s *CaptchaService) RequiresCaptcha(ip, verificationToken string) bool {
 }
 
 func (s *CaptchaService) VerifyResponse(ctx context.Context, challengeToken string, req VerificationRequest) (*VerificationResult, error) {
+	claims, err := s.jwt.VerifyChallengeToken(challengeToken)
+	if err != nil {
+		return &VerificationResult{
+			Success: false,
+			Message: "Invalid or expired challenge token",
+		}, fmt.Errorf("invalid challenge token: %w", err)
+	}
+
+	if claims.IP != req.IP {
+		return &VerificationResult{
+			Success: false,
+			Message: "IP mismatch",
+		}, fmt.Errorf("challenge token IP (%s) does not match request IP (%s)", claims.IP, req.IP)
+	}
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, s.RequestTimeout)
 	defer cancel()
 
@@ -226,7 +241,7 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, challengeToken stri
 	if err != nil {
 		return &VerificationResult{
 			Success: false,
-			Message: "Failed to create verification token",
+			Message: "failed to create verification token",
 		}, fmt.Errorf("failed to create verification token: %w", err)
 	}
 
@@ -242,6 +257,9 @@ func (s *CaptchaService) GetSession(challengeToken string) (*CaptchaSession, boo
 	if err != nil {
 		return nil, false
 	}
+
+	// IP validation is performed in server.handleCaptchaVerify after GetSession
+	// The server extracts the real IP from the HTTP request and compares it with session.IP
 
 	callbackURL := s.Config.CallbackURL + "/captcha"
 

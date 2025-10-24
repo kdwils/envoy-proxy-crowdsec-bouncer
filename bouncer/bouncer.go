@@ -499,18 +499,18 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 }
 
 func parseCookies(cookieHeader string) map[string]string {
-	m := make(map[string]string, 0)
+	m := make(map[string]string)
 	if cookieHeader == "" {
 		return m
 	}
 
-	parts := strings.Split(cookieHeader, ";")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		kv := strings.SplitN(part, "=", 2)
-		if len(kv) == 2 {
-			m[kv[0]] = kv[1]
-		}
+	cookies, err := http.ParseCookie(cookieHeader)
+	if err != nil {
+		return m
+	}
+
+	for _, c := range cookies {
+		m[c.Name] = c.Value
 	}
 
 	return m
