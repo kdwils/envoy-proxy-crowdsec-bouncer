@@ -473,7 +473,7 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		}
 	}
 
-	parseCookies(parsedRequest.Headers["cookie"], parsedRequest.Cookies)
+	parsedRequest.Cookies = parseCookies(parsedRequest.Headers["cookie"])
 
 	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies)
 
@@ -498,9 +498,10 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 	return parsedRequest
 }
 
-func parseCookies(cookieHeader string, cookies map[string]string) {
+func parseCookies(cookieHeader string) map[string]string {
+	m := make(map[string]string, 0)
 	if cookieHeader == "" {
-		return
+		return m
 	}
 
 	parts := strings.Split(cookieHeader, ";")
@@ -508,9 +509,11 @@ func parseCookies(cookieHeader string, cookies map[string]string) {
 		part = strings.TrimSpace(part)
 		kv := strings.SplitN(part, "=", 2)
 		if len(kv) == 2 {
-			cookies[kv[0]] = kv[1]
+			m[kv[0]] = kv[1]
 		}
 	}
+
+	return m
 }
 
 // parseHTTPVersion converts strings like "HTTP/1.1" or "HTTP/2" to (1,1) or (2,0).
