@@ -318,13 +318,8 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 		sessionID := locationURL.Query().Get("session")
 		require.NotEmpty(t, sessionID)
 
-		session, exists := captchaService.GetSession(sessionID)
-		require.True(t, exists)
-		require.NotEmpty(t, session.CSRFToken)
-
 		form := url.Values{}
 		form.Add("session", sessionID)
-		form.Add("csrf_token", session.CSRFToken)
 		form.Add("g-recaptcha-response", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"
@@ -446,12 +441,9 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 		require.NoError(t, err)
 
 		sessionID := locationURL.Query().Get("session")
-		session, exists := captchaService.GetSession(sessionID)
-		require.True(t, exists)
 
 		form := url.Values{}
 		form.Add("session", sessionID)
-		form.Add("csrf_token", session.CSRFToken)
 		form.Add("g-recaptcha-response", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"
@@ -585,12 +577,9 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 		require.NoError(t, err)
 
 		sessionID := locationURL.Query().Get("session")
-		session, exists := captchaServiceShort.GetSession(sessionID)
-		require.True(t, exists)
 
 		form := url.Values{}
 		form.Add("session", sessionID)
-		form.Add("csrf_token", session.CSRFToken)
 		form.Add("g-recaptcha-response", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"
@@ -773,12 +762,9 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 		require.NoError(t, err)
 
 		sessionID := locationURL.Query().Get("session")
-		session, exists := captchaService.GetSession(sessionID)
-		require.True(t, exists)
 
 		form := url.Values{}
 		form.Add("session", sessionID)
-		form.Add("csrf_token", session.CSRFToken)
 		form.Add("g-recaptcha-response", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"

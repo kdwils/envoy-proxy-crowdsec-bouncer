@@ -2,9 +2,7 @@ package components
 
 import (
 	"context"
-	"crypto/rand"
 	_ "embed"
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"time"
@@ -20,19 +18,9 @@ type CaptchaProvider interface {
 	GetProviderName() string
 }
 
-func generateCSRFToken() (string, error) {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
-}
-
 type ChallengeClaims struct {
 	IP          string `json:"ip"`
 	OriginalURL string `json:"original_url"`
-	CSRFToken   string `json:"csrf_token"`
 	jwt.RegisteredClaims
 }
 
@@ -110,14 +98,12 @@ type CaptchaSession struct {
 	CallbackURL  string
 	RedirectURL  string
 	ChallengeURL string
-	CSRFToken    string
 }
 
 type CaptchaService struct {
 	Config         config.Captcha
 	Provider       CaptchaProvider
 	RequestTimeout time.Duration
-	generateToken  func() (string, error)
 	nowFunc        func() time.Time
 	jwt            *JWTManager
 }
@@ -139,6 +125,10 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 		return nil, fmt.Errorf("signing key is required when captcha is enabled")
 	}
 
+	if cfg.Enabled && len(cfg.SigningKey) < 32 {
+		return nil, fmt.Errorf("signing key must be at least 32 bytes (256 bits) for secure HMAC-SHA256 signatures, got %d bytes", len(cfg.SigningKey))
+	}
+
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = 10 * time.Second
@@ -149,7 +139,6 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 		RequestTimeout: timeout,
 		nowFunc:        time.Now,
 		jwt:            NewJWTManager(cfg.SigningKey),
-		generateToken:  generateCSRFToken,
 	}
 
 	if !cfg.Enabled {
@@ -281,7 +270,6 @@ func (s *CaptchaService) GetSession(challengeToken string) (*CaptchaSession, boo
 		CallbackURL:  callbackURL,
 		RedirectURL:  claims.OriginalURL,
 		ChallengeURL: challengeURL,
-		CSRFToken:    claims.CSRFToken,
 	}
 
 	return session, true
@@ -304,18 +292,12 @@ func (s *CaptchaService) CreateSession(ip, originalURL, verificationToken string
 		return nil, fmt.Errorf("invalid redirect URL: %s", originalURL)
 	}
 
-	csrfToken, err := s.generateToken()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate CSRF token: %w", err)
-	}
-
 	now := s.nowFunc()
 	expiresAt := now.Add(s.Config.ChallengeDuration)
 
 	claims := ChallengeClaims{
 		IP:          ip,
 		OriginalURL: originalURL,
-		CSRFToken:   csrfToken,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -345,7 +327,6 @@ func (s *CaptchaService) CreateSession(ip, originalURL, verificationToken string
 		ID:           challengeToken,
 		CreatedAt:    now,
 		ExpiresAt:    expiresAt,
-		CSRFToken:    csrfToken,
 	}
 
 	return &session, nil

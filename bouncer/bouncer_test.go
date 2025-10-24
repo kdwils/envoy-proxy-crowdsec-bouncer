@@ -1803,7 +1803,6 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 	})
 }
 
-
 func Test_parseCookies(t *testing.T) {
 	tests := []struct {
 		name         string

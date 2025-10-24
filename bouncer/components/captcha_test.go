@@ -16,13 +16,12 @@ import (
 
 func TestJWTManager_ChallengeToken(t *testing.T) {
 	t.Run("creates and verifies challenge token", func(t *testing.T) {
-		manager := NewJWTManager("test-signing-key")
+		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 		now := time.Now()
 
 		claims := ChallengeClaims{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			CSRFToken:   "csrf-123",
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(now),
@@ -40,17 +39,15 @@ func TestJWTManager_ChallengeToken(t *testing.T) {
 		require.NotNil(t, verifiedClaims)
 		assert.Equal(t, "192.168.1.1", verifiedClaims.IP)
 		assert.Equal(t, "http://example.com", verifiedClaims.OriginalURL)
-		assert.Equal(t, "csrf-123", verifiedClaims.CSRFToken)
 	})
 
 	t.Run("rejects expired challenge token", func(t *testing.T) {
-		manager := NewJWTManager("test-signing-key")
+		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 		now := time.Now()
 
 		claims := ChallengeClaims{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			CSRFToken:   "csrf-123",
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
 				IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
@@ -67,7 +64,7 @@ func TestJWTManager_ChallengeToken(t *testing.T) {
 	})
 
 	t.Run("rejects invalid challenge token", func(t *testing.T) {
-		manager := NewJWTManager("test-signing-key")
+		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 
 		verifiedClaims, err := manager.VerifyChallengeToken("invalid-token")
 
@@ -82,7 +79,6 @@ func TestJWTManager_ChallengeToken(t *testing.T) {
 		claims := ChallengeClaims{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			CSRFToken:   "csrf-123",
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -101,7 +97,7 @@ func TestJWTManager_ChallengeToken(t *testing.T) {
 
 func TestJWTManager_VerificationToken(t *testing.T) {
 	t.Run("creates and verifies verification token", func(t *testing.T) {
-		manager := NewJWTManager("test-signing-key")
+		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 		now := time.Now()
 
 		claims := VerificationClaims{
@@ -125,7 +121,7 @@ func TestJWTManager_VerificationToken(t *testing.T) {
 	})
 
 	t.Run("rejects expired verification token", func(t *testing.T) {
-		manager := NewJWTManager("test-signing-key")
+		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 		now := time.Now()
 
 		claims := VerificationClaims{
@@ -146,7 +142,7 @@ func TestJWTManager_VerificationToken(t *testing.T) {
 	})
 
 	t.Run("rejects invalid verification token", func(t *testing.T) {
-		manager := NewJWTManager("test-signing-key")
+		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 
 		verifiedClaims, err := manager.VerifyVerificationToken("invalid-token")
 
@@ -175,7 +171,7 @@ func TestNewCaptchaService(t *testing.T) {
 			Enabled:    true,
 			Provider:   "recaptcha",
 			SecretKey:  "test-secret",
-			SigningKey: "test-signing-key",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -192,7 +188,7 @@ func TestNewCaptchaService(t *testing.T) {
 			Enabled:    true,
 			Provider:   "turnstile",
 			SecretKey:  "test-secret",
-			SigningKey: "test-signing-key",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -208,7 +204,7 @@ func TestNewCaptchaService(t *testing.T) {
 		cfg := config.Captcha{
 			Enabled:    true,
 			Provider:   "unsupported",
-			SigningKey: "test-signing-key",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -232,7 +228,7 @@ func TestNewCaptchaService(t *testing.T) {
 
 func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	t.Run("no verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -242,7 +238,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("expired verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -263,7 +259,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("valid verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -284,7 +280,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("valid token but different IP", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -305,7 +301,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("invalid verification token format", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -325,7 +321,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 			Enabled:         true,
 			Provider:        "recaptcha",
 			SecretKey:       "test",
-			SigningKey:      "test-signing-key",
+			SigningKey:      "test-signing-key-that-is-at-least-32-bytes-long",
 			SessionDuration: 1 * time.Hour,
 		}
 
@@ -336,7 +332,6 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		challengeClaims := ChallengeClaims{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			CSRFToken:   "csrf-token",
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -372,7 +367,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 		service.Provider = mockProvider
@@ -380,7 +375,6 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		challengeClaims := ChallengeClaims{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			CSRFToken:   "csrf-token",
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -406,7 +400,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 	})
 
 	t.Run("invalid challenge token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -424,14 +418,13 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 	})
 
 	t.Run("IP mismatch between challenge and request", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
 		challengeClaims := ChallengeClaims{
 			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			CSRFToken:   "csrf-token",
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -460,7 +453,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			Enabled:     true,
 			Provider:    "recaptcha",
 			SecretKey:   "test",
-			SigningKey:  "test-signing-key",
+			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
 			CallbackURL: "http://localhost:8081",
 		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -480,7 +473,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			Enabled:           true,
 			Provider:          "recaptcha",
 			SecretKey:         "test",
-			SigningKey:        "test-signing-key",
+			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
 			SiteKey:           "test-site-key",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 1 * time.Millisecond,
@@ -492,7 +485,6 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 		service.Provider = provider
-		service.generateToken = func() (string, error) { return "csrf-token", nil }
 
 		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		require.NoError(t, err)
@@ -514,7 +506,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			Enabled:           true,
 			Provider:          "recaptcha",
 			SecretKey:         "test",
-			SigningKey:        "test-signing-key",
+			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
 			SiteKey:           "test-site-key",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 24 * time.Hour,
@@ -526,7 +518,6 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 		service.Provider = provider
-		service.generateToken = func() (string, error) { return "csrf-token-123", nil }
 
 		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		require.NoError(t, err)
@@ -540,7 +531,6 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		assert.Equal(t, "http://example.com", got.OriginalURL)
 		assert.Equal(t, "recaptcha", got.Provider)
 		assert.Equal(t, "test-site-key", got.SiteKey)
-		assert.Equal(t, "csrf-token-123", got.CSRFToken)
 	})
 }
 
@@ -554,7 +544,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			Provider:          "turnstile",
 			SiteKey:           "test-site-key",
 			SecretKey:         "test-secret",
-			SigningKey:        "test-signing-key",
+			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 5 * time.Minute,
 		}
@@ -567,7 +557,6 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 		service.Provider = provider
-		service.generateToken = func() (string, error) { return "test-csrf-token", nil }
 		service.nowFunc = func() time.Time { return fixedTime }
 
 		got, err := service.CreateSession("192.168.1.1", "http://example.com/original", "")
@@ -582,7 +571,6 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		assert.Equal(t, "turnstile", got.Provider)
 		assert.Equal(t, "test-site-key", got.SiteKey)
 		assert.Equal(t, "http://localhost:8081/captcha", got.CallbackURL)
-		assert.Equal(t, "test-csrf-token", got.CSRFToken)
 		assert.NotEmpty(t, got.ID)
 		assert.NotEmpty(t, got.ChallengeURL)
 	})
@@ -595,7 +583,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			Enabled:    true,
 			Provider:   "recaptcha",
 			SecretKey:  "test",
-			SigningKey: "test-signing-key",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
 		}
 
 		provider := mocks.NewMockCaptchaProvider(ctrl)
@@ -627,7 +615,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			Provider:    "turnstile",
 			SiteKey:     "test-site-key",
 			SecretKey:   "test-secret",
-			SigningKey:  "test-signing-key",
+			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
 			CallbackURL: "http://localhost:8081",
 		}
 
@@ -646,7 +634,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			Provider:    "turnstile",
 			SiteKey:     "test-site-key",
 			SecretKey:   "test-secret",
-			SigningKey:  "test-signing-key",
+			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
 			CallbackURL: "http://localhost:8081",
 		}
 

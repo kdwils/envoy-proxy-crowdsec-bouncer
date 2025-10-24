@@ -78,7 +78,6 @@
         <form id="captcha-form" method="POST" action="{{.CallbackURL}}/verify">
             <div id="captcha-container"></div>
             <input type="hidden" name="session" value="{{.SessionID}}" />
-            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
             <button type="submit" id="submit-btn" class="submit-btn" disabled>Verify</button>
             <div id="error-message" class="error" style="display: none;"></div>
         </form>

@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"net"
@@ -179,17 +178,6 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	csrfToken := r.FormValue("csrf_token")
-	if csrfToken == "" {
-		http.Error(w, "CSRF token is required", http.StatusBadRequest)
-		return
-	}
-
-	if subtle.ConstantTimeCompare([]byte(csrfToken), []byte(session.CSRFToken)) != 1 {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
-		return
-	}
-
 	clientIP := s.bouncer.ExtractRealIPFromHTTP(r)
 	if clientIP != session.IP {
 		s.logger.Warn("IP mismatch during captcha verification", "session_ip", session.IP, "client_ip", clientIP)
@@ -225,14 +213,13 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isSecure := r.URL.Scheme == "https" || r.Header.Get("X-Forwarded-Proto") == "https"
 	cookie := &http.Cookie{
 		Name:     "captcha_verified",
 		Value:    verificationResult.Token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(s.config.Captcha.SessionDuration.Seconds()),
 	}
 	http.SetCookie(w, cookie)
@@ -279,7 +266,6 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		CallbackURL: session.CallbackURL,
 		RedirectURL: session.RedirectURL,
 		SessionID:   session.ID,
-		CSRFToken:   session.CSRFToken,
 	}
 
 	html, err := s.templateStore.RenderCaptcha(data)

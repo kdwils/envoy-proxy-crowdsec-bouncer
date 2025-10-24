@@ -695,10 +695,6 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		sessionID := locationURL.Query().Get("session")
 		require.NotEmpty(t, sessionID)
 
-		session, exists := testBouncer.CaptchaService.GetSession(sessionID)
-		require.True(t, exists)
-		require.NotEmpty(t, session.CSRFToken)
-
 		form := url.Values{}
 		form.Add("session", sessionID)
 		form.Add("csrf_token", "invalid-csrf-token")
@@ -793,13 +789,8 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		sessionID := locationURL.Query().Get("session")
 		require.NotEmpty(t, sessionID)
 
-		session, exists := testBouncer.CaptchaService.GetSession(sessionID)
-		require.True(t, exists)
-		require.NotEmpty(t, session.CSRFToken)
-
 		form := url.Values{}
 		form.Add("session", sessionID)
-		form.Add("csrf_token", session.CSRFToken)
 		form.Add("g-recaptcha-response", "success")
 
 		verifyURL := "http://localhost:8081/captcha/verify"
