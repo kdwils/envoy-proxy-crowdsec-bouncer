@@ -2,26 +2,91 @@ package components
 
 import (
 	"context"
-	"crypto/rand"
 	_ "embed"
-	"encoding/hex"
 	"fmt"
 	"net/url"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
-	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 )
 
 //go:generate mockgen -destination=mocks/mock_captcha_provider.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer/components CaptchaProvider
 
-// CaptchaProvider defines the interface for captcha verification providers
 type CaptchaProvider interface {
 	Verify(ctx context.Context, response, remoteIP string) (bool, error)
 	GetProviderName() string
 }
 
-// CaptchaSession represents a captcha challenge session
+type ChallengeClaims struct {
+	IP          string `json:"ip"`
+	OriginalURL string `json:"original_url"`
+	jwt.RegisteredClaims
+}
+
+type VerificationClaims struct {
+	IP string `json:"ip"`
+	jwt.RegisteredClaims
+}
+
+type JWTManager struct {
+	signingKey []byte
+}
+
+func NewJWTManager(signingKey string) *JWTManager {
+	return &JWTManager{
+		signingKey: []byte(signingKey),
+	}
+}
+
+func (j *JWTManager) CreateChallengeToken(claims ChallengeClaims) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(j.signingKey)
+}
+
+func (j *JWTManager) VerifyChallengeToken(tokenString string) (*ChallengeClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &ChallengeClaims{}, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return j.signingKey, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	claims, ok := token.Claims.(*ChallengeClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	return claims, nil
+}
+
+func (j *JWTManager) CreateVerificationToken(claims VerificationClaims) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(j.signingKey)
+}
+
+func (j *JWTManager) VerifyVerificationToken(tokenString string) (*VerificationClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &VerificationClaims{}, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return j.signingKey, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	claims, ok := token.Claims.(*VerificationClaims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	return claims, nil
+}
+
 type CaptchaSession struct {
 	IP           string
 	ID           string
@@ -33,51 +98,47 @@ type CaptchaSession struct {
 	CallbackURL  string
 	RedirectURL  string
 	ChallengeURL string
-	CSRFToken    string
 }
 
-// CaptchaService handles captcha verification and challenge management
 type CaptchaService struct {
-	Config                config.Captcha
-	Provider              CaptchaProvider
-	VerifiedCache         *cache.Cache[time.Time]
-	ChallengeSessionCache *cache.Cache[CaptchaSession]
-	RequestTimeout        time.Duration
-	generateToken         func() (string, error)
-	nowFunc               func() time.Time
+	Config         config.Captcha
+	Provider       CaptchaProvider
+	RequestTimeout time.Duration
+	nowFunc        func() time.Time
+	jwt            *JWTManager
 }
 
-// VerificationRequest represents a captcha verification request
 type VerificationRequest struct {
 	Token    string `json:"token"`
 	Response string `json:"response"`
 	IP       string `json:"ip"`
 }
 
-// VerificationResult represents the result of captcha verification
 type VerificationResult struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Token   string `json:"token,omitempty"`
 }
 
-// NewCaptchaService creates a new captcha service with the specified configuration
 func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaService, error) {
+	if cfg.Enabled && cfg.SigningKey == "" {
+		return nil, fmt.Errorf("signing key is required when captcha is enabled")
+	}
+
+	if cfg.Enabled && len(cfg.SigningKey) < 32 {
+		return nil, fmt.Errorf("signing key must be at least 32 bytes (256 bits) for secure HMAC-SHA256 signatures, got %d bytes", len(cfg.SigningKey))
+	}
+
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = 10 * time.Second
 	}
 
 	service := &CaptchaService{
-		Config: cfg,
-		VerifiedCache: cache.New(cache.WithCleanup(cfg.SessionDuration, func(key string, expiry time.Time) bool {
-			return time.Now().After(expiry)
-		})),
-		ChallengeSessionCache: cache.New(cache.WithCleanup(cfg.ChallengeDuration, func(key string, session CaptchaSession) bool {
-			return time.Now().After(session.ExpiresAt)
-		})),
+		Config:         cfg,
 		RequestTimeout: timeout,
-		generateToken:  generateSecureToken,
 		nowFunc:        time.Now,
+		jwt:            NewJWTManager(cfg.SigningKey),
 	}
 
 	if !cfg.Enabled {
@@ -104,24 +165,39 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 	return service, nil
 }
 
-// StartCleanup starts the cache cleanup routine
-func (s *CaptchaService) StartCleanup(ctx context.Context) {
-	s.VerifiedCache.StartCleanup(ctx)
-	s.ChallengeSessionCache.StartCleanup(ctx)
-}
-
-// RequiresCaptcha determines if an IP needs to complete a captcha challenge
-func (s *CaptchaService) RequiresCaptcha(ip string) bool {
-	expiry, exists := s.VerifiedCache.Get(ip)
-	if !exists {
+func (s *CaptchaService) RequiresCaptcha(ip, verificationToken string) bool {
+	if verificationToken == "" {
 		return true
 	}
 
-	return time.Now().After(expiry)
+	claims, err := s.jwt.VerifyVerificationToken(verificationToken)
+	if err != nil {
+		return true
+	}
+
+	if claims.IP != ip {
+		return true
+	}
+
+	return false
 }
 
-// VerifyResponse verifies a captcha response from the user and deletes the challenge session from the cache if successful
-func (s *CaptchaService) VerifyResponse(ctx context.Context, sessionID string, req VerificationRequest) (*VerificationResult, error) {
+func (s *CaptchaService) VerifyResponse(ctx context.Context, challengeToken string, req VerificationRequest) (*VerificationResult, error) {
+	claims, err := s.jwt.VerifyChallengeToken(challengeToken)
+	if err != nil {
+		return &VerificationResult{
+			Success: false,
+			Message: "Invalid or expired challenge token",
+		}, fmt.Errorf("invalid challenge token: %w", err)
+	}
+
+	if claims.IP != req.IP {
+		return &VerificationResult{
+			Success: false,
+			Message: "IP mismatch",
+		}, fmt.Errorf("challenge token IP (%s) does not match request IP (%s)", claims.IP, req.IP)
+	}
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, s.RequestTimeout)
 	defer cancel()
 
@@ -140,33 +216,63 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, sessionID string, r
 		}, nil
 	}
 
-	s.VerifiedCache.Set(req.IP, time.Now().Add(s.Config.SessionDuration))
-	s.ChallengeSessionCache.Delete(sessionID)
+	now := s.nowFunc()
+	verificationClaims := VerificationClaims{
+		IP: req.IP,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.Config.SessionDuration)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+		},
+	}
+
+	tokenString, err := s.jwt.CreateVerificationToken(verificationClaims)
+	if err != nil {
+		return &VerificationResult{
+			Success: false,
+			Message: "failed to create verification token",
+		}, fmt.Errorf("failed to create verification token: %w", err)
+	}
 
 	return &VerificationResult{
 		Success: true,
 		Message: "Captcha verified successfully",
+		Token:   tokenString,
 	}, nil
 }
 
-// GetSession retrieves a session by ID
-func (s *CaptchaService) GetSession(sessionID string) (*CaptchaSession, bool) {
-	session, exists := s.ChallengeSessionCache.Get(sessionID)
-	if !exists {
+func (s *CaptchaService) GetSession(challengeToken string) (*CaptchaSession, bool) {
+	claims, err := s.jwt.VerifyChallengeToken(challengeToken)
+	if err != nil {
 		return nil, false
 	}
 
-	if time.Now().After(session.ExpiresAt) {
-		s.ChallengeSessionCache.Delete(sessionID)
-		return nil, false
+	// IP validation is performed in server.handleCaptchaVerify after GetSession
+	// The server extracts the real IP from the HTTP request and compares it with session.IP
+
+	callbackURL := s.Config.CallbackURL + "/captcha"
+
+	redirectParams := make(url.Values)
+	redirectParams.Set("session", challengeToken)
+	challengeURL := s.Config.CallbackURL + "/captcha/challenge?" + redirectParams.Encode()
+
+	createdAt := claims.IssuedAt.Time
+	expiresAt := claims.ExpiresAt.Time
+
+	session := &CaptchaSession{
+		IP:           claims.IP,
+		ID:           challengeToken,
+		OriginalURL:  claims.OriginalURL,
+		CreatedAt:    createdAt,
+		ExpiresAt:    expiresAt,
+		Provider:     s.Provider.GetProviderName(),
+		SiteKey:      s.Config.SiteKey,
+		CallbackURL:  callbackURL,
+		RedirectURL:  claims.OriginalURL,
+		ChallengeURL: challengeURL,
 	}
 
-	return &session, true
-}
-
-// DeleteSession removes a session
-func (s *CaptchaService) DeleteSession(sessionID string) {
-	s.ChallengeSessionCache.Delete(sessionID)
+	return session, true
 }
 
 func (s *CaptchaService) GetProviderName() string {
@@ -177,9 +283,8 @@ func (s *CaptchaService) IsEnabled() bool {
 	return s.Config.Enabled
 }
 
-// CreateSession creates a new session for an ip if required, otherwise returns nil
-func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession, error) {
-	if !s.RequiresCaptcha(ip) {
+func (s *CaptchaService) CreateSession(ip, originalURL, verificationToken string) (*CaptchaSession, error) {
+	if !s.RequiresCaptcha(ip, verificationToken) {
 		return nil, nil
 	}
 
@@ -187,24 +292,29 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		return nil, fmt.Errorf("invalid redirect URL: %s", originalURL)
 	}
 
-	sessionID, err := s.generateToken()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate session token: %w", err)
+	now := s.nowFunc()
+	expiresAt := now.Add(s.Config.ChallengeDuration)
+
+	claims := ChallengeClaims{
+		IP:          ip,
+		OriginalURL: originalURL,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+		},
 	}
 
-	csrfToken, err := s.generateToken()
+	challengeToken, err := s.jwt.CreateChallengeToken(claims)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate CSRF token: %w", err)
+		return nil, fmt.Errorf("failed to create challenge token: %w", err)
 	}
 
 	redirectParams := make(url.Values)
-	redirectParams.Set("session", sessionID)
+	redirectParams.Set("session", challengeToken)
 
 	challengeURL := s.Config.CallbackURL + "/captcha/challenge?" + redirectParams.Encode()
-
 	callbackURL := s.Config.CallbackURL + "/captcha"
-
-	t := s.nowFunc()
 
 	session := CaptchaSession{
 		IP:           ip,
@@ -214,24 +324,12 @@ func (s *CaptchaService) CreateSession(ip, originalURL string) (*CaptchaSession,
 		OriginalURL:  originalURL,
 		RedirectURL:  originalURL,
 		ChallengeURL: challengeURL,
-		ID:           sessionID,
-		CreatedAt:    t,
-		ExpiresAt:    t.Add(s.Config.ChallengeDuration),
-		CSRFToken:    csrfToken,
+		ID:           challengeToken,
+		CreatedAt:    now,
+		ExpiresAt:    expiresAt,
 	}
-
-	s.ChallengeSessionCache.Set(sessionID, session)
 
 	return &session, nil
-}
-
-// generateSecureToken generates a cryptographically secure random token
-func generateSecureToken() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
 }
 
 func isValidRedirectURL(redirectURL string) bool {

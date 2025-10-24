@@ -27,6 +27,7 @@ type Captcha struct {
 	Provider          string        `yaml:"provider" json:"provider"`
 	SiteKey           string        `yaml:"siteKey" json:"siteKey"`
 	SecretKey         string        `yaml:"secretKey" json:"secretKey"`
+	SigningKey        string        `yaml:"signingKey" json:"signingKey"`
 	CallbackURL       string        `yaml:"callbackURL" json:"callbackURL"`
 	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
 	ChallengeDuration time.Duration `yaml:"challengeDuration" json:"challengeDuration"`

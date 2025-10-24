@@ -58,10 +58,6 @@ var ServeCmd = &cobra.Command{
 			}()
 		}
 
-		if config.Captcha.Enabled && bouncer.CaptchaService != nil {
-			go bouncer.CaptchaService.StartCleanup(ctx)
-		}
-
 		templateStore, err := template.NewStore(template.Config{
 			DeniedTemplatePath:  config.Templates.DeniedTemplatePath,
 			CaptchaTemplatePath: config.Templates.CaptchaTemplatePath,

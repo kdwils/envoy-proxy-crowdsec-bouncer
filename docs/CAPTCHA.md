@@ -25,11 +25,11 @@ When CAPTCHA is enabled, the bouncer runs dual servers:
 
 ### Session Management
 
-- Sessions are stored in-memory with a configurable duration
-- IPs that complete CAPTCHA are cached and allowed through
+- Sessions use signed JWT tokens for stateless verification
+- IPs that complete CAPTCHA receive a verification token valid for the session duration
 - Sessions are bound to IP addresses to prevent session hijacking
-- CSRF tokens protect against cross-site request forgery
-- Expired sessions are automatically cleaned up
+- JWT signatures prevent token tampering and forgery
+- Tokens automatically expire after the configured duration
 
 ## Supported Providers
 
@@ -48,6 +48,7 @@ captcha:
   provider: "recaptcha"  # or "turnstile"
   siteKey: "<your-site-key>"
   secretKey: "<your-secret-key>"
+  signingKey: "<your-jwt-signing-key>"  # Generate with: openssl rand -base64 32
   callbackURL: "https://yourdomain.com"
   sessionDuration: "15m"
   timeout: "10s"
@@ -61,10 +62,11 @@ captcha:
 | `provider` | string | `""` | Yes | CAPTCHA provider: `recaptcha` or `turnstile` |
 | `siteKey` | string | `""` | Yes | Public site key from CAPTCHA provider |
 | `secretKey` | string | `""` | Yes | Secret key from CAPTCHA provider |
+| `signingKey` | string | `""` | Yes | JWT signing key (minimum 32 bytes). Generate with `openssl rand -base64 32` |
 | `callbackURL` | string | `""` | Yes | Base URL for CAPTCHA callbacks (public-facing hostname) |
 | `timeout` | duration | `"10s"` | No | Timeout for CAPTCHA provider verification requests |
 | `sessionDuration` | duration | `"15m"` | No | How long CAPTCHA verification remains valid |
-| `cacheCleanupInterval` | duration | `"5m"` | No | How often to clean up expired sessions |
+| `challengeDuration` | duration | `"5m"` | No | How long a challenge token remains valid |
 
 ### Environment Variables
 
@@ -73,6 +75,7 @@ export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-secret-key
+export ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY=your-jwt-signing-key
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
 export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
@@ -246,9 +249,8 @@ Your custom CAPTCHA template **must** include:
 
 1. Form posting to `{{.CallbackURL}}/verify`
 2. Hidden session field: `<input type="hidden" name="session" value="{{.SessionID}}" />`
-3. Hidden CSRF token: `<input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />`
-4. CAPTCHA widget rendering with `{{.SiteKey}}`
-5. Provider-specific JavaScript library
+3. CAPTCHA widget rendering with `{{.SiteKey}}`
+4. Provider-specific JavaScript library
 
 Example:
 
@@ -256,7 +258,6 @@ Example:
 <form method="POST" action="{{.CallbackURL}}/verify">
     <div id="captcha-container"></div>
     <input type="hidden" name="session" value="{{.SessionID}}" />
-    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
     <button type="submit">Verify</button>
 </form>
 
@@ -281,10 +282,10 @@ Example:
 
 ### Session Security
 
-- Sessions are bound to IP addresses (extracted from trusted headers)
-- CSRF tokens prevent cross-site form submission
-- Sessions expire after configurable duration
-- Session IDs are cryptographically random
+- Sessions use signed JWT tokens bound to IP addresses
+- JWT signatures prevent token tampering and replay attacks
+- Tokens automatically expire after configurable duration
+- IP binding prevents session hijacking (extracted from trusted headers)
 
 ### IP Binding
 
@@ -414,13 +415,15 @@ kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer | grep -i ca
 - Check server time synchronization
 - Verify IP address consistency (check `trustedProxies` configuration)
 
-### CSRF Token Validation Failed
+### JWT Signing Key Issues
 
-**Cause**: Missing or invalid CSRF token in custom template
+**Symptoms**: Server fails to start or CAPTCHA verification fails
 
-**Solution**: Ensure custom template includes:
-```html
-<input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+**Cause**: Missing or weak signing key
+
+**Solution**: Ensure `signingKey` is configured and at least 32 bytes:
+```bash
+openssl rand -base64 32
 ```
 
 ## Metrics

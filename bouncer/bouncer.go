@@ -39,10 +39,10 @@ type DecisionCache interface {
 //go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
 type CaptchaService interface {
 	IsEnabled() bool
-	CreateSession(ip, originalURL string) (*components.CaptchaSession, error)
+	RequiresCaptcha(ip, verificationToken string) bool
+	CreateSession(ip, originalURL, verificationToken string) (*components.CaptchaSession, error)
 	GetSession(sessionID string) (*components.CaptchaSession, bool)
 	VerifyResponse(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error)
-	StartCleanup(ctx context.Context)
 }
 
 func ptr[T any](v T) *T {
@@ -225,6 +225,7 @@ type ParsedRequest struct {
 	IP         string
 	RealIP     string
 	Headers    map[string]string
+	Cookies    map[string]string
 	URL        url.URL
 	Method     string
 	UserAgent  string
@@ -388,7 +389,9 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	logger.Debug("running captcha")
 	originalURL := parsed.URL.String()
 
-	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL)
+	verificationToken := parsed.Cookies["captcha_verified"]
+
+	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, verificationToken)
 	if err != nil {
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
@@ -432,7 +435,10 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.
 func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest) *ParsedRequest {
-	parsedRequest := &ParsedRequest{Headers: make(map[string]string)}
+	parsedRequest := &ParsedRequest{
+		Headers: make(map[string]string),
+		Cookies: make(map[string]string),
+	}
 	if req == nil {
 		return parsedRequest
 	}
@@ -467,6 +473,8 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		}
 	}
 
+	parsedRequest.Cookies = parseCookies(parsedRequest.Headers["cookie"])
+
 	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies)
 
 	url := url.URL{
@@ -488,6 +496,24 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 	parsedRequest.URL = url
 
 	return parsedRequest
+}
+
+func parseCookies(cookieHeader string) map[string]string {
+	m := make(map[string]string)
+	if cookieHeader == "" {
+		return m
+	}
+
+	cookies, err := http.ParseCookie(cookieHeader)
+	if err != nil {
+		return m
+	}
+
+	for _, c := range cookies {
+		m[c.Name] = c.Value
+	}
+
+	return m
 }
 
 // parseHTTPVersion converts strings like "HTTP/1.1" or "HTTP/2" to (1,1) or (2,0).
