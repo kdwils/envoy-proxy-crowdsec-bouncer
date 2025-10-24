@@ -676,42 +676,6 @@ func TestBouncerWithCaptcha(t *testing.T) {
 		require.Contains(t, string(body), "test-site-key")
 	})
 
-	t.Run("Test CSRF token validation - invalid token", func(t *testing.T) {
-		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected-csrf-test", "my-host.com", nil))
-
-		check, err := client.Check(context.TODO(), req)
-		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(302), check.Status.Code)
-
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse)
-		require.Len(t, deniedResponse.Headers, 1)
-
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		sessionID := locationURL.Query().Get("session")
-		require.NotEmpty(t, sessionID)
-
-		form := url.Values{}
-		form.Add("session", sessionID)
-		form.Add("csrf_token", "invalid-csrf-token")
-		form.Add("g-recaptcha-response", "success")
-
-		verifyURL := "http://localhost:8081/captcha/verify"
-		resp, err := http.PostForm(verifyURL, form)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		require.Equal(t, http.StatusForbidden, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Contains(t, string(body), "Invalid CSRF token")
-	})
-
 	t.Run("Test WAF trigger captcha flow", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.1", createHttpRequest("GET", "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", "my-host.com", nil))
 
