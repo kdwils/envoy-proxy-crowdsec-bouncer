@@ -574,6 +574,8 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	v.Set("captcha.secretKey", "test-secret-key")
 	v.Set("captcha.signingKey", "test-signing-key-for-jwt-sessions")
 	v.Set("captcha.callbackURL", "http://localhost")
+	v.Set("captcha.cookieDomain", ".example.com")
+	v.Set("captcha.secureCookie", false)
 	v.Set("captcha.challengeDuration", "5m")
 	v.Set("captcha.sessionDuration", "1h")
 

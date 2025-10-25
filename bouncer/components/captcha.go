@@ -129,6 +129,10 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 		return nil, fmt.Errorf("signing key must be at least 32 bytes (256 bits) for secure HMAC-SHA256 signatures, got %d bytes", len(cfg.SigningKey))
 	}
 
+	if cfg.Enabled && cfg.CookieDomain == "" {
+		return nil, fmt.Errorf("cookieDomain is required when captcha is enabled - set to parent domain (e.g., '.kyledev.co') that covers both bouncer and protected services")
+	}
+
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = 10 * time.Second

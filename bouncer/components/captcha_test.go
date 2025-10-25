@@ -168,10 +168,11 @@ func TestNewCaptchaService(t *testing.T) {
 
 	t.Run("recaptcha provider", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:    true,
-			Provider:   "recaptcha",
-			SecretKey:  "test-secret",
-			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
+			Enabled:      true,
+			Provider:     "recaptcha",
+			SecretKey:    "test-secret",
+			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain: ".example.com",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -185,10 +186,11 @@ func TestNewCaptchaService(t *testing.T) {
 
 	t.Run("turnstile provider", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:    true,
-			Provider:   "turnstile",
-			SecretKey:  "test-secret",
-			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
+			Enabled:      true,
+			Provider:     "turnstile",
+			SecretKey:    "test-secret",
+			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain: ".example.com",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -228,7 +230,7 @@ func TestNewCaptchaService(t *testing.T) {
 
 func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	t.Run("no verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -238,7 +240,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("expired verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -259,7 +261,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("valid verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -280,7 +282,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("valid token but different IP", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -301,7 +303,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("invalid verification token format", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -322,6 +324,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 			Provider:        "recaptcha",
 			SecretKey:       "test",
 			SigningKey:      "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain:    ".example.com",
 			SessionDuration: 1 * time.Hour,
 		}
 
@@ -367,7 +370,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 		service.Provider = mockProvider
@@ -400,7 +403,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 	})
 
 	t.Run("invalid challenge token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -418,7 +421,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 	})
 
 	t.Run("IP mismatch between challenge and request", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
@@ -450,11 +453,12 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 func TestCaptchaService_GetSession(t *testing.T) {
 	t.Run("invalid JWT token", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:     true,
-			Provider:    "recaptcha",
-			SecretKey:   "test",
-			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
-			CallbackURL: "http://localhost:8081",
+			Enabled:      true,
+			Provider:     "recaptcha",
+			SecretKey:    "test",
+			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain: ".example.com",
+			CallbackURL:  "http://localhost:8081",
 		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
@@ -474,6 +478,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			Provider:          "recaptcha",
 			SecretKey:         "test",
 			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain:      ".example.com",
 			SiteKey:           "test-site-key",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 1 * time.Millisecond,
@@ -507,6 +512,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			Provider:          "recaptcha",
 			SecretKey:         "test",
 			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain:      ".example.com",
 			SiteKey:           "test-site-key",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 24 * time.Hour,
@@ -545,6 +551,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			SiteKey:           "test-site-key",
 			SecretKey:         "test-secret",
 			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain:      ".example.com",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 5 * time.Minute,
 		}
@@ -580,10 +587,11 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		defer ctrl.Finish()
 
 		cfg := config.Captcha{
-			Enabled:    true,
-			Provider:   "recaptcha",
-			SecretKey:  "test",
-			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
+			Enabled:      true,
+			Provider:     "recaptcha",
+			SecretKey:    "test",
+			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain: ".example.com",
 		}
 
 		provider := mocks.NewMockCaptchaProvider(ctrl)
@@ -611,12 +619,13 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 	t.Run("rejects javascript URL", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:     true,
-			Provider:    "turnstile",
-			SiteKey:     "test-site-key",
-			SecretKey:   "test-secret",
-			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
-			CallbackURL: "http://localhost:8081",
+			Enabled:      true,
+			Provider:     "turnstile",
+			SiteKey:      "test-site-key",
+			SecretKey:    "test-secret",
+			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain: ".example.com",
+			CallbackURL:  "http://localhost:8081",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -630,12 +639,13 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 	t.Run("rejects URL without host", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:     true,
-			Provider:    "turnstile",
-			SiteKey:     "test-site-key",
-			SecretKey:   "test-secret",
-			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
-			CallbackURL: "http://localhost:8081",
+			Enabled:      true,
+			Provider:     "turnstile",
+			SiteKey:      "test-site-key",
+			SecretKey:    "test-secret",
+			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
+			CookieDomain: ".example.com",
+			CallbackURL:  "http://localhost:8081",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
