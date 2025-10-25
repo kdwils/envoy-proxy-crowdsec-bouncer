@@ -213,13 +213,19 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sameSite := http.SameSiteLaxMode
+	if s.config.Captcha.SecureCookie {
+		sameSite = http.SameSiteNoneMode
+	}
+
 	cookie := &http.Cookie{
 		Name:     "captcha_verified",
 		Value:    verificationResult.Token,
 		Path:     "/",
+		Domain:   s.config.Captcha.CookieDomain,
 		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   s.config.Captcha.SecureCookie,
+		SameSite: sameSite,
 		MaxAge:   int(s.config.Captcha.SessionDuration.Seconds()),
 	}
 	http.SetCookie(w, cookie)
