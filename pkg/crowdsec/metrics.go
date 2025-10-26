@@ -90,7 +90,7 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 		apiClient:   &crowdSecClient{client: cfg.APIClient},
 		bouncerType: cfg.BouncerType,
 		version:     cfg.Version,
-		startupTS:   time.Now().Unix(),
+		startupTS:   time.Now().UTC().Unix(),
 	}, nil
 }
 
