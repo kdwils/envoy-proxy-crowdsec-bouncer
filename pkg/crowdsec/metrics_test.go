@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec/mocks"
 )
 
@@ -440,14 +441,14 @@ func TestMetricsService_GetSnapshot(t *testing.T) {
 
 func TestMetricsService_Calculate(t *testing.T) {
 	t.Run("calculates metrics with correct structure", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
+		staticStartupTS := int64(1234567890)
+		collector := &MetricsService{
+			cache:       cache.New[Metric](),
+			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
+			bouncerType: "envoy-proxy",
+			version:     "v1.0.0",
+			startupTS:   staticStartupTS,
 		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
 
 		collector.Inc("processed", "http_requests_total", "count", map[string]string{"origin": "capi"})
 		collector.Set("active", "active_connections", "gauge", 5, nil)
@@ -469,17 +470,20 @@ func TestMetricsService_Calculate(t *testing.T) {
 
 		items := component.Metrics[0].Items
 		assert.Equal(t, 2, len(items))
+
+		require.NotNil(t, component.UtcStartupTimestamp)
+		assert.Equal(t, staticStartupTS, *component.UtcStartupTimestamp)
 	})
 
 	t.Run("includes all metric details", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
+		staticStartupTS := int64(1234567890)
+		collector := &MetricsService{
+			cache:       cache.New[Metric](),
+			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
+			bouncerType: "envoy-proxy",
+			version:     "v1.0.0",
+			startupTS:   staticStartupTS,
 		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
 
 		labels := map[string]string{"origin": "capi", "type": "ban"}
 		collector.Inc("test_metric", "decisions_applied", "count", labels)
@@ -497,17 +501,21 @@ func TestMetricsService_Calculate(t *testing.T) {
 			Labels: map[string]string{"origin": "capi", "type": "ban"},
 		}
 		assert.Equal(t, want, got)
+
+		component := allMetrics.RemediationComponents[0]
+		require.NotNil(t, component.UtcStartupTimestamp)
+		assert.Equal(t, staticStartupTS, *component.UtcStartupTimestamp)
 	})
 
 	t.Run("handles empty metrics", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
+		staticStartupTS := int64(1234567890)
+		collector := &MetricsService{
+			cache:       cache.New[Metric](),
+			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
+			bouncerType: "envoy-proxy",
+			version:     "v1.0.0",
+			startupTS:   staticStartupTS,
 		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
 
 		allMetrics := collector.Calculate(10 * time.Second)
 
@@ -516,6 +524,39 @@ func TestMetricsService_Calculate(t *testing.T) {
 
 		items := allMetrics.RemediationComponents[0].Metrics[0].Items
 		assert.Equal(t, 0, len(items))
+
+		component := allMetrics.RemediationComponents[0]
+		require.NotNil(t, component.UtcStartupTimestamp)
+		assert.Equal(t, staticStartupTS, *component.UtcStartupTimestamp)
+	})
+
+	t.Run("startup timestamp remains constant across multiple Calculate calls", func(t *testing.T) {
+		staticStartupTS := int64(1234567890)
+		collector := &MetricsService{
+			cache:       cache.New[Metric](),
+			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
+			bouncerType: "envoy-proxy",
+			version:     "v1.0.0",
+			startupTS:   staticStartupTS,
+		}
+
+		collector.Inc("test", "test_metric", "count", nil)
+
+		firstMetrics := collector.Calculate(10 * time.Second)
+		firstComponent := firstMetrics.RemediationComponents[0]
+		require.NotNil(t, firstComponent.UtcStartupTimestamp)
+		assert.Equal(t, staticStartupTS, *firstComponent.UtcStartupTimestamp)
+
+		time.Sleep(10 * time.Millisecond)
+
+		collector.Inc("test", "test_metric", "count", nil)
+
+		secondMetrics := collector.Calculate(20 * time.Second)
+		secondComponent := secondMetrics.RemediationComponents[0]
+		require.NotNil(t, secondComponent.UtcStartupTimestamp)
+		assert.Equal(t, staticStartupTS, *secondComponent.UtcStartupTimestamp)
+
+		assert.Equal(t, *firstComponent.UtcStartupTimestamp, *secondComponent.UtcStartupTimestamp)
 	})
 }
 

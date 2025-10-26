@@ -63,6 +63,7 @@ type MetricsService struct {
 	apiClient   CrowdsecClient
 	bouncerType string
 	version     string
+	startupTS   int64
 }
 
 // MetricsConfig holds the configuration required to create a new MetricsService.
@@ -89,6 +90,7 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 		apiClient:   &crowdSecClient{client: cfg.APIClient},
 		bouncerType: cfg.BouncerType,
 		version:     cfg.Version,
+		startupTS:   time.Now().UTC().Unix(),
 	}, nil
 }
 
@@ -196,8 +198,6 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 		},
 	}
 
-	startupTS := time.Now().Unix()
-
 	osName, osVersion := version.DetectOS()
 
 	baseMetrics := &models.BaseMetrics{
@@ -208,7 +208,7 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 		Version:             &mc.version,
 		FeatureFlags:        []string{},
 		Metrics:             detailedMetrics,
-		UtcStartupTimestamp: &startupTS,
+		UtcStartupTimestamp: &mc.startupTS,
 	}
 
 	remediationMetrics := &models.RemediationComponentsMetrics{
