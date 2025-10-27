@@ -41,7 +41,7 @@ Generate a signing key:
 openssl rand -base64 32
 ```
 
-Update your config. Here's what changed:
+Update config with new fields. Here's what changed:
 
 ```yaml
 captcha:
@@ -57,16 +57,7 @@ captcha:
   challengeDuration: "5m"
 ```
 
-For Kubernetes, update your secret:
-
-```bash
-kubectl create secret generic captcha-secrets \
-  --from-literal=secret-key='your-secret-key' \
-  --from-literal=signing-key="$(openssl rand -base64 32)" \
-  -n envoy-gateway-system
-```
-
-Update your Helm values:
+Update Helm values:
 
 ```yaml
 config:
