@@ -234,7 +234,12 @@ config:
     secretKeySecretRef:
       name: captcha-secrets
       key: secret-key
+    signingKeySecretRef:
+      name: captcha-secrets
+      key: signing-key
     callbackURL: "https://auth.example.com"
+    cookieDomain: ".example.com"
+    secureCookie: true
 
 resources:
   limits:
@@ -487,115 +492,6 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 # Test connection
 grpcurl -plaintext localhost:8080 list
 ```
-
-## Troubleshooting
-
-### Bouncer Not Starting
-
-**Check logs:**
-```bash
-kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer
-```
-
-**Common issues:**
-- Missing required configuration (API key, LAPI URL)
-- Invalid configuration format
-- Cannot connect to CrowdSec LAPI
-- Template files not found or invalid
-
-### Requests Not Being Blocked
-
-**Verify SecurityPolicy is applied:**
-```bash
-kubectl get securitypolicy -A
-kubectl describe securitypolicy <name> -n <namespace>
-```
-
-**Check bouncer logs for decision processing:**
-```bash
-kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer | grep -i decision
-```
-
-**Verify CrowdSec has decisions:**
-```bash
-cscli decisions list
-```
-
-### CAPTCHA Not Working
-
-**Check HTTP port is accessible:**
-```bash
-kubectl port-forward -n envoy-gateway-system svc/envoy-proxy-bouncer 8081:8081
-curl http://localhost:8081/captcha/challenge?session=test
-```
-
-**Verify CAPTCHA configuration:**
-```bash
-kubectl get configmap -n envoy-gateway-system
-kubectl describe configmap <bouncer-config> -n envoy-gateway-system
-```
-
-**Check browser console for errors** when CAPTCHA page loads.
-
-### Cross-Namespace Access Denied
-
-**Verify ReferenceGrant exists:**
-```bash
-kubectl get referencegrant -n envoy-gateway-system
-kubectl describe referencegrant bouncer-access -n envoy-gateway-system
-```
-
-**Ensure SecurityPolicy namespace is listed in ReferenceGrant.**
-
-## Performance Tuning
-
-### Horizontal Pod Autoscaling
-
-Enable autoscaling for high-traffic environments:
-
-```yaml
-# values.yaml
-autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 20
-  targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
-```
-
-### Resource Requests and Limits
-
-Adjust based on your traffic:
-
-```yaml
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-```
-
-### CrowdSec Connection Tuning
-
-Adjust ticker intervals based on decision update frequency:
-
-```yaml
-config:
-  bouncer:
-    tickerInterval: "5s"  # More frequent updates
-    metricsInterval: "5m"  # More frequent metrics reporting
-```
-
-## Security Considerations
-
-1. **Store API keys in Secrets**, not ConfigMaps or environment variables directly
-2. **Use RBAC** to restrict access to the bouncer namespace
-3. **Enable Pod Security Standards** for the bouncer deployment
-4. **Configure trusted proxies** carefully to prevent IP spoofing
-5. **Use TLS** for CrowdSec LAPI connections in production
-6. **Regularly update** the bouncer image to get security patches
 
 ## See Also
 

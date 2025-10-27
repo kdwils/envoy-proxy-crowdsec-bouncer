@@ -25,11 +25,13 @@ When CAPTCHA is enabled, the bouncer runs dual servers:
 
 ### Session Management
 
-- Sessions use signed JWT tokens for stateless verification
-- IPs that complete CAPTCHA receive a verification token valid for the session duration
-- Sessions are bound to IP addresses to prevent session hijacking
-- JWT signatures prevent token tampering and forgery
-- Tokens automatically expire after the configured duration
+Sessions are stateless and use JWTs. There is no in-memory session cache.
+
+The flow uses two types of tokens:
+- Challenge tokens contain the IP and original URL. They expire after `challengeDuration` (default 5m).
+- Verification tokens are issued after successful CAPTCHA completion. They're stored in a cookie and expire after `sessionDuration` (default 15m).
+
+Both tokens are signed with HMAC-SHA256 using the `signingKey`. Tokens are bound to IP addresses extracted from trusted headers. The verification token cookie uses the configured `cookieDomain` to work across subdomains.
 
 ## Supported Providers
 
@@ -50,7 +52,10 @@ captcha:
   secretKey: "<your-secret-key>"
   signingKey: "<your-jwt-signing-key>"  # Generate with: openssl rand -base64 32
   callbackURL: "https://yourdomain.com"
+  cookieDomain: ".yourdomain.com"  # Required - parent domain for cookie sharing
+  secureCookie: true  # true for production HTTPS, false for local dev
   sessionDuration: "15m"
+  challengeDuration: "5m"
   timeout: "10s"
 ```
 
@@ -64,6 +69,8 @@ captcha:
 | `secretKey` | string | `""` | Yes | Secret key from CAPTCHA provider |
 | `signingKey` | string | `""` | Yes | JWT signing key (minimum 32 bytes). Generate with `openssl rand -base64 32` |
 | `callbackURL` | string | `""` | Yes | Base URL for CAPTCHA callbacks (public-facing hostname) |
+| `cookieDomain` | string | `""` | Yes | Parent domain for cookies (e.g., `.example.com`) to share across subdomains |
+| `secureCookie` | bool | `true` | No | Use Secure flag and SameSite=None (true for HTTPS, false for local dev) |
 | `timeout` | duration | `"10s"` | No | Timeout for CAPTCHA provider verification requests |
 | `sessionDuration` | duration | `"15m"` | No | How long CAPTCHA verification remains valid |
 | `challengeDuration` | duration | `"5m"` | No | How long a challenge token remains valid |
@@ -77,7 +84,10 @@ export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-secret-key
 export ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY=your-jwt-signing-key
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_COOKIEDOMAIN=.yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_SECURECOOKIE=true
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
+export ENVOY_BOUNCER_CAPTCHA_CHALLENGEDURATION=5m
 export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
 ```
 
@@ -159,8 +169,14 @@ config:
     secretKeySecretRef:
       name: captcha-secrets
       key: secret-key
+    signingKeySecretRef:
+      name: captcha-secrets
+      key: signing-key
     callbackURL: "https://auth.example.com"
+    cookieDomain: ".example.com"
+    secureCookie: true
     sessionDuration: "15m"
+    challengeDuration: "5m"
     timeout: "10s"
 ```
 
@@ -169,6 +185,7 @@ Create secret:
 ```bash
 kubectl create secret generic captcha-secrets \
   --from-literal=secret-key='your-secret-key' \
+  --from-literal=signing-key="$(openssl rand -base64 32)" \
   -n envoy-gateway-system
 ```
 
@@ -282,10 +299,11 @@ Example:
 
 ### Session Security
 
-- Sessions use signed JWT tokens bound to IP addresses
-- JWT signatures prevent token tampering and replay attacks
-- Tokens automatically expire after configurable duration
-- IP binding prevents session hijacking (extracted from trusted headers)
+Sessions use JWTs signed with HMAC-SHA256. The `signingKey` must be at least 32 bytes. Generate one with `openssl rand -base64 32`.
+
+Tokens are bound to IP addresses extracted from `X-Forwarded-For` or `X-Real-IP` headers. Configure `trustedProxies` correctly to prevent IP spoofing.
+
+Verification tokens are stored in HTTP-only cookies. When `secureCookie` is true, cookies use the Secure flag and SameSite=None (required for cross-site access over HTTPS). When false, SameSite=Lax is used (for local development).
 
 ### IP Binding
 
@@ -361,115 +379,6 @@ captcha:
   provider: "turnstile"
   siteKey: "1x00000000000000000000AA"
   secretKey: "1x0000000000000000000000000000000AA"
-```
-
-## Troubleshooting
-
-### CAPTCHA Page Not Loading
-
-**Check HTTP server is running:**
-```bash
-kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer | grep "HTTP server"
-```
-
-**Verify HTTPRoute exists:**
-```bash
-kubectl get httproute -n envoy-gateway-system
-```
-
-**Check endpoint is accessible:**
-```bash
-curl https://yourdomain.com/captcha/challenge?session=test
-```
-
-### Infinite Redirect Loop
-
-**Cause**: SecurityPolicy applied to CAPTCHA HTTPRoute
-
-**Solution**: Remove SecurityPolicy from CAPTCHA HTTPRoute, or exclude CAPTCHA paths
-
-### CAPTCHA Verification Fails
-
-**Check provider credentials:**
-- Verify site key and secret key are correct
-- Ensure domain is registered with provider
-- Check provider dashboard for errors
-
-**Check logs:**
-```bash
-kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer | grep -i captcha
-```
-
-**Common issues:**
-- Wrong provider selected (`recaptcha` vs `turnstile`)
-- Domain mismatch between configuration and provider registration
-- Secret key vs site key swapped
-- Network connectivity to provider API
-
-### Session Expired
-
-**Symptoms**: User completes CAPTCHA but gets redirected back to challenge
-
-**Solutions:**
-- Increase `sessionDuration`
-- Check server time synchronization
-- Verify IP address consistency (check `trustedProxies` configuration)
-
-### JWT Signing Key Issues
-
-**Symptoms**: Server fails to start or CAPTCHA verification fails
-
-**Cause**: Missing or weak signing key
-
-**Solution**: Ensure `signingKey` is configured and at least 32 bytes:
-```bash
-openssl rand -base64 32
-```
-
-## Metrics
-
-When metrics are enabled, CAPTCHA-related metrics are reported:
-
-- Total CAPTCHA challenges issued
-- Successful CAPTCHA verifications
-- Failed CAPTCHA verifications
-
-View metrics:
-```bash
-cscli metrics
-```
-
-## Performance Tuning
-
-### Session Cache Size
-
-The session cache is in-memory and grows with the number of active sessions. Monitor memory usage and adjust pod resources if needed:
-
-```yaml
-resources:
-  limits:
-    memory: 512Mi  # Increase if handling many concurrent sessions
-```
-
-### Session Duration
-
-Balance security vs user experience:
-
-- **Shorter duration** (5-10m): More secure, but users may need to re-verify frequently
-- **Longer duration** (30m-1h): Better UX, but verified IPs remain cached longer
-
-```yaml
-captcha:
-  sessionDuration: "15m"  # Good balance for most use cases
-```
-
-### Cleanup Interval
-
-Adjust based on session duration and memory constraints:
-
-```yaml
-captcha:
-  cacheCleanupInterval: "5m"  # Clean up expired sessions every 5 minutes
 ```
 
 ## See Also

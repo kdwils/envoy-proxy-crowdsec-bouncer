@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.3.1](https://img.shields.io/badge/Version-0.3.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.3.1](https://img.shields.io/badge/AppVersion-v0.3.1-informational?style=flat-square)
+![Version: 4.0.0](https://img.shields.io/badge/Version-4.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v4.0.0](https://img.shields.io/badge/AppVersion-v4.0.0-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -23,12 +23,17 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.bouncer.tickerInterval | string | `"10s"` |  |
 | config.captcha.callbackURL | string | `""` |  |
 | config.captcha.challengeDuration | string | `"5m"` |  |
+| config.captcha.cookieDomain | string | `""` |  |
 | config.captcha.enabled | bool | `false` |  |
 | config.captcha.provider | string | `""` |  |
 | config.captcha.secretKey | string | `""` |  |
 | config.captcha.secretKeySecretRef.key | string | `""` |  |
 | config.captcha.secretKeySecretRef.name | string | `""` |  |
+| config.captcha.secureCookie | bool | `true` |  |
 | config.captcha.sessionDuration | string | `"15m"` |  |
+| config.captcha.signingKey | string | `""` |  |
+| config.captcha.signingKeySecretRef.key | string | `""` |  |
+| config.captcha.signingKeySecretRef.name | string | `""` |  |
 | config.captcha.siteKey | string | `""` |  |
 | config.captcha.timeout | string | `"10s"` |  |
 | config.server.grpcPort | int | `8080` |  |
