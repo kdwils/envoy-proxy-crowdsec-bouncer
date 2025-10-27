@@ -23,13 +23,15 @@ If CAPTCHA is enabled, add these to your config:
 openssl rand -base64 32
 ```
 
-**cookieDomain** - Where the cookie works. Use a parent domain like `.example.com` so the cookie works across `auth.example.com` and `app.example.com`.
+**cookieDomain** - The parent domain for the cookie 
 
-**secureCookie** - Defaults to true. Set to false for local dev without HTTPS.
+- For example, `.example.com` cookies would work for `auth.example.com` and `app.example.com`.
+
+**secureCookie** - Defaults to true
 
 ### Removed Field
 
-`cacheCleanupInterval` is gone. No cache means no cleanup needed.
+`cacheCleanupInterval` is no long used
 
 ## How to Migrate
 
@@ -90,14 +92,6 @@ export ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY=your-signing-key
 export ENVOY_BOUNCER_CAPTCHA_COOKIEDOMAIN=.example.com
 export ENVOY_BOUNCER_CAPTCHA_SECURECOOKIE=true
 ```
-
-Deploy and check logs:
-
-```bash
-kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer
-```
-
-If you see errors about missing `signingKey` or `cookieDomain`, your config is incomplete.
 
 ## Cookie Domain Setup
 
