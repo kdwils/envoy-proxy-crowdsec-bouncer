@@ -8,10 +8,10 @@ CAPTCHA challenges provide an alternative to immediately blocking suspicious IPs
 
 ## How It Works
 
-When CAPTCHA is enabled, the bouncer runs dual servers:
+When CAPTCHA is enabled, the bouncer serves on 2 ports:
 
-1. **gRPC Server** (default port 8080): Handles Envoy ext_authz requests
-2. **HTTP Server** (default port 8081): Serves CAPTCHA challenge and verification endpoints
+1. gRPC Server (default port 8080): Handles Envoy ext_authz requests
+2. HTTP Server (default port 8081): Serves CAPTCHA challenge and verification endpoints
 
 ### CAPTCHA Flow
 
@@ -35,10 +35,10 @@ Both tokens are signed using the `signingKey`. Tokens are bound to IP addresses 
 
 ## Supported Providers
 
-| Provider | Configuration Value | Site Key Format | Documentation |
+| Provider | Configuration Value | Documentation |
 |----------|-------------------|----------------|---------------|
-| Google reCAPTCHA v2 | `recaptcha` | `6LeIxA...` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
-| Cloudflare Turnstile | `turnstile` | `0x4AAA...` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
+| Google reCAPTCHA v2 | `recaptcha` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
+| Cloudflare Turnstile | `turnstile` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
 
 ## Configuration
 
@@ -50,10 +50,10 @@ captcha:
   provider: "recaptcha"  # or "turnstile"
   siteKey: "<your-site-key>"
   secretKey: "<your-secret-key>"
-  signingKey: "<your-jwt-signing-key>"  # Generate with: openssl rand -base64 32
+  signingKey: "<your-jwt-signing-key>"  # Required - key used to sign jwts
   callbackURL: "https://yourdomain.com"
   cookieDomain: ".yourdomain.com"  # Required - parent domain for cookie sharing
-  secureCookie: true  # true for production HTTPS, false for local dev
+  secureCookie: true  # true for HTTPS, false for local dev
   sessionDuration: "15m"
   challengeDuration: "5m"
   timeout: "10s"
@@ -106,11 +106,8 @@ The bouncer will append `/captcha/challenge` and `/captcha/verify` to this URL.
 
 ### Google reCAPTCHA v2
 
-1. Visit [Google reCAPTCHA Admin Console](https://www.google.com/recaptcha/admin)
-2. Click "Create" to register a new site
-3. Choose **reCAPTCHA v2** → **"I'm not a robot" checkbox**
-4. Add your domain(s)
-5. Copy the **Site Key** and **Secret Key**
+See 
+- https://developers.google.com/recaptcha/intro
 
 Configuration:
 
@@ -118,23 +115,16 @@ Configuration:
 captcha:
   enabled: true
   provider: "recaptcha"
-  siteKey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"  # Example test key
-  secretKey: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"  # Example test key
-  callbackURL: "https://yourdomain.com"
+  siteKey: "0x4AAAAAAABAAAAAAAAAA"        # Example
+  secretKey: "0x4AAAAAAABBBBBBBBB"        # Example
+  callbackURL: "https://bouncer-host.com" # where the bouncer is publicly accessible
 ```
-
-**Test Keys** (always pass):
-- Site Key: `6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI`
-- Secret Key: `6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe`
 
 ### Cloudflare Turnstile
 
-1. Visit [Cloudflare Dashboard](https://dash.cloudflare.com/)
-2. Navigate to **Turnstile**
-3. Click **Add Site**
-4. Choose **Managed** challenge mode
-5. Add your domain(s)
-6. Copy the **Site Key** and **Secret Key**
+See 
+- https://developers.cloudflare.com/turnstile/
+- https://www.cloudflare.com/application-services/products/turnstile/
 
 Configuration:
 
@@ -142,59 +132,9 @@ Configuration:
 captcha:
   enabled: true
   provider: "turnstile"
-  siteKey: "0x4AAAAAAABjdT4JkT4kXPZL"  # Example
-  secretKey: "0x4AAAAAAABjdT4JkT4kXPZL"  # Example
-  callbackURL: "https://yourdomain.com"
-```
-
-**Test Keys** (always pass):
-- Site Key: `1x00000000000000000000AA`
-- Secret Key: `1x0000000000000000000000000000000AA`
-
-**Test Keys** (always fail):
-- Site Key: `2x00000000000000000000AB`
-- Secret Key: `2x0000000000000000000000000000000AA`
-
-## Kubernetes/Helm Deployment
-
-### Helm Configuration
-
-```yaml
-# values.yaml
-config:
-  captcha:
-    enabled: true
-    provider: "turnstile"
-    siteKey: "0x4AAAAAAABjdT4JkT4kXPZL"
-    secretKeySecretRef:
-      name: captcha-secrets
-      key: secret-key
-    signingKeySecretRef:
-      name: captcha-secrets
-      key: signing-key
-    callbackURL: "https://auth.example.com"
-    cookieDomain: ".example.com"
-    secureCookie: true
-    sessionDuration: "15m"
-    challengeDuration: "5m"
-    timeout: "10s"
-```
-
-Create secret:
-
-```bash
-kubectl create secret generic captcha-secrets \
-  --from-literal=secret-key='your-secret-key' \
-  --from-literal=signing-key="$(openssl rand -base64 32)" \
-  -n envoy-gateway-system
-```
-
-Install:
-
-```bash
-helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
-  --namespace envoy-gateway-system \
-  -f values.yaml
+  siteKey: "0x4AAAAAAABAAAAAAAAAA"        # Example
+  secretKey: "0x4AAAAAAABBBBBBBBB"        # Example
+  callbackURL: "https://bouncer-host.com" # where the bouncer is publicly accessible
 ```
 
 ### Exposing CAPTCHA Endpoints
@@ -224,37 +164,6 @@ spec:
 ```
 
 **Important**: Do NOT apply a SecurityPolicy to the CAPTCHA HTTPRoute, as this would create an infinite redirect loop.
-
-## CrowdSec Integration
-
-### Scenarios with CAPTCHA Remediation
-
-Configure CrowdSec scenarios to use `captcha` instead of `ban`:
-
-```yaml
-# /etc/crowdsec/profiles.yaml
-name: captcha_profile
-filters:
-  - Alert.Remediation == true && Alert.GetScope() == "Ip"
-decisions:
-  - type: captcha
-    duration: 4h
-on_success: break
-```
-
-### AppSec CAPTCHA Actions
-
-Configure AppSec to return `captcha` for suspicious patterns:
-
-```yaml
-# /etc/crowdsec/appsec-configs/your-config.yaml
-name: my-appsec-config
-default_remediation: captcha
-rules:
-  - name: suspicious-user-agent
-    match: req.Headers["User-Agent"] matches "(?i)(bot|crawler|spider)"
-    action: captcha
-```
 
 ## Custom Templates
 
@@ -301,8 +210,6 @@ Example:
 
 The `signingKey` must be at least 32 bytes. Generate one with `openssl rand -base64 32`.
 
-Tokens are bound to IP addresses extracted from `X-Forwarded-For` or `X-Real-IP` headers. Configure `trustedProxies` correctly to prevent IP spoofing.
-
 Verification tokens are stored in HTTP-only cookies. When `secureCookie` is true, cookies use the Secure flag and SameSite=None (required for cross-site access over HTTPS). When false, SameSite=Lax is used (for local development).
 
 ### IP Binding
@@ -314,38 +221,6 @@ trustedProxies:
   - 10.0.0.0/8
   - 172.16.0.0/12
 ```
-
-### Rate Limiting
-
-Consider implementing rate limiting for CAPTCHA endpoints to prevent abuse:
-
-```yaml
-# RateLimitPolicy for CAPTCHA endpoints
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: RateLimitPolicy
-metadata:
-  name: captcha-rate-limit
-  namespace: envoy-gateway-system
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: bouncer-captcha
-  rateLimits:
-    - clientSelectors:
-      - sourceCIDR:
-          value: 0.0.0.0/0
-      limit:
-        requests: 10
-        unit: Minute
-```
-
-### HTTPS
-
-Always use HTTPS for CAPTCHA endpoints in production to protect:
-- Session IDs
-- CAPTCHA responses
-- User privacy
 
 ## Testing
 
@@ -360,26 +235,6 @@ Always use HTTPS for CAPTCHA endpoints in production to protect:
 4. Verify redirect to CAPTCHA challenge page
 5. Complete the CAPTCHA
 6. Verify redirect back to original resource
-
-### Using Test Keys
-
-Use provider test keys for development:
-
-**reCAPTCHA:**
-```yaml
-captcha:
-  provider: "recaptcha"
-  siteKey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
-  secretKey: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
-```
-
-**Turnstile:**
-```yaml
-captcha:
-  provider: "turnstile"
-  siteKey: "1x00000000000000000000AA"
-  secretKey: "1x0000000000000000000000000000000AA"
-```
 
 ## See Also
 
