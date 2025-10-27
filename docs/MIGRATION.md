@@ -104,38 +104,3 @@ If you see errors about missing `signingKey` or `cookieDomain`, your config is i
 The `cookieDomain` needs a leading dot to work across subdomains.
 
 If your bouncer is at `auth.example.com` and your app is at `app.example.com`, use `.example.com`. The cookie set by the bouncer will be readable by your app.
-
-For local dev, use something like `.local.test` with entries in `/etc/hosts`:
-
-```
-127.0.0.1 bouncer.local.test
-127.0.0.1 app.local.test
-```
-
-Set `secureCookie: false` for HTTP testing.
-
-## Common Issues
-
-**Server won't start:**
-- Missing `signingKey` or `cookieDomain` in config
-- Signing key too short (needs 32+ bytes)
-
-**CAPTCHA not working:**
-- Wrong `cookieDomain` (check the leading dot)
-- `secureCookie: true` but testing over HTTP (set to false)
-- Browser blocking cookies
-
-**Sessions lost after upgrade:**
-Expected. Old in-memory sessions don't carry over. Users need to complete CAPTCHA again.
-
-## Rollback
-
-If things break, rollback to v0.3.1:
-
-```bash
-helm upgrade bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
-  --version 0.3.1 \
-  --namespace envoy-gateway-system
-```
-
-Remove the new fields from your config.
