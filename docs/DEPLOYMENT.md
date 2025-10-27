@@ -19,7 +19,7 @@ The bouncer is primarily tested in Kubernetes environments with Envoy Gateway. F
 ### Install from Go
 
 ```bash
-go install github.com/kdwils/envoy-proxy-bouncer@latest
+go install github.com/kdwils/envoy-proxy-bouncer@v0.4.0
 ```
 
 ### Download Pre-built Binary
@@ -288,12 +288,6 @@ The bouncer integrates with Envoy Gateway using SecurityPolicies that reference 
 **Important**: SecurityPolicies must be created at the HTTPRoute level, not at the Gateway level, to ensure proper CAPTCHA redirect functionality.
 
 ### SecurityPolicy Configuration
-
-#### ⚠️ Breaking Change (v0.2.0+)
-
-Gateway-level SecurityPolicies are no longer supported due to CAPTCHA redirect limitations. Individual HTTPRoutes cannot be excluded from gateway-level policies, which breaks the bouncer's redirect mechanism.
-
-**Migration Required**: If you were using gateway-level SecurityPolicies, you must migrate to HTTPRoute-level policies.
 
 #### Creating HTTPRoute-Level SecurityPolicies
 
