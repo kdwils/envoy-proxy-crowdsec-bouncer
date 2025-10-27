@@ -126,7 +126,7 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 	}
 
 	if cfg.Enabled && len(cfg.SigningKey) < 32 {
-		return nil, fmt.Errorf("signing key must be at least 32 bytes (256 bits) for secure HMAC-SHA256 signatures, got %d bytes", len(cfg.SigningKey))
+		return nil, fmt.Errorf("signing key must be at least 32 bytes")
 	}
 
 	if cfg.Enabled && cfg.CookieDomain == "" {

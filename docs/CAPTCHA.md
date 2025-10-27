@@ -25,13 +25,13 @@ When CAPTCHA is enabled, the bouncer runs dual servers:
 
 ### Session Management
 
-Sessions are stateless and use JWTs. There is no in-memory session cache.
+CAPTCHA Sessions are managed using JWTs.
 
 The flow uses two types of tokens:
 - Challenge tokens contain the IP and original URL. They expire after `challengeDuration` (default 5m).
 - Verification tokens are issued after successful CAPTCHA completion. They're stored in a cookie and expire after `sessionDuration` (default 15m).
 
-Both tokens are signed with HMAC-SHA256 using the `signingKey`. Tokens are bound to IP addresses extracted from trusted headers. The verification token cookie uses the configured `cookieDomain` to work across subdomains.
+Both tokens are signed using the `signingKey`. Tokens are bound to IP addresses extracted from trusted headers. The verification token cookie uses the configured `cookieDomain` to work across subdomains.
 
 ## Supported Providers
 
@@ -299,7 +299,7 @@ Example:
 
 ### Session Security
 
-Sessions use JWTs signed with HMAC-SHA256. The `signingKey` must be at least 32 bytes. Generate one with `openssl rand -base64 32`.
+The `signingKey` must be at least 32 bytes. Generate one with `openssl rand -base64 32`.
 
 Tokens are bound to IP addresses extracted from `X-Forwarded-For` or `X-Real-IP` headers. Configure `trustedProxies` correctly to prevent IP spoofing.
 
