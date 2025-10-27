@@ -457,7 +457,7 @@ spec:
     - matches:
       - path:
           type: PathPrefix
-          value: /captcha/
+          value: /captcha
       backendRefs:
         - name: envoy-proxy-bouncer
           port: 8081
