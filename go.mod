@@ -1,11 +1,11 @@
 module github.com/kdwils/envoy-proxy-bouncer
 
-go 1.25
+go 1.25.1
 
 require (
-	github.com/crowdsecurity/crowdsec v1.7.0
+	github.com/crowdsecurity/crowdsec v1.7.3
 	github.com/crowdsecurity/go-cs-bouncer v0.0.17
-	github.com/crowdsecurity/go-cs-lib v0.0.22
+	github.com/crowdsecurity/go-cs-lib v0.0.23
 	github.com/envoyproxy/go-control-plane/envoy v1.35.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/handlers v1.5.2
@@ -27,7 +27,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/blackfireio/osinfo v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -107,7 +106,7 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.25.7 // indirect
+	github.com/shirou/gopsutil/v4 v4.25.8 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
