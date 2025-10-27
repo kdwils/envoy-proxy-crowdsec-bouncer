@@ -138,13 +138,17 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_TIMEOUT
               value: {{ . | quote }}
             {{- end }}
-            {{- with .captcha.cacheCleanupInterval }}
-            - name: ENVOY_BOUNCER_CAPTCHA_CACHECLEANUPINTERVAL
-              value: {{ . | quote }}
-            {{- end }}
             {{- with .captcha.callbackURL }}
             - name: ENVOY_BOUNCER_CAPTCHA_CALLBACKURL
               value: {{ . | quote }}
+            {{- end }}
+            {{- with .captcha.cookieDomain }}
+            - name: ENVOY_BOUNCER_CAPTCHA_COOKIEDOMAIN
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if hasKey .captcha "secureCookie" }}
+            - name: ENVOY_BOUNCER_CAPTCHA_SECURECOOKIE
+              value: {{ .captcha.secureCookie | quote }}
             {{- end }}
             {{- end }}
             {{- if or $.Values.templates.deniedTemplateContent .templates.deniedTemplatePath }}

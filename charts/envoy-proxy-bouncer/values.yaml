@@ -77,6 +77,8 @@ config:
     challengeDuration: "5m" # @schema default: "5m"
     sessionDuration: "15m" # @schema default: "15m"
     callbackURL: "" # @schema default: ""
+    cookieDomain: "" # @schema default: ""
+    secureCookie: true # @schema default: true
 
   templates:
     deniedTemplatePath: "" # @schema default: ""
