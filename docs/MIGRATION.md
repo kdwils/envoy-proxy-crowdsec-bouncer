@@ -2,11 +2,15 @@
 
 ## What Changed
 
-CAPTCHA sessions moved from in-memory cache to stateless JWTs. If you use CAPTCHA, you need to update your config.
+CAPTCHA sessions moved from in-memory cache to stateless JWTs. This change was made to support multiple replicas of the bouncer in addition to not losing state if a pod restarts. Because we are using cookies, this requires additional configuration of the bouncer. 
+
+If you use CAPTCHA, you must to update your config. 
+
+If you are using the bouncer to protect multiple domains, you must use a bouncer per domain to set the cookie.
 
 ### In-memory to JWT
 
-v0.3.1 stored sessions in memory with random session IDs. v4.0.0 uses JWTs instead. There's no more session cache.
+v0.3.1 stored sessions in memory with random session IDs. v4.0.0 uses JWTs instead.
 
 The new flow:
 1. User hits CAPTCHA → gets a challenge token (JWT)
