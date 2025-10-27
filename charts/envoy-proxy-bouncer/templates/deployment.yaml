@@ -146,7 +146,7 @@ spec:
             - name: ENVOY_BOUNCER_CAPTCHA_COOKIEDOMAIN
               value: {{ . | quote }}
             {{- end }}
-            {{- if ne .captcha.secureCookie nil }}
+            {{- if hasKey .captcha "secureCookie" }}
             - name: ENVOY_BOUNCER_CAPTCHA_SECURECOOKIE
               value: {{ .captcha.secureCookie | quote }}
             {{- end }}
