@@ -83,6 +83,10 @@
                             "default": "5m",
                             "type": "string"
                         },
+                        "cookieDomain": {
+                            "default": "",
+                            "type": "string"
+                        },
                         "enabled": {
                             "default": false,
                             "type": "boolean"
@@ -108,9 +112,30 @@
                                 }
                             }
                         },
+                        "secureCookie": {
+                            "default": true,
+                            "type": "boolean"
+                        },
                         "sessionDuration": {
                             "default": "15m",
                             "type": "string"
+                        },
+                        "signingKey": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "signingKeySecretRef": {
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "default": "",
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "default": "",
+                                    "type": "string"
+                                }
+                            }
                         },
                         "siteKey": {
                             "default": "",
