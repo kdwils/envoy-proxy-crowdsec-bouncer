@@ -46,7 +46,7 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.0",
+		Image:        "crowdsecurity/crowdsec:v1.7.3",
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",
@@ -143,7 +143,7 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.0",
+		Image:        "crowdsecurity/crowdsec:v1.7.3",
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{
