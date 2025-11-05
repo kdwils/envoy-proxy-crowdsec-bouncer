@@ -69,10 +69,16 @@ config:
     secretKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
       key: "" # @schema default: ""
+    signingKey: "" # @schema default: ""
+    signingKeySecretRef: # @schema type: object
+      name: "" # @schema default: ""
+      key: "" # @schema default: ""
     timeout: "10s" # @schema default: "10s"
     challengeDuration: "5m" # @schema default: "5m"
     sessionDuration: "15m" # @schema default: "15m"
     callbackURL: "" # @schema default: ""
+    cookieDomain: "" # @schema default: ""
+    secureCookie: true # @schema default: true
 
   templates:
     deniedTemplatePath: "" # @schema default: ""

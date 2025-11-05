@@ -45,8 +45,11 @@ captcha:
   provider: "recaptcha" # Options: recaptcha, turnstile
   siteKey: "<your-captcha-site-key>"
   secretKey: "<your-captcha-secret-key>"
-  timeout: "10s"                            # Request timeout for CAPTCHA provider verification
+  signingKey: "<your-jwt-signing-key>"      # Generate with: openssl rand -base64 32
   callbackURL: "https://yourdomain.com"     # Base URL for captcha callbacks
+  cookieDomain: ".yourdomain.com"           # Parent domain for cookie sharing across subdomains
+  secureCookie: true                        # true for production HTTPS, false for local dev
+  timeout: "10s"                            # Request timeout for CAPTCHA provider verification
   challengeDuration: "5m"                   # How long before a CAPTCHA challenge expires
   sessionDuration: "15m"                    # How long captcha verification is valid
 
@@ -95,8 +98,11 @@ export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-captcha-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-captcha-secret-key
-export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
+export ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY=your-jwt-signing-key
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_COOKIEDOMAIN=.yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_SECURECOOKIE=true
+export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
 export ENVOY_BOUNCER_CAPTCHA_CHALLENGEDURATION=5m
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
 
@@ -203,7 +209,10 @@ Controls CAPTCHA challenge functionality.
 | `provider` | string | `""` | Yes (when enabled) | CAPTCHA provider: `recaptcha` or `turnstile` |
 | `siteKey` | string | `""` | Yes (when enabled) | CAPTCHA site key |
 | `secretKey` | string | `""` | Yes (when enabled) | CAPTCHA secret key |
+| `signingKey` | string | `""` | Yes (when enabled) | JWT signing key (minimum 32 bytes) |
 | `callbackURL` | string | `""` | Yes (when enabled) | Base URL for CAPTCHA callbacks |
+| `cookieDomain` | string | `""` | Yes (when enabled) | Parent domain for cookies (e.g., `.example.com`) |
+| `secureCookie` | bool | `true` | No | Use Secure flag and SameSite=None |
 | `timeout` | duration | `"10s"` | No | Timeout for CAPTCHA provider verification |
 | `challengeDuration` | duration | `"5m"` | No | How long before a CAPTCHA challenge expires |
 | `sessionDuration` | duration | `"15m"` | No | How long CAPTCHA verification is valid |
@@ -267,7 +276,10 @@ captcha:
   provider: "recaptcha"
   siteKey: "<site-key>"
   secretKey: "<secret-key>"
+  signingKey: "<jwt-signing-key>"
   callbackURL: "https://yourdomain.com"
+  cookieDomain: ".yourdomain.com"
+  secureCookie: true
 ```
 
 ## Default Values
@@ -291,6 +303,7 @@ waf:
 
 captcha:
   enabled: false
+  secureCookie: true
   timeout: "10s"
   challengeDuration: "5m"
   sessionDuration: "15m"

@@ -10,35 +10,18 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	"github.com/crowdsecurity/go-cs-lib/version"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 )
-
-type Metrics struct {
-	Remediation map[string]RemediationMetrics `json:"remediation"`
-}
-
-type RemediationMetrics struct {
-	Name            string `json:"name"`
-	Origin          string `json:"origin"`
-	RemediationType string `json:"remediation_type"`
-	Count           int64  `json:"count"`
-}
-
-type MetricLabels struct {
-	Name            string
-	RemediationType string
-}
 
 //go:generate mockgen -destination=mocks/mock_waf.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer WAF
 type WAF interface {
@@ -56,14 +39,10 @@ type DecisionCache interface {
 //go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
 type CaptchaService interface {
 	IsEnabled() bool
-	CreateSession(ip, originalURL string) (*components.CaptchaSession, error)
+	RequiresCaptcha(ip, verificationToken string) bool
+	CreateSession(ip, originalURL, verificationToken string) (*components.CaptchaSession, error)
 	GetSession(sessionID string) (*components.CaptchaSession, bool)
 	VerifyResponse(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error)
-	StartCleanup(ctx context.Context)
-}
-
-type MetricsProvider interface {
-	SendMetrics(ctx context.Context, metrics *models.AllMetrics) error
 }
 
 func ptr[T any](v T) *T {
@@ -71,24 +50,47 @@ func ptr[T any](v T) *T {
 }
 
 type Bouncer struct {
-	DecisionCache   DecisionCache
-	WAF             WAF
-	CaptchaService  CaptchaService
-	TrustedProxies  []*net.IPNet
-	metrics         *cache.Cache[RemediationMetrics]
-	metricsProvider MetricsProvider
-	config          config.Config
+	DecisionCache  DecisionCache
+	WAF            WAF
+	CaptchaService CaptchaService
+	TrustedProxies []*net.IPNet
+	MetricsService *crowdsec.MetricsService
+	config         config.Config
 }
 
-// New creates a Bouncer from config.Config, instantiating decision cache and WAF only if enabled.
 func New(cfg config.Config) (*Bouncer, error) {
 	trustedProxies, err := parseProxyAddresses(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
 	}
+
+	bouncer := &Bouncer{
+		TrustedProxies: trustedProxies,
+		config:         cfg,
+	}
+
+	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
+		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
+		client, err := crowdsec.NewClient(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, userAgent)
+		if err != nil {
+			return nil, err
+		}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   client,
+			BouncerType: "envoy-proxy-crowdsec-bouncer",
+			Version:     bouncerVersion.Version,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		bouncer.MetricsService = collector
+	}
+
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval)
+		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval, bouncer.MetricsService)
 		if err != nil {
 			return nil, err
 		}
@@ -107,106 +109,11 @@ func New(cfg config.Config) (*Bouncer, error) {
 		}
 	}
 
-	bouncer := &Bouncer{
-		DecisionCache:  dc,
-		WAF:            w,
-		CaptchaService: c,
-		TrustedProxies: trustedProxies,
-		config:         cfg,
-		metrics:        cache.New[RemediationMetrics](),
-	}
-
-	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
-		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
-		client, err := components.NewCrowdsecClient(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, userAgent)
-		if err != nil {
-			return nil, err
-		}
-
-		provider, err := components.NewMetricsProvider(client)
-		if err != nil {
-			return nil, err
-		}
-
-		bouncer.metricsProvider = provider
-	}
+	bouncer.DecisionCache = dc
+	bouncer.WAF = w
+	bouncer.CaptchaService = c
 
 	return bouncer, nil
-}
-
-func (bouncer *Bouncer) CalculateMetrics(interval time.Duration) *models.AllMetrics {
-	currentMetrics := bouncer.GetMetrics()
-
-	var items []*models.MetricsDetailItem
-
-	for _, remediation := range currentMetrics.Remediation {
-		items = append(items, &models.MetricsDetailItem{
-			Name:  ptr(remediation.Name),
-			Unit:  ptr("request"),
-			Value: ptr(float64(remediation.Count)),
-			Labels: map[string]string{
-				"origin":      remediation.Origin,
-				"remediation": remediation.RemediationType,
-			},
-		})
-	}
-
-	if bouncer.DecisionCache != nil {
-		originCounts := bouncer.DecisionCache.GetOriginCounts()
-		for origin, count := range originCounts {
-			if count == 0 {
-				continue
-			}
-			items = append(items, &models.MetricsDetailItem{
-				Name:  ptr("active_decisions"),
-				Unit:  ptr("ip"),
-				Value: ptr(float64(count)),
-				Labels: map[string]string{
-					"origin": origin,
-				},
-			})
-		}
-	}
-
-	windowSizeSeconds := int64(interval.Seconds())
-	utcNowTimestamp := time.Now().Unix()
-
-	detailedMetrics := []*models.DetailedMetrics{
-		{
-			Items: items,
-			Meta: &models.MetricsMeta{
-				UtcNowTimestamp:   &utcNowTimestamp,
-				WindowSizeSeconds: &windowSizeSeconds,
-			},
-		},
-	}
-
-	startupTS := time.Now().Unix()
-
-	osName, osFamily, osVersion := version.DetectOS()
-
-	version := bouncerVersion.Version
-
-	baseMetrics := &models.BaseMetrics{
-		Os: &models.OSversion{
-			Name:    &osName,
-			Family:  osFamily,
-			Version: &osVersion,
-		},
-		Version:             &version,
-		FeatureFlags:        []string{},
-		Metrics:             detailedMetrics,
-		UtcStartupTimestamp: &startupTS,
-	}
-
-	remediationMetrics := &models.RemediationComponentsMetrics{
-		BaseMetrics: *baseMetrics,
-		Type:        "envoy-proxy-crowdsec-bouncer",
-	}
-
-	return &models.AllMetrics{
-		RemediationComponents: []*models.RemediationComponentsMetrics{remediationMetrics},
-	}
 }
 
 func (b *Bouncer) Sync(ctx context.Context) error {
@@ -217,93 +124,34 @@ func (b *Bouncer) Sync(ctx context.Context) error {
 }
 
 func (b *Bouncer) Metrics(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-	if b.metricsProvider == nil {
+	if b.MetricsService == nil {
 		return nil
 	}
-
-	interval := b.config.Bouncer.MetricsInterval
-
-	if interval == 0 {
-		return nil
-	}
-
-	ticker := time.NewTicker(interval)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			allMetrics := b.CalculateMetrics(interval)
-			log.Debug("sending metrics update", slog.Any("metrics", allMetrics))
-			err := b.metricsProvider.SendMetrics(ctx, allMetrics)
-			if err == nil {
-				b.ResetMetrics()
-			}
-		}
-	}
+	return b.MetricsService.Run(ctx, b.config.Bouncer.MetricsInterval)
 }
 
-func (b *Bouncer) SendMetrics(ctx context.Context, metrics *models.AllMetrics) error {
-	if b.metricsProvider == nil {
-		return errors.New("metrics provider not available")
+func (b *Bouncer) incRemediationMetric(name, remediationType string) {
+	if b.MetricsService == nil {
+		return
 	}
-	err := b.metricsProvider.SendMetrics(ctx, metrics)
-	if err == nil {
-		b.ResetMetrics()
-	}
-	return err
-}
-
-func (b *Bouncer) GetMetrics() Metrics {
-	metrics := Metrics{
-		Remediation: make(map[string]RemediationMetrics),
-	}
-
-	for _, key := range b.metrics.Keys() {
-		metric, exists := b.metrics.Get(key)
-		if exists {
-			metrics.Remediation[key] = metric
-		}
-	}
-
-	return metrics
-}
-
-// IncRemediationMetric increments a remediation metric with envoy-proxy-bouncer origin
-func (b *Bouncer) IncRemediationMetric(labels MetricLabels) {
 	origin := "CAPI"
-	key := origin + ":" + labels.RemediationType
-	metric, exists := b.metrics.Get(key)
-	if !exists {
-		metric = RemediationMetrics{
-			Name:            labels.Name,
-			Origin:          origin,
-			RemediationType: labels.RemediationType,
-			Count:           0,
-		}
-	}
-	metric.Count++
-	b.metrics.Set(key, metric)
-}
-
-func (b *Bouncer) ResetMetrics() {
-	for _, k := range b.metrics.Keys() {
-		b.metrics.Delete(k)
-	}
+	key := origin + ":" + remediationType
+	b.MetricsService.Inc(key, name, "request", map[string]string{
+		"origin":      origin,
+		"remediation": remediationType,
+	})
 }
 
 func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
 	switch result.Action {
 	case "allow":
-		b.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "bypass"})
+		b.incRemediationMetric("processed", "bypass")
 	case "deny":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
+		b.incRemediationMetric("dropped", "ban")
 	case "captcha":
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "captcha"})
+		b.incRemediationMetric("dropped", "captcha")
 	default:
-		b.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
+		b.incRemediationMetric("dropped", "ban")
 	}
 }
 
@@ -377,6 +225,7 @@ type ParsedRequest struct {
 	IP         string
 	RealIP     string
 	Headers    map[string]string
+	Cookies    map[string]string
 	URL        url.URL
 	Method     string
 	UserAgent  string
@@ -540,7 +389,9 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	logger.Debug("running captcha")
 	originalURL := parsed.URL.String()
 
-	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL)
+	verificationToken := parsed.Cookies["captcha_verified"]
+
+	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, verificationToken)
 	if err != nil {
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
@@ -584,7 +435,10 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.
 func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest) *ParsedRequest {
-	parsedRequest := &ParsedRequest{Headers: make(map[string]string)}
+	parsedRequest := &ParsedRequest{
+		Headers: make(map[string]string),
+		Cookies: make(map[string]string),
+	}
 	if req == nil {
 		return parsedRequest
 	}
@@ -619,6 +473,8 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		}
 	}
 
+	parsedRequest.Cookies = parseCookies(parsedRequest.Headers["cookie"])
+
 	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies)
 
 	url := url.URL{
@@ -640,6 +496,24 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 	parsedRequest.URL = url
 
 	return parsedRequest
+}
+
+func parseCookies(cookieHeader string) map[string]string {
+	m := make(map[string]string)
+	if cookieHeader == "" {
+		return m
+	}
+
+	cookies, err := http.ParseCookie(cookieHeader)
+	if err != nil {
+		return m
+	}
+
+	for _, c := range cookies {
+		m[c.Name] = c.Value
+	}
+
+	return m
 }
 
 // parseHTTPVersion converts strings like "HTTP/1.1" or "HTTP/2" to (1,1) or (2,0).

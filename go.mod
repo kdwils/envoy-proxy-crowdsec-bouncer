@@ -7,6 +7,7 @@ require (
 	github.com/crowdsecurity/go-cs-bouncer v0.0.17
 	github.com/crowdsecurity/go-cs-lib v0.0.23
 	github.com/envoyproxy/go-control-plane/envoy v1.35.0
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.1

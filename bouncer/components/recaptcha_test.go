@@ -181,4 +181,3 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 		assert.True(t, success)
 	})
 }
-

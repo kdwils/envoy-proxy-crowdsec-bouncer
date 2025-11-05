@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"reflect"
 	"testing"
-	"time"
 
+	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -331,12 +331,12 @@ func TestParseCheckRequest(t *testing.T) {
 		{
 			name: "nil request returns empty ParsedRequest",
 			req:  nil,
-			want: &ParsedRequest{Headers: map[string]string{}},
+			want: &ParsedRequest{Headers: map[string]string{}, Cookies: map[string]string{}},
 		},
 		{
 			name: "nil attributes returns empty ParsedRequest",
 			req:  &auth.CheckRequest{},
-			want: &ParsedRequest{Headers: map[string]string{}},
+			want: &ParsedRequest{Headers: map[string]string{}, Cookies: map[string]string{}},
 		},
 		{
 			name: "full request with Envoy pseudo-headers",
@@ -380,6 +380,7 @@ func TestParseCheckRequest(t *testing.T) {
 					"some-header":     "some-value",
 					"x-forwarded-for": "10.0.0.1,5.6.7.8",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/foo/bar"},
 				Method:     "GET",
 				UserAgent:  "TestAgent",
@@ -426,6 +427,7 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":    "POST",
 					"user-agent": "UA-From-Headers",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "host.com", Path: "/baz"},
 				Method:     "POST",
 				UserAgent:  "UA-From-Headers",
@@ -472,6 +474,7 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":    "PUT",
 					"foo":        "bar",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "nested.com", Path: "/nested"},
 				Method:     "PUT",
 				UserAgent:  "",
@@ -518,6 +521,7 @@ func TestParseCheckRequest(t *testing.T) {
 					":method":         "GET",
 					"x-forwarded-for": "10.0.0.1, 8.8.8.8",
 				},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -531,17 +535,7 @@ func TestParseCheckRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := r.ParseCheckRequest(context.Background(), tt.req)
-			if got.IP != tt.want.IP ||
-				got.RealIP != tt.want.RealIP ||
-				got.Method != tt.want.Method ||
-				got.UserAgent != tt.want.UserAgent ||
-				got.URL != tt.want.URL ||
-				got.ProtoMajor != tt.want.ProtoMajor ||
-				got.ProtoMinor != tt.want.ProtoMinor ||
-				!reflect.DeepEqual(got.Headers, tt.want.Headers) ||
-				!reflect.DeepEqual(got.Body, tt.want.Body) {
-				t.Errorf("ParseCheckRequest() = %+v, want %+v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -578,10 +572,18 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
 		r := Bouncer{
-			DecisionCache: mb,
-			WAF:           mw,
-			metrics:       cache.New[RemediationMetrics](),
+			DecisionCache:  mb,
+			WAF:            mw,
+			MetricsService: collector,
 			config: config.Config{
 				Bouncer: config.Bouncer{
 					BanStatusCode: 403,
@@ -592,7 +594,6 @@ func TestBouncer_Check(t *testing.T) {
 		req := mkReq("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(&models.Decision{Type: ptr("ban")}, nil)
-		// WAF should not be called when bouncer denies
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
@@ -606,6 +607,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "1.2.3.4",
 				RealIP:     "1.2.3.4",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -617,15 +619,19 @@ func TestBouncer_Check(t *testing.T) {
 		}
 		require.Equal(t, want, got)
 
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "dropped",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "ban",
 			},
 		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
+		metric, ok := actualMetrics["CAPI:ban"]
+		require.True(t, ok, "expected CAPI:ban metric to exist")
+		assert.Equal(t, wantMetric, metric)
 	})
 
 	t.Run("bouncer denies with scenario", func(t *testing.T) {
@@ -634,10 +640,18 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
 		r := Bouncer{
-			DecisionCache: mb,
-			WAF:           mw,
-			metrics:       cache.New[RemediationMetrics](),
+			DecisionCache:  mb,
+			WAF:            mw,
+			MetricsService: collector,
 			config: config.Config{
 				Bouncer: config.Bouncer{
 					BanStatusCode: 403,
@@ -661,6 +675,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "2.2.2.2",
 				RealIP:     "2.2.2.2",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -680,7 +695,15 @@ func TestBouncer_Check(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
@@ -710,20 +733,25 @@ func TestBouncer_Check(t *testing.T) {
 					":method":    "GET",
 					"user-agent": "UT",
 				},
+				Cookies: map[string]string{},
 			},
 			CaptchaSession: nil,
 		}
 		require.Equal(t, want, got)
 
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "dropped",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "ban",
 			},
 		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
+		metric, ok := actualMetrics["CAPI:ban"]
+		require.True(t, ok, "expected CAPI:ban metric to exist")
+		assert.Equal(t, wantMetric, metric)
 	})
 
 	t.Run("waf denies after bouncer allows", func(t *testing.T) {
@@ -732,10 +760,18 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
 		r := Bouncer{
-			DecisionCache: mb,
-			WAF:           mw,
-			metrics:       cache.New[RemediationMetrics](),
+			DecisionCache:  mb,
+			WAF:            mw,
+			MetricsService: collector,
 			config: config.Config{
 				Bouncer: config.Bouncer{
 					BanStatusCode: 403,
@@ -759,6 +795,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "9.9.9.9",
 				RealIP:     "9.9.9.9",
 				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
 				Method:     "POST",
 				UserAgent:  "UT",
@@ -770,15 +807,19 @@ func TestBouncer_Check(t *testing.T) {
 		}
 		require.Equal(t, want, got)
 
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:ban": {Name: "dropped", Origin: "CAPI", RemediationType: "ban", Count: 1},
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "dropped",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "ban",
 			},
 		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
+		metric, ok := actualMetrics["CAPI:ban"]
+		require.True(t, ok, "expected CAPI:ban metric to exist")
+		assert.Equal(t, wantMetric, metric)
 	})
 
 	t.Run("waf error", func(t *testing.T) {
@@ -787,7 +828,15 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector}
 
 		req := mkReq("10.0.0.1", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
@@ -804,6 +853,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "10.0.0.1",
 				RealIP:     "10.0.0.1",
 				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -821,7 +871,15 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector}
 
 		req := mkReq("7.7.7.7", "https", "ex", "/ok", "GET", "HTTP/2", "")
 
@@ -838,6 +896,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "7.7.7.7",
 				RealIP:     "7.7.7.7",
 				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -848,16 +907,19 @@ func TestBouncer_Check(t *testing.T) {
 		}
 		require.Equal(t, want, got)
 
-		// Verify metrics: 1 processed request (allowed through)
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:bypass": {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "processed",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "bypass",
 			},
 		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
+		metric, ok := actualMetrics["CAPI:bypass"]
+		require.True(t, ok, "expected CAPI:bypass metric to exist")
+		assert.Equal(t, wantMetric, metric)
 	})
 
 	t.Run("waf denies with deny action", func(t *testing.T) {
@@ -866,7 +928,15 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector}
 
 		req := mkReq("8.8.8.8", "https", "host", "/bar", "POST", "HTTP/2", "abc")
 
@@ -883,6 +953,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "8.8.8.8",
 				RealIP:     "8.8.8.8",
 				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
 				Method:     "POST",
 				UserAgent:  "UT",
@@ -900,7 +971,15 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector}
 
 		req := mkReq("11.11.11.11", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
@@ -917,6 +996,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "11.11.11.11",
 				RealIP:     "11.11.11.11",
 				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -934,7 +1014,15 @@ func TestBouncer_Check(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector}
 
 		req := mkReq("12.12.12.12", "http", "h", "/p", "GET", "HTTP/1.0", "")
 
@@ -951,6 +1039,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "12.12.12.12",
 				RealIP:     "12.12.12.12",
 				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -967,7 +1056,15 @@ func TestBouncer_Check(t *testing.T) {
 		defer ctrl.Finish()
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: nil, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: nil, MetricsService: collector}
 
 		req := mkReq("13.13.13.13", "https", "ex", "/ok", "GET", "HTTP/2", "")
 
@@ -983,6 +1080,7 @@ func TestBouncer_Check(t *testing.T) {
 				IP:         "13.13.13.13",
 				RealIP:     "13.13.13.13",
 				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
 				Method:     "GET",
 				UserAgent:  "UT",
@@ -1021,7 +1119,14 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 	}
 
 	t.Run("bouncer disabled - waf disabled - captcha disabled", func(t *testing.T) {
-		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, MetricsService: collector}
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		got := r.Check(context.Background(), req)
@@ -1034,6 +1139,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "1.1.1.1",
 				RealIP:     "1.1.1.1",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1044,16 +1150,19 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		}
 		require.Equal(t, want, got)
 
-		// Verify metrics: 1 processed request (everything disabled)
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:bypass": {Name: "processed", Origin: "CAPI", RemediationType: "bypass", Count: 1},
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "processed",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "bypass",
 			},
 		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
+		metric, ok := actualMetrics["CAPI:bypass"]
+		require.True(t, ok, "expected CAPI:bypass metric to exist")
+		assert.Equal(t, wantMetric, metric)
 	})
 
 	t.Run("bouncer denies - short circuit", func(t *testing.T) {
@@ -1063,7 +1172,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("2.2.2.2", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1080,6 +1197,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "2.2.2.2",
 				RealIP:     "2.2.2.2",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1098,11 +1216,19 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
 		r := Bouncer{
 			DecisionCache:  mb,
 			WAF:            mw,
 			CaptchaService: mc,
-			metrics:        cache.New[RemediationMetrics](),
+			MetricsService: collector,
 			config: config.Config{
 				Bouncer: config.Bouncer{
 					BanStatusCode: 403,
@@ -1137,6 +1263,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 					":path":      "/test",
 					":method":    "GET",
 				},
+				Cookies: map[string]string{},
 			},
 			CaptchaSession: nil,
 		}
@@ -1150,7 +1277,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("4.4.4.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1167,6 +1302,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "4.4.4.4",
 				RealIP:     "4.4.4.4",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1185,7 +1321,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("5.5.5.5", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1202,6 +1346,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "5.5.5.5",
 				RealIP:     "5.5.5.5",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1220,7 +1365,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("6.6.6.6", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1237,6 +1390,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "6.6.6.6",
 				RealIP:     "6.6.6.6",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1255,7 +1409,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("7.7.7.7", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1275,7 +1437,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("8.8.8.8", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1295,8 +1465,14 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
 
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 		req := mkReq("9.9.9.9", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "9.9.9.9").Return(nil, nil)
@@ -1315,7 +1491,14 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 
 		req := mkReq("10.10.10.10", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1333,6 +1516,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 				IP:         "10.10.10.10",
 				RealIP:     "10.10.10.10",
 				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:    map[string]string{},
 				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:     "GET",
 				UserAgent:  "",
@@ -1350,8 +1534,14 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: nil, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
 
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: nil, MetricsService: collector}
 		req := mkReq("11.11.11.11", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "11.11.11.11").Return(nil, nil)
@@ -1370,14 +1560,20 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
 
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 		req := mkReq("12.12.12.12", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("12.12.12.12", "https://example.com/test").Return(nil, nil)
+		mc.EXPECT().CreateSession("12.12.12.12", "https://example.com/test", "").Return(nil, nil)
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "allow" || got.Reason != "captcha not required" || got.HTTPStatus != 200 || got.IP != "12.12.12.12" {
@@ -1392,14 +1588,20 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
 
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 		req := mkReq("13.13.13.13", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("13.13.13.13", "https://example.com/test").Return(nil, fmt.Errorf("session creation failed"))
+		mc.EXPECT().CreateSession("13.13.13.13", "https://example.com/test", "").Return(nil, fmt.Errorf("session creation failed"))
 
 		got := r.Check(context.Background(), req)
 		if got.Action != "error" || got.Reason != "captcha error" || got.HTTPStatus != 500 || got.IP != "13.13.13.13" {
@@ -1414,14 +1616,20 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
 
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 		req := mkReq("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "14.14.14.14").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("14.14.14.14", "https://example.com/test").Return(&components.CaptchaSession{
+		mc.EXPECT().CreateSession("14.14.14.14", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123",
 		}, nil)
 
@@ -1430,15 +1638,19 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "dropped",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "captcha",
 			},
 		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
+		metric, ok := actualMetrics["CAPI:captcha"]
+		require.True(t, ok, "expected CAPI:captcha metric to exist")
+		assert.Equal(t, wantMetric, metric)
 	})
 
 	t.Run("bouncer captcha - direct to captcha flow", func(t *testing.T) {
@@ -1448,13 +1660,19 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
 
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 		req := mkReq("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: ptr("captcha")}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("15.15.15.15", "https://example.com/test").Return(&components.CaptchaSession{
+		mc.EXPECT().CreateSession("15.15.15.15", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
 		}, nil)
 
@@ -1481,6 +1699,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 					":path":      "/test",
 					":method":    "GET",
 				},
+				Cookies: map[string]string{},
 			},
 			CaptchaSession: &components.CaptchaSession{
 				ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
@@ -1488,15 +1707,19 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		}
 		require.Equal(t, want, got)
 
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "dropped",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "captcha",
 			},
 		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
+		metric, ok := actualMetrics["CAPI:captcha"]
+		require.True(t, ok, "expected CAPI:captcha metric to exist")
+		assert.Equal(t, wantMetric, metric)
 	})
 }
 
@@ -1533,14 +1756,20 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
 
-		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, metrics: cache.New[RemediationMetrics]()}
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
 
+		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector}
 		req := mkReq("1.2.3.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
-		mc.EXPECT().CreateSession("1.2.3.4", "https://example.com/test").Return(&components.CaptchaSession{
+		mc.EXPECT().CreateSession("1.2.3.4", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=session123",
 		}, nil)
 
@@ -1558,99 +1787,91 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 			t.Fatalf("expected redirect URL %s, got %s", expectedURL, got.RedirectURL)
 		}
 
-		expectedMetrics := Metrics{
-			Remediation: map[string]RemediationMetrics{
-				"CAPI:captcha": {Name: "dropped", Origin: "CAPI", RemediationType: "captcha", Count: 1},
-			},
-		}
-		actualMetrics := r.GetMetrics()
-		if !reflect.DeepEqual(actualMetrics, expectedMetrics) {
-			t.Errorf("metrics mismatch:\nexpected: %+v\nactual: %+v", expectedMetrics, actualMetrics)
-		}
-	})
-}
-
-func TestBouncer_CalculateMetrics_FieldStructure(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockCache := remediationmocks.NewMockDecisionCache(ctrl)
-	mockCache.EXPECT().GetOriginCounts().Return(map[string]int{
-		"CAPI":     5,
-		"lists":    3,
-		"crowdsec": 2,
-	})
-
-	r := Bouncer{
-		metrics:       cache.New[RemediationMetrics](),
-		DecisionCache: mockCache,
-	}
-
-	r.IncRemediationMetric(MetricLabels{Name: "processed", RemediationType: "processed"})
-	r.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "ban"})
-	r.IncRemediationMetric(MetricLabels{Name: "dropped", RemediationType: "captcha"})
-
-	allMetrics := r.CalculateMetrics(10 * time.Second)
-
-	require.Len(t, allMetrics.RemediationComponents, 1)
-	component := allMetrics.RemediationComponents[0]
-	require.Len(t, component.Metrics, 1)
-
-	detailedMetrics := component.Metrics[0]
-
-	expectedItems := []*models.MetricsDetailItem{
-		{
-			Name:  ptr("processed"),
-			Unit:  ptr("request"),
-			Value: ptr(float64(1)),
-			Labels: map[string]string{
-				"origin":      "CAPI",
-				"remediation": "processed",
-			},
-		},
-		{
-			Name:  ptr("dropped"),
-			Unit:  ptr("request"),
-			Value: ptr(float64(1)),
-			Labels: map[string]string{
-				"origin":      "CAPI",
-				"remediation": "ban",
-			},
-		},
-		{
-			Name:  ptr("dropped"),
-			Unit:  ptr("request"),
-			Value: ptr(float64(1)),
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "dropped",
+			Unit:  "request",
+			Value: 1,
 			Labels: map[string]string{
 				"origin":      "CAPI",
 				"remediation": "captcha",
 			},
+		}
+		metric, ok := actualMetrics["CAPI:captcha"]
+		require.True(t, ok, "expected CAPI:captcha metric to exist")
+		assert.Equal(t, wantMetric, metric)
+	})
+}
+
+func Test_parseCookies(t *testing.T) {
+	tests := []struct {
+		name         string
+		cookieHeader string
+		want         map[string]string
+	}{
+		{
+			name:         "empty string returns empty map",
+			cookieHeader: "",
+			want:         map[string]string{},
 		},
 		{
-			Name:  ptr("active_decisions"),
-			Unit:  ptr("ip"),
-			Value: ptr(float64(5)),
-			Labels: map[string]string{
-				"origin": "CAPI",
+			name:         "single cookie",
+			cookieHeader: "session_id=abc123",
+			want: map[string]string{
+				"session_id": "abc123",
 			},
 		},
 		{
-			Name:  ptr("active_decisions"),
-			Unit:  ptr("ip"),
-			Value: ptr(float64(3)),
-			Labels: map[string]string{
-				"origin": "lists",
+			name:         "multiple cookies",
+			cookieHeader: "session_id=abc123; user_id=42; theme=dark",
+			want: map[string]string{
+				"session_id": "abc123",
+				"user_id":    "42",
+				"theme":      "dark",
 			},
 		},
 		{
-			Name:  ptr("active_decisions"),
-			Unit:  ptr("ip"),
-			Value: ptr(float64(2)),
-			Labels: map[string]string{
-				"origin": "crowdsec",
+			name:         "cookies with spaces",
+			cookieHeader: "session_id=abc123 ; user_id=42 ;theme=dark",
+			want: map[string]string{
+				"session_id": "abc123",
+				"user_id":    "42",
+				"theme":      "dark",
+			},
+		},
+		{
+			name:         "cookie with URL-encoded value stays encoded",
+			cookieHeader: "redirect_url=https%3A%2F%2Fexample.com%2Fpath",
+			want: map[string]string{
+				"redirect_url": "https%3A%2F%2Fexample.com%2Fpath",
+			},
+		},
+		{
+			name:         "cookie with equals in value",
+			cookieHeader: "data=key=value",
+			want: map[string]string{
+				"data": "key=value",
+			},
+		},
+		{
+			name:         "cookie with special characters",
+			cookieHeader: "token=abc-123_456.789",
+			want: map[string]string{
+				"token": "abc-123_456.789",
+			},
+		},
+		{
+			name:         "captcha_verified cookie",
+			cookieHeader: "captcha_verified=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpcCI6IjEyNy4wLjAuMSJ9.abc123",
+			want: map[string]string{
+				"captcha_verified": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpcCI6IjEyNy4wLjAuMSJ9.abc123",
 			},
 		},
 	}
-
-	require.ElementsMatch(t, expectedItems, detailedMetrics.Items)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseCookies(tt.cookieHeader)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

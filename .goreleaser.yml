@@ -67,17 +67,10 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    ## What's Changed
+    > [!WARNING]
+    > This release contains breaking changes if you are using CAPTCHAs.
 
-    This release adds support for...
-    * captcha challenges for reCaptcha and cloudflare Turnstile 
-    * custom html templates for captcha challenges
-    * a default denied html template for denied requests supplied from @hydazz
-    * custom html templates for denied requests
-    * metrics in the crowdsec dashboard for the number of dropped requests
-    * metrics in the crowdsec dashboard for the number of active decisions the bouncer is using
-
-    ![Denied](https://raw.githubusercontent.com/kdwils/envoy-proxy-crowdsec-bouncer/main/docs/images/ban.jpeg)
-
+    v0.4.0 moves CAPTCHA sessions from in-memory cache to stateless JWTs. If you use CAPTCHA, you must update your configuration.
+    See the [Breaking Changes: v0.4.0](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/breaking-changes/v0.4.0.md) for upgrade instructions.
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}

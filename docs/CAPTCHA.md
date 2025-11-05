@@ -8,10 +8,10 @@ CAPTCHA challenges provide an alternative to immediately blocking suspicious IPs
 
 ## How It Works
 
-When CAPTCHA is enabled, the bouncer runs dual servers:
+When CAPTCHA is enabled, the bouncer serves on 2 ports:
 
-1. **gRPC Server** (default port 8080): Handles Envoy ext_authz requests
-2. **HTTP Server** (default port 8081): Serves CAPTCHA challenge and verification endpoints
+1. gRPC Server (default port 8080): Handles Envoy ext_authz requests
+2. HTTP Server (default port 8081): Serves CAPTCHA challenge and verification endpoints
 
 ### CAPTCHA Flow
 
@@ -25,18 +25,20 @@ When CAPTCHA is enabled, the bouncer runs dual servers:
 
 ### Session Management
 
-- Sessions are stored in-memory with a configurable duration
-- IPs that complete CAPTCHA are cached and allowed through
-- Sessions are bound to IP addresses to prevent session hijacking
-- CSRF tokens protect against cross-site request forgery
-- Expired sessions are automatically cleaned up
+CAPTCHA Sessions are managed using JWTs.
+
+The flow uses two types of tokens:
+- Challenge tokens contain the IP and original URL. They expire after `challengeDuration` (default 5m).
+- Verification tokens are issued after successful CAPTCHA completion. They're stored in a cookie and expire after `sessionDuration` (default 15m).
+
+Both tokens are signed using the `signingKey`. Tokens are bound to IP addresses extracted from trusted headers. The verification token cookie uses the configured `cookieDomain` to work across subdomains.
 
 ## Supported Providers
 
-| Provider | Configuration Value | Site Key Format | Documentation |
+| Provider | Configuration Value | Documentation |
 |----------|-------------------|----------------|---------------|
-| Google reCAPTCHA v2 | `recaptcha` | `6LeIxA...` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
-| Cloudflare Turnstile | `turnstile` | `0x4AAA...` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
+| Google reCAPTCHA v2 | `recaptcha` | [reCAPTCHA Documentation](https://developers.google.com/recaptcha) |
+| Cloudflare Turnstile | `turnstile` | [Turnstile Documentation](https://developers.cloudflare.com/turnstile/) |
 
 ## Configuration
 
@@ -48,8 +50,12 @@ captcha:
   provider: "recaptcha"  # or "turnstile"
   siteKey: "<your-site-key>"
   secretKey: "<your-secret-key>"
+  signingKey: "<your-jwt-signing-key>"  # Required - key used to sign jwts
   callbackURL: "https://yourdomain.com"
+  cookieDomain: ".yourdomain.com"  # Required - parent domain for cookie sharing
+  secureCookie: true  # true for HTTPS, false for local dev
   sessionDuration: "15m"
+  challengeDuration: "5m"
   timeout: "10s"
 ```
 
@@ -61,10 +67,13 @@ captcha:
 | `provider` | string | `""` | Yes | CAPTCHA provider: `recaptcha` or `turnstile` |
 | `siteKey` | string | `""` | Yes | Public site key from CAPTCHA provider |
 | `secretKey` | string | `""` | Yes | Secret key from CAPTCHA provider |
+| `signingKey` | string | `""` | Yes | JWT signing key (minimum 32 bytes). Generate with `openssl rand -base64 32` |
 | `callbackURL` | string | `""` | Yes | Base URL for CAPTCHA callbacks (public-facing hostname) |
+| `cookieDomain` | string | `""` | Yes | Parent domain for cookies (e.g., `.example.com`) to share across subdomains |
+| `secureCookie` | bool | `true` | No | Use Secure flag and SameSite=None (true for HTTPS, false for local dev) |
 | `timeout` | duration | `"10s"` | No | Timeout for CAPTCHA provider verification requests |
 | `sessionDuration` | duration | `"15m"` | No | How long CAPTCHA verification remains valid |
-| `cacheCleanupInterval` | duration | `"5m"` | No | How often to clean up expired sessions |
+| `challengeDuration` | duration | `"5m"` | No | How long a challenge token remains valid |
 
 ### Environment Variables
 
@@ -73,8 +82,12 @@ export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-secret-key
+export ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY=your-jwt-signing-key
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_COOKIEDOMAIN=.yourdomain.com
+export ENVOY_BOUNCER_CAPTCHA_SECURECOOKIE=true
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
+export ENVOY_BOUNCER_CAPTCHA_CHALLENGEDURATION=5m
 export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
 ```
 
@@ -93,11 +106,8 @@ The bouncer will append `/captcha/challenge` and `/captcha/verify` to this URL.
 
 ### Google reCAPTCHA v2
 
-1. Visit [Google reCAPTCHA Admin Console](https://www.google.com/recaptcha/admin)
-2. Click "Create" to register a new site
-3. Choose **reCAPTCHA v2** → **"I'm not a robot" checkbox**
-4. Add your domain(s)
-5. Copy the **Site Key** and **Secret Key**
+See 
+- https://developers.google.com/recaptcha/intro
 
 Configuration:
 
@@ -105,23 +115,16 @@ Configuration:
 captcha:
   enabled: true
   provider: "recaptcha"
-  siteKey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"  # Example test key
-  secretKey: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"  # Example test key
-  callbackURL: "https://yourdomain.com"
+  siteKey: "0x4AAAAAAABAAAAAAAAAA"        # Example
+  secretKey: "0x4AAAAAAABBBBBBBBB"        # Example
+  callbackURL: "https://bouncer-host.com" # where the bouncer is publicly accessible
 ```
-
-**Test Keys** (always pass):
-- Site Key: `6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI`
-- Secret Key: `6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe`
 
 ### Cloudflare Turnstile
 
-1. Visit [Cloudflare Dashboard](https://dash.cloudflare.com/)
-2. Navigate to **Turnstile**
-3. Click **Add Site**
-4. Choose **Managed** challenge mode
-5. Add your domain(s)
-6. Copy the **Site Key** and **Secret Key**
+See 
+- https://developers.cloudflare.com/turnstile/
+- https://www.cloudflare.com/application-services/products/turnstile/
 
 Configuration:
 
@@ -129,52 +132,9 @@ Configuration:
 captcha:
   enabled: true
   provider: "turnstile"
-  siteKey: "0x4AAAAAAABjdT4JkT4kXPZL"  # Example
-  secretKey: "0x4AAAAAAABjdT4JkT4kXPZL"  # Example
-  callbackURL: "https://yourdomain.com"
-```
-
-**Test Keys** (always pass):
-- Site Key: `1x00000000000000000000AA`
-- Secret Key: `1x0000000000000000000000000000000AA`
-
-**Test Keys** (always fail):
-- Site Key: `2x00000000000000000000AB`
-- Secret Key: `2x0000000000000000000000000000000AA`
-
-## Kubernetes/Helm Deployment
-
-### Helm Configuration
-
-```yaml
-# values.yaml
-config:
-  captcha:
-    enabled: true
-    provider: "turnstile"
-    siteKey: "0x4AAAAAAABjdT4JkT4kXPZL"
-    secretKeySecretRef:
-      name: captcha-secrets
-      key: secret-key
-    callbackURL: "https://auth.example.com"
-    sessionDuration: "15m"
-    timeout: "10s"
-```
-
-Create secret:
-
-```bash
-kubectl create secret generic captcha-secrets \
-  --from-literal=secret-key='your-secret-key' \
-  -n envoy-gateway-system
-```
-
-Install:
-
-```bash
-helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
-  --namespace envoy-gateway-system \
-  -f values.yaml
+  siteKey: "0x4AAAAAAABAAAAAAAAAA"        # Example
+  secretKey: "0x4AAAAAAABBBBBBBBB"        # Example
+  callbackURL: "https://bouncer-host.com" # where the bouncer is publicly accessible
 ```
 
 ### Exposing CAPTCHA Endpoints
@@ -205,37 +165,6 @@ spec:
 
 **Important**: Do NOT apply a SecurityPolicy to the CAPTCHA HTTPRoute, as this would create an infinite redirect loop.
 
-## CrowdSec Integration
-
-### Scenarios with CAPTCHA Remediation
-
-Configure CrowdSec scenarios to use `captcha` instead of `ban`:
-
-```yaml
-# /etc/crowdsec/profiles.yaml
-name: captcha_profile
-filters:
-  - Alert.Remediation == true && Alert.GetScope() == "Ip"
-decisions:
-  - type: captcha
-    duration: 4h
-on_success: break
-```
-
-### AppSec CAPTCHA Actions
-
-Configure AppSec to return `captcha` for suspicious patterns:
-
-```yaml
-# /etc/crowdsec/appsec-configs/your-config.yaml
-name: my-appsec-config
-default_remediation: captcha
-rules:
-  - name: suspicious-user-agent
-    match: req.Headers["User-Agent"] matches "(?i)(bot|crawler|spider)"
-    action: captcha
-```
-
 ## Custom Templates
 
 You can customize the CAPTCHA challenge page. See [CUSTOM_TEMPLATES.md](CUSTOM_TEMPLATES.md) for details.
@@ -246,9 +175,8 @@ Your custom CAPTCHA template **must** include:
 
 1. Form posting to `{{.CallbackURL}}/verify`
 2. Hidden session field: `<input type="hidden" name="session" value="{{.SessionID}}" />`
-3. Hidden CSRF token: `<input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />`
-4. CAPTCHA widget rendering with `{{.SiteKey}}`
-5. Provider-specific JavaScript library
+3. CAPTCHA widget rendering with `{{.SiteKey}}`
+4. Provider-specific JavaScript library
 
 Example:
 
@@ -256,7 +184,6 @@ Example:
 <form method="POST" action="{{.CallbackURL}}/verify">
     <div id="captcha-container"></div>
     <input type="hidden" name="session" value="{{.SessionID}}" />
-    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
     <button type="submit">Verify</button>
 </form>
 
@@ -281,10 +208,9 @@ Example:
 
 ### Session Security
 
-- Sessions are bound to IP addresses (extracted from trusted headers)
-- CSRF tokens prevent cross-site form submission
-- Sessions expire after configurable duration
-- Session IDs are cryptographically random
+The `signingKey` must be at least 32 bytes. Generate one with `openssl rand -base64 32`.
+
+Verification tokens are stored in HTTP-only cookies. When `secureCookie` is true, cookies use the Secure flag and SameSite=None (required for cross-site access over HTTPS). When false, SameSite=Lax is used (for local development).
 
 ### IP Binding
 
@@ -295,38 +221,6 @@ trustedProxies:
   - 10.0.0.0/8
   - 172.16.0.0/12
 ```
-
-### Rate Limiting
-
-Consider implementing rate limiting for CAPTCHA endpoints to prevent abuse:
-
-```yaml
-# RateLimitPolicy for CAPTCHA endpoints
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: RateLimitPolicy
-metadata:
-  name: captcha-rate-limit
-  namespace: envoy-gateway-system
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: bouncer-captcha
-  rateLimits:
-    - clientSelectors:
-      - sourceCIDR:
-          value: 0.0.0.0/0
-      limit:
-        requests: 10
-        unit: Minute
-```
-
-### HTTPS
-
-Always use HTTPS for CAPTCHA endpoints in production to protect:
-- Session IDs
-- CAPTCHA responses
-- User privacy
 
 ## Testing
 
@@ -341,133 +235,6 @@ Always use HTTPS for CAPTCHA endpoints in production to protect:
 4. Verify redirect to CAPTCHA challenge page
 5. Complete the CAPTCHA
 6. Verify redirect back to original resource
-
-### Using Test Keys
-
-Use provider test keys for development:
-
-**reCAPTCHA:**
-```yaml
-captcha:
-  provider: "recaptcha"
-  siteKey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
-  secretKey: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
-```
-
-**Turnstile:**
-```yaml
-captcha:
-  provider: "turnstile"
-  siteKey: "1x00000000000000000000AA"
-  secretKey: "1x0000000000000000000000000000000AA"
-```
-
-## Troubleshooting
-
-### CAPTCHA Page Not Loading
-
-**Check HTTP server is running:**
-```bash
-kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer | grep "HTTP server"
-```
-
-**Verify HTTPRoute exists:**
-```bash
-kubectl get httproute -n envoy-gateway-system
-```
-
-**Check endpoint is accessible:**
-```bash
-curl https://yourdomain.com/captcha/challenge?session=test
-```
-
-### Infinite Redirect Loop
-
-**Cause**: SecurityPolicy applied to CAPTCHA HTTPRoute
-
-**Solution**: Remove SecurityPolicy from CAPTCHA HTTPRoute, or exclude CAPTCHA paths
-
-### CAPTCHA Verification Fails
-
-**Check provider credentials:**
-- Verify site key and secret key are correct
-- Ensure domain is registered with provider
-- Check provider dashboard for errors
-
-**Check logs:**
-```bash
-kubectl logs -n envoy-gateway-system deployment/envoy-proxy-bouncer | grep -i captcha
-```
-
-**Common issues:**
-- Wrong provider selected (`recaptcha` vs `turnstile`)
-- Domain mismatch between configuration and provider registration
-- Secret key vs site key swapped
-- Network connectivity to provider API
-
-### Session Expired
-
-**Symptoms**: User completes CAPTCHA but gets redirected back to challenge
-
-**Solutions:**
-- Increase `sessionDuration`
-- Check server time synchronization
-- Verify IP address consistency (check `trustedProxies` configuration)
-
-### CSRF Token Validation Failed
-
-**Cause**: Missing or invalid CSRF token in custom template
-
-**Solution**: Ensure custom template includes:
-```html
-<input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-```
-
-## Metrics
-
-When metrics are enabled, CAPTCHA-related metrics are reported:
-
-- Total CAPTCHA challenges issued
-- Successful CAPTCHA verifications
-- Failed CAPTCHA verifications
-
-View metrics:
-```bash
-cscli metrics
-```
-
-## Performance Tuning
-
-### Session Cache Size
-
-The session cache is in-memory and grows with the number of active sessions. Monitor memory usage and adjust pod resources if needed:
-
-```yaml
-resources:
-  limits:
-    memory: 512Mi  # Increase if handling many concurrent sessions
-```
-
-### Session Duration
-
-Balance security vs user experience:
-
-- **Shorter duration** (5-10m): More secure, but users may need to re-verify frequently
-- **Longer duration** (30m-1h): Better UX, but verified IPs remain cached longer
-
-```yaml
-captcha:
-  sessionDuration: "15m"  # Good balance for most use cases
-```
-
-### Cleanup Interval
-
-Adjust based on session duration and memory constraints:
-
-```yaml
-captcha:
-  cacheCleanupInterval: "5m"  # Clean up expired sessions every 5 minutes
-```
 
 ## See Also
 

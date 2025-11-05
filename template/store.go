@@ -91,7 +91,6 @@ type CaptchaTemplateData struct {
 	CallbackURL string
 	RedirectURL string
 	SessionID   string
-	CSRFToken   string
 }
 
 func (s *Store) RenderCaptcha(data CaptchaTemplateData) (string, error) {

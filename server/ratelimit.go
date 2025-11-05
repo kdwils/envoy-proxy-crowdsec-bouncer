@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/kdwils/envoy-proxy-bouncer/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"golang.org/x/time/rate"
 )
 
