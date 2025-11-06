@@ -198,12 +198,13 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 		},
 	}
 
-	osName, osVersion := version.DetectOS()
+	osName, osFamily, osVersion := version.DetectOS()
 
 	baseMetrics := &models.BaseMetrics{
 		Os: &models.OSversion{
 			Name:    &osName,
 			Version: &osVersion,
+			Family:  osFamily,
 		},
 		Version:             &mc.version,
 		FeatureFlags:        []string{},
