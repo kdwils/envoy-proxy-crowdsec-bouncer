@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -67,9 +68,7 @@ func createHttpRequest(method, path, authority string, extraHeaders map[string]s
 		"User-Agent": "test-agent",
 	}
 
-	for k, v := range extraHeaders {
-		headers[k] = v
-	}
+	maps.Copy(headers, extraHeaders)
 
 	return &auth.AttributeContext_HttpRequest{
 		Headers:  headers,
@@ -78,6 +77,19 @@ func createHttpRequest(method, path, authority string, extraHeaders map[string]s
 }
 
 func TestBouncer(t *testing.T) {
+	images := []string{
+		"crowdsecurity/crowdsec:v1.7.0",
+		"crowdsecurity/crowdsec:v1.7.2",
+		"crowdsecurity/crowdsec:v1.7.3",
+	}
+	for _, image := range images {
+		t.Run(image, func(t *testing.T) {
+			testBouncerWithVersion(t, image)
+		})
+	}
+}
+
+func testBouncerWithVersion(t *testing.T, image string) {
 	network, err := network.New(t.Context(), network.WithDriver("bridge"))
 	if err != nil {
 		t.Fatalf("failed to create network: %v", err)
@@ -85,7 +97,7 @@ func TestBouncer(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.3",
+		Image:        image,
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",
@@ -182,7 +194,7 @@ func TestBouncer(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.3",
+		Image:        image,
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{
@@ -392,6 +404,19 @@ func TestBouncer(t *testing.T) {
 }
 
 func TestBouncerWithCaptcha(t *testing.T) {
+	images := []string{
+		"crowdsecurity/crowdsec:v1.7.0",
+		"crowdsecurity/crowdsec:v1.7.2",
+		"crowdsecurity/crowdsec:v1.7.3",
+	}
+	for _, image := range images {
+		t.Run(image, func(t *testing.T) {
+			testBouncerWithCaptchaVersion(t, image)
+		})
+	}
+}
+
+func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	network, err := network.New(t.Context(), network.WithDriver("bridge"))
 	if err != nil {
 		t.Fatalf("failed to create network: %v", err)
@@ -399,7 +424,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.3",
+		Image:        image,
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",
@@ -496,7 +521,7 @@ func TestBouncerWithCaptcha(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.3",
+		Image:        image,
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{

@@ -36,6 +36,19 @@ import (
 )
 
 func TestJWTCompleteVerificationFlow(t *testing.T) {
+	images := []string{
+		"crowdsecurity/crowdsec:v1.7.0",
+		"crowdsecurity/crowdsec:v1.7.2",
+		"crowdsecurity/crowdsec:v1.7.3",
+	}
+	for _, image := range images {
+		t.Run(image, func(t *testing.T) {
+			testJWTCompleteVerificationFlowVersion(t, image)
+		})
+	}
+}
+
+func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -46,7 +59,7 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 	defer network.Remove(t.Context())
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.3",
+		Image:        image,
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",
@@ -143,7 +156,7 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 	}
 
 	appsecReq := testcontainers.ContainerRequest{
-		Image:        "crowdsecurity/crowdsec:v1.7.3",
+		Image:        image,
 		Networks:     []string{network.Name},
 		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
 		Env: map[string]string{
