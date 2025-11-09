@@ -67,10 +67,6 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    > [!WARNING]
-    > This release contains breaking changes if you are using CAPTCHAs.
-
-    v0.4.0 moves CAPTCHA sessions from in-memory cache to stateless JWTs. If you use CAPTCHA, you must update your configuration.
-    See the [Breaking Changes: v0.4.0](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/breaking-changes/v0.4.0.md) for upgrade instructions.
+    This release includes go package bumps and additional tests for crowdsec versions v1.7.0, v1.7.2, and v1.7.3 to ensure compatability.
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
