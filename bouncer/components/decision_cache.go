@@ -19,6 +19,7 @@ type DecisionCache struct {
 	decisions      *cache.Cache[models.Decision]
 	mu             *sync.RWMutex
 	MetricsService *crowdsec.MetricsService
+	syncComplete   bool
 }
 
 func NewDecisionCache(apiKey, apiURL, tickerInterval string, MetricsService *crowdsec.MetricsService) (*DecisionCache, error) {
@@ -90,6 +91,12 @@ func (dc *DecisionCache) Size() int {
 		return 0
 	}
 	return dc.decisions.Size()
+}
+
+func (dc *DecisionCache) IsReady() bool {
+	dc.mu.RLock()
+	defer dc.mu.RUnlock()
+	return dc.syncComplete
 }
 
 func (dc *DecisionCache) GetOriginCounts() map[string]int {
@@ -168,8 +175,14 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				dc.MetricsService.Inc(key, "active_decisions", "ip", map[string]string{
 					"origin": origin,
 				})
-
 			}
+
+			dc.mu.Lock()
+			if !dc.syncComplete {
+				dc.syncComplete = true
+				logger.Info("initial decision sync complete")
+			}
+			dc.mu.Unlock()
 		}
 	}
 }

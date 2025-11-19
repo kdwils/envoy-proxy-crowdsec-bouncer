@@ -125,8 +125,16 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) serveHTTP(ctx context.Context, port int) error {
 	r := mux.NewRouter()
-	r.HandleFunc("/captcha/verify", s.handleCaptchaVerify).Methods("POST", "OPTIONS")
-	r.HandleFunc("/captcha/challenge", s.handleCaptchaChallenge).Methods("GET")
+
+	r.HandleFunc("/healthz", s.handleLiveness).Methods("GET")
+	r.HandleFunc("/readyz", s.handleReadiness).Methods("GET")
+
+	captchaRouter := r.PathPrefix("/captcha").Subrouter()
+	captchaRouter.HandleFunc("/verify", s.handleCaptchaVerify).Methods("POST", "OPTIONS")
+	captchaRouter.HandleFunc("/challenge", s.handleCaptchaChallenge).Methods("GET")
+	captchaRouter.Use(func(next http.Handler) http.Handler {
+		return s.rateLimitMiddleware(next)
+	})
 
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
@@ -134,7 +142,7 @@ func (s *Server) serveHTTP(ctx context.Context, port int) error {
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 	)(r)
 
-	rateLimitedHandler := s.rateLimitMiddleware(corsHandler)
+	rateLimitedHandler := corsHandler
 
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
@@ -284,6 +292,24 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", s.config.Templates.CaptchaTemplateHeaders)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(html))
+}
+
+func (s *Server) handleLiveness(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	if s.bouncer == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if !s.bouncer.IsReady() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {

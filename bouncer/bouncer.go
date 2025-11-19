@@ -34,6 +34,7 @@ type DecisionCache interface {
 	Sync(ctx context.Context) error
 	Size() int
 	GetOriginCounts() map[string]int
+	IsReady() bool
 }
 
 //go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
@@ -128,6 +129,13 @@ func (b *Bouncer) Metrics(ctx context.Context) error {
 		return nil
 	}
 	return b.MetricsService.Run(ctx, b.config.Bouncer.MetricsInterval)
+}
+
+func (b *Bouncer) IsReady() bool {
+	if b.DecisionCache == nil {
+		return false
+	}
+	return b.DecisionCache.IsReady()
 }
 
 func (b *Bouncer) incRemediationMetric(name, remediationType string) {
