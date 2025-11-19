@@ -45,6 +45,20 @@ spec:
               containerPort: {{ .Values.config.server.httpPort }}
               protocol: TCP
             {{- end }}
+          livenessProbe:
+            grpc:
+              port: {{ .Values.config.server.grpcPort }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            grpc:
+              port: {{ .Values.config.server.grpcPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           env:
           {{- with .Values.config }}
             {{- if and .bouncer.apiKeySecretRef .bouncer.apiKeySecretRef.name .bouncer.apiKeySecretRef.key }}
