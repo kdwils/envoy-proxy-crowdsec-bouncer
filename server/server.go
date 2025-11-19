@@ -22,6 +22,8 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -34,9 +36,13 @@ type Server struct {
 	templateStore TemplateStore
 	now           func() time.Time
 	rateLimiter   *RateLimiter
+	healthServer  *health.Server
 }
 
 func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateStore TemplateStore, logger *slog.Logger) *Server {
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+
 	return &Server{
 		config:        config,
 		bouncer:       bouncer,
@@ -45,6 +51,7 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateS
 		templateStore: templateStore,
 		now:           time.Now,
 		rateLimiter:   NewRateLimiter(10, 20),
+		healthServer:  healthServer,
 	}
 }
 
@@ -100,7 +107,10 @@ func (s *Server) serveGRPC(ctx context.Context, port int) error {
 		grpc.UnaryInterceptor(s.loggerInterceptor),
 	)
 	auth.RegisterAuthorizationServer(grpcServer, s)
+	grpc_health_v1.RegisterHealthServer(grpcServer, s.healthServer)
 	reflection.Register(grpcServer)
+
+	go s.updateHealthStatus(ctx)
 
 	go func() {
 		<-ctx.Done()
@@ -125,16 +135,8 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) serveHTTP(ctx context.Context, port int) error {
 	r := mux.NewRouter()
-
-	r.HandleFunc("/healthz", s.handleLiveness).Methods("GET")
-	r.HandleFunc("/readyz", s.handleReadiness).Methods("GET")
-
-	captchaRouter := r.PathPrefix("/captcha").Subrouter()
-	captchaRouter.HandleFunc("/verify", s.handleCaptchaVerify).Methods("POST", "OPTIONS")
-	captchaRouter.HandleFunc("/challenge", s.handleCaptchaChallenge).Methods("GET")
-	captchaRouter.Use(func(next http.Handler) http.Handler {
-		return s.rateLimitMiddleware(next)
-	})
+	r.HandleFunc("/captcha/verify", s.handleCaptchaVerify).Methods("POST", "OPTIONS")
+	r.HandleFunc("/captcha/challenge", s.handleCaptchaChallenge).Methods("GET")
 
 	corsHandler := handlers.CORS(
 		handlers.AllowedOrigins([]string{"*"}),
@@ -142,7 +144,7 @@ func (s *Server) serveHTTP(ctx context.Context, port int) error {
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 	)(r)
 
-	rateLimitedHandler := corsHandler
+	rateLimitedHandler := s.rateLimitMiddleware(corsHandler)
 
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
@@ -294,22 +296,32 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 	w.Write([]byte(html))
 }
 
-func (s *Server) handleLiveness(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
+func (s *Server) updateHealthStatus(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+			return
+		case <-ticker.C:
+			if !s.isReady() {
+				continue
+			}
+
+			s.healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+			return
+		}
+	}
 }
 
-func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
+func (s *Server) isReady() bool {
 	if s.bouncer == nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return false
 	}
 
-	if !s.bouncer.IsReady() {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+	return s.bouncer.IsReady()
 }
 
 func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
@@ -322,6 +334,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil, nil))
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, body, headers), nil
 	}
+
 	result := s.bouncer.Check(ctx, req)
 	s.logger.Info("remediation result", slog.Any("result", result))
 	switch result.Action {
