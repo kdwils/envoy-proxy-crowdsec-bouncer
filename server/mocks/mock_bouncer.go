@@ -71,6 +71,20 @@ func (mr *MockBouncerMockRecorder) ExtractRealIPFromHTTP(r any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExtractRealIPFromHTTP", reflect.TypeOf((*MockBouncer)(nil).ExtractRealIPFromHTTP), r)
 }
 
+// IsReady mocks base method.
+func (m *MockBouncer) IsReady() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsReady")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsReady indicates an expected call of IsReady.
+func (mr *MockBouncerMockRecorder) IsReady() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsReady", reflect.TypeOf((*MockBouncer)(nil).IsReady))
+}
+
 // Metrics mocks base method.
 func (m *MockBouncer) Metrics(ctx context.Context) error {
 	m.ctrl.T.Helper()

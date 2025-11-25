@@ -70,6 +70,20 @@ func (mr *MockDecisionCacheMockRecorder) GetOriginCounts() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOriginCounts", reflect.TypeOf((*MockDecisionCache)(nil).GetOriginCounts))
 }
 
+// IsReady mocks base method.
+func (m *MockDecisionCache) IsReady() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsReady")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsReady indicates an expected call of IsReady.
+func (mr *MockDecisionCacheMockRecorder) IsReady() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsReady", reflect.TypeOf((*MockDecisionCache)(nil).IsReady))
+}
+
 // Size mocks base method.
 func (m *MockDecisionCache) Size() int {
 	m.ctrl.T.Helper()

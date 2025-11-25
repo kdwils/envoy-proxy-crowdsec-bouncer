@@ -15,6 +15,7 @@ type Bouncer interface {
 	Sync(ctx context.Context) error
 	Metrics(ctx context.Context) error
 	ExtractRealIPFromHTTP(r *http.Request) string
+	IsReady() bool
 }
 
 //go:generate mockgen -destination=mocks/mock_template_store.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/server TemplateStore
