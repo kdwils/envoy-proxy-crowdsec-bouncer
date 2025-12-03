@@ -5,7 +5,7 @@ go 1.25.2
 require (
 	github.com/crowdsecurity/crowdsec v1.7.3
 	github.com/crowdsecurity/go-cs-bouncer v0.0.19
-	github.com/crowdsecurity/go-cs-lib v0.0.23
+	github.com/crowdsecurity/go-cs-lib v0.0.24
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/handlers v1.5.2
