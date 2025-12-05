@@ -192,3 +192,63 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 		}
 	})
 }
+
+func TestHealthProbesWithDisabledBouncer(t *testing.T) {
+	v := viper.New()
+	v.Set("server.grpcPort", 8082)
+	v.Set("server.logLevel", "debug")
+	v.Set("bouncer.enabled", false)
+	v.Set("captcha.enabled", false)
+
+	config, err := config.New(v)
+	require.NoError(t, err)
+
+	level := logger.LevelFromString(config.Server.LogLevel)
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	slogger := slog.New(handler)
+
+	ctx := logger.WithContext(t.Context(), slogger)
+
+	bouncer, err := bouncer.New(config)
+	require.NoError(t, err)
+
+	templateStore, err := template.NewStore(template.Config{})
+	if err != nil {
+		log.Fatalf("failed to create template store: %v", err)
+	}
+
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, templateStore, slogger)
+
+	go func() {
+		err := server.ServeDual(ctx)
+		if err != nil && err != context.Canceled {
+			log.Fatalf("failed to start server: %v", err)
+		}
+	}()
+
+	time.Sleep(2 * time.Second)
+
+	conn, err := grpc.NewClient("localhost:8082", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("failed to dial grpc: %v", err)
+	}
+	defer conn.Close()
+
+	healthClient := grpc_health_v1.NewHealthClient(conn)
+
+	t.Run("Liveness returns serving when bouncer disabled", func(t *testing.T) {
+		resp, err := healthClient.Check(context.TODO(), &grpc_health_v1.HealthCheckRequest{
+			Service: "liveness",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+	})
+
+	t.Run("Readiness returns serving immediately when bouncer disabled", func(t *testing.T) {
+		resp, err := healthClient.Check(context.TODO(), &grpc_health_v1.HealthCheckRequest{
+			Service: "readiness",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+	})
+}

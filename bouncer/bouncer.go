@@ -132,6 +132,9 @@ func (b *Bouncer) Metrics(ctx context.Context) error {
 }
 
 func (b *Bouncer) IsReady() bool {
+	if !b.config.Bouncer.Enabled {
+		return true
+	}
 	if b.DecisionCache == nil {
 		return false
 	}
