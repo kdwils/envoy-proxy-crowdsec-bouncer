@@ -273,6 +273,53 @@
         "podSecurityContext": {
             "type": "object"
         },
+        "probes": {
+            "type": "object",
+            "properties": {
+                "liveness": {
+                    "type": "object",
+                    "properties": {
+                        "failureThreshold": {
+                            "default": 3,
+                            "type": "integer"
+                        },
+                        "initialDelaySeconds": {
+                            "default": 10,
+                            "type": "integer"
+                        },
+                        "periodSeconds": {
+                            "default": 5,
+                            "type": "integer"
+                        },
+                        "timeoutSeconds": {
+                            "default": 5,
+                            "type": "integer"
+                        }
+                    }
+                },
+                "readiness": {
+                    "type": "object",
+                    "properties": {
+                        "failureThreshold": {
+                            "default": 3,
+                            "type": "integer"
+                        },
+                        "initialDelaySeconds": {
+                            "default": 5,
+                            "type": "integer"
+                        },
+                        "periodSeconds": {
+                            "default": 5,
+                            "type": "integer"
+                        },
+                        "timeoutSeconds": {
+                            "default": 3,
+                            "type": "integer"
+                        }
+                    }
+                }
+            }
+        },
         "referenceGrant": {
             "type": "object",
             "properties": {
