@@ -60,10 +60,12 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | imagePullSecrets | list | `[]` |  |
 | nameOverride | string | `""` |  |
 | podSecurityContext | object | `{}` |  |
+| probes.liveness.enabled | bool | `true` |  |
 | probes.liveness.failureThreshold | int | `3` |  |
-| probes.liveness.initialDelaySeconds | int | `10` |  |
+| probes.liveness.initialDelaySeconds | int | `5` |  |
 | probes.liveness.periodSeconds | int | `5` |  |
 | probes.liveness.timeoutSeconds | int | `5` |  |
+| probes.readiness.enabled | bool | `true` |  |
 | probes.readiness.failureThreshold | int | `3` |  |
 | probes.readiness.initialDelaySeconds | int | `5` |  |
 | probes.readiness.periodSeconds | int | `5` |  |

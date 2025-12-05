@@ -279,12 +279,16 @@
                 "liveness": {
                     "type": "object",
                     "properties": {
+                        "enabled": {
+                            "default": true,
+                            "type": "boolean"
+                        },
                         "failureThreshold": {
                             "default": 3,
                             "type": "integer"
                         },
                         "initialDelaySeconds": {
-                            "default": 10,
+                            "default": 5,
                             "type": "integer"
                         },
                         "periodSeconds": {
@@ -300,6 +304,10 @@
                 "readiness": {
                     "type": "object",
                     "properties": {
+                        "enabled": {
+                            "default": true,
+                            "type": "boolean"
+                        },
                         "failureThreshold": {
                             "default": 3,
                             "type": "integer"
@@ -313,7 +321,7 @@
                             "type": "integer"
                         },
                         "timeoutSeconds": {
-                            "default": 3,
+                            "default": 5,
                             "type": "integer"
                         }
                     }

@@ -88,14 +88,16 @@ config:
 
 probes:
   liveness:
-    initialDelaySeconds: 10 # @schema default: 10
+    enabled: true # @schema default: true
+    initialDelaySeconds: 5 # @schema default: 5
     periodSeconds: 5 # @schema default: 5
     timeoutSeconds: 5 # @schema default: 5
     failureThreshold: 3 # @schema default: 3
   readiness:
+    enabled: true # @schema default: true
     initialDelaySeconds: 5 # @schema default: 5
     periodSeconds: 5 # @schema default: 5
-    timeoutSeconds: 5 # @schema default: 3
+    timeoutSeconds: 5 # @schema default: 5
     failureThreshold: 3 # @schema default: 3
 
 autoscaling:
