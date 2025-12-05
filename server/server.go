@@ -27,6 +27,11 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+const (
+	healthCheckServiceLiveness  = "liveness"
+	healthCheckServiceReadiness = "readiness"
+)
+
 type Server struct {
 	auth.UnimplementedAuthorizationServer
 	bouncer       Bouncer
@@ -41,7 +46,8 @@ type Server struct {
 
 func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateStore TemplateStore, logger *slog.Logger) *Server {
 	healthServer := health.NewServer()
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	healthServer.SetServingStatus(healthCheckServiceLiveness, grpc_health_v1.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(healthCheckServiceReadiness, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 
 	return &Server{
 		config:        config,
@@ -297,21 +303,18 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) updateHealthStatus(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 			return
 		case <-ticker.C:
-			if !s.isReady() {
-				continue
+			if s.isReady() {
+				s.healthServer.SetServingStatus(healthCheckServiceReadiness, grpc_health_v1.HealthCheckResponse_SERVING)
+				return
 			}
-
-			s.healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-			return
 		}
 	}
 }
