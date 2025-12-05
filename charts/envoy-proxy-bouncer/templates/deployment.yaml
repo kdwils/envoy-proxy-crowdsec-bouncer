@@ -45,6 +45,26 @@ spec:
               containerPort: {{ .Values.config.server.httpPort }}
               protocol: TCP
             {{- end }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            grpc:
+              port: {{ .Values.config.server.grpcPort }}
+              service: liveness
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            grpc:
+              port: {{ .Values.config.server.grpcPort }}
+              service: readiness
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          {{- end }}
           env:
           {{- with .Values.config }}
             {{- if and .bouncer.apiKeySecretRef .bouncer.apiKeySecretRef.name .bouncer.apiKeySecretRef.key }}

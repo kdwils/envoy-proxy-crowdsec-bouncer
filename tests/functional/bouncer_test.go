@@ -77,12 +77,7 @@ func createHttpRequest(method, path, authority string, extraHeaders map[string]s
 }
 
 func TestBouncer(t *testing.T) {
-	images := []string{
-		"crowdsecurity/crowdsec:v1.7.0",
-		"crowdsecurity/crowdsec:v1.7.2",
-		"crowdsecurity/crowdsec:v1.7.3",
-	}
-	for _, image := range images {
+	for _, image := range CrowdsecImages {
 		t.Run(image, func(t *testing.T) {
 			testBouncerWithVersion(t, image)
 		})
@@ -404,12 +399,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 }
 
 func TestBouncerWithCaptcha(t *testing.T) {
-	images := []string{
-		"crowdsecurity/crowdsec:v1.7.0",
-		"crowdsecurity/crowdsec:v1.7.2",
-		"crowdsecurity/crowdsec:v1.7.3",
-	}
-	for _, image := range images {
+	for _, image := range CrowdsecImages {
 		t.Run(image, func(t *testing.T) {
 			testBouncerWithCaptchaVersion(t, image)
 		})

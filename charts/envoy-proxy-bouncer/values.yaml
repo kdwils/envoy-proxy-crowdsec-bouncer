@@ -86,6 +86,20 @@ config:
     captchaTemplatePath: "" # @schema default: ""
     captchaTemplateHeaders: "" # @schema default: ""
 
+probes:
+  liveness:
+    enabled: true # @schema default: true
+    initialDelaySeconds: 5 # @schema default: 5
+    periodSeconds: 5 # @schema default: 5
+    timeoutSeconds: 5 # @schema default: 5
+    failureThreshold: 3 # @schema default: 3
+  readiness:
+    enabled: true # @schema default: true
+    initialDelaySeconds: 5 # @schema default: 5
+    periodSeconds: 5 # @schema default: 5
+    timeoutSeconds: 5 # @schema default: 5
+    failureThreshold: 3 # @schema default: 3
+
 autoscaling:
   enabled: false # @schema default: false
   minReplicas: 1 # @schema default: 1

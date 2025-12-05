@@ -1875,3 +1875,74 @@ func Test_parseCookies(t *testing.T) {
 		})
 	}
 }
+
+func TestBouncer_IsReady(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	t.Run("returns true when bouncer is disabled", func(t *testing.T) {
+		cfg := config.Config{
+			Bouncer: config.Bouncer{
+				Enabled: false,
+			},
+		}
+		b := &Bouncer{
+			DecisionCache: nil,
+			config:        cfg,
+		}
+
+		got := b.IsReady()
+		assert.True(t, got, "expected IsReady to return true when bouncer is disabled")
+	})
+
+	t.Run("returns false when bouncer enabled but cache is nil", func(t *testing.T) {
+		cfg := config.Config{
+			Bouncer: config.Bouncer{
+				Enabled: true,
+			},
+		}
+		b := &Bouncer{
+			DecisionCache: nil,
+			config:        cfg,
+		}
+
+		got := b.IsReady()
+		assert.False(t, got, "expected IsReady to return false when cache is nil")
+	})
+
+	t.Run("returns false when cache not synced", func(t *testing.T) {
+		mockCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockCache.EXPECT().IsReady().Return(false)
+
+		cfg := config.Config{
+			Bouncer: config.Bouncer{
+				Enabled: true,
+			},
+		}
+		b := &Bouncer{
+			DecisionCache: mockCache,
+			config:        cfg,
+		}
+
+		got := b.IsReady()
+		assert.False(t, got, "expected IsReady to return false when cache not synced")
+	})
+
+	t.Run("returns true when cache synced", func(t *testing.T) {
+		mockCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockCache.EXPECT().IsReady().Return(true)
+
+		cfg := config.Config{
+			Bouncer: config.Bouncer{
+				Enabled: true,
+			},
+		}
+		b := &Bouncer{
+			DecisionCache: mockCache,
+			config:        cfg,
+		}
+
+		got := b.IsReady()
+		assert.True(t, got, "expected IsReady to return true when cache synced")
+	})
+}
