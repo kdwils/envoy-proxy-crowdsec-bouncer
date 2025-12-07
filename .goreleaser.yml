@@ -67,6 +67,6 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    This release includes go package bumps and additional tests for crowdsec versions v1.7.0, v1.7.2, and v1.7.3 to ensure compatability.
+    This release includes liveness and readiness grpc services that can be used as Kubernetes probes.
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
