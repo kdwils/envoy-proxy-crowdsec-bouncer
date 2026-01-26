@@ -3,7 +3,7 @@ module github.com/kdwils/envoy-proxy-bouncer
 go 1.25.2
 
 require (
-	github.com/crowdsecurity/crowdsec v1.7.4
+	github.com/crowdsecurity/crowdsec v1.7.6
 	github.com/crowdsecurity/go-cs-bouncer v0.0.20
 	github.com/crowdsecurity/go-cs-lib v0.0.24
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
@@ -122,6 +122,5 @@ require (
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
