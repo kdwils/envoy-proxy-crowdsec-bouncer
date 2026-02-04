@@ -229,6 +229,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	v.Set("captcha.signingKey", "test-signing-key-for-jwt-sessions")
 	v.Set("captcha.callbackURL", "http://localhost")
 	v.Set("captcha.cookieDomain", "")
+	v.Set("captcha.cookieName", "session")
 	v.Set("captcha.secureCookie", false)
 	v.Set("captcha.challengeDuration", "5m")
 	v.Set("captcha.sessionDuration", "1h")
