@@ -18,6 +18,18 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
   - Google reCAPTCHA v2
   - Cloudflare Turnstile
 
+## Supported CrowdSec Versions
+
+The following CrowdSec versions have been tested. Other versions may work but have not been validated.
+
+| CrowdSec Version | Status |
+|------------------|--------|
+| v1.7.0           | ✅ |
+| v1.7.2           | ✅ |
+| v1.7.3           | ✅ |
+| v1.7.4           | ✅ |
+| v1.7.6           | ✅ |
+
 ## How It Works
 
 The bouncer integrates with Envoy Proxy as an external authorization service, sitting between Envoy and your backend applications. It evaluates every request through a multi-stage security pipeline:
