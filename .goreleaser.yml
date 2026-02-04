@@ -69,13 +69,15 @@ release:
   header: |
     ## ⚠️ Breaking Changes
 
-    This release contains breaking changes to the CAPTCHA API. If you use custom CAPTCHA templates or integrate with the CAPTCHA verification endpoints, you must update your configuration.
+    This release contains breaking changes to the CAPTCHA API. If you use custom CAPTCHA HTML templates or integrate with the CAPTCHA verification endpoints, you must update your configuration.
+    If custom HTMLtemplates or CAPTCHA verification endpoints are not used, no action is required.
 
     **Key changes:**
     - Query parameter renamed from `session` to `challengeToken`
     - Form fields standardized: `session` → `challengeToken`, provider-specific response fields → `captchaResponse`
     - Cookie name changed from `captcha_verified` to `session`
     - Template variable `SessionID` renamed to `ChallengeToken`
+    - Updated Crowdsec version v1.7.6
 
     See the [v0.5.0 Breaking Changes](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/breaking-changes/v0.5.0.md) documentation for migration instructions.
   footer: |
