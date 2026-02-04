@@ -184,7 +184,7 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 	}
 
 	challengeCache := cache.New[ChallengeClaims](
-		cache.WithCleanup[ChallengeClaims](time.Minute, func(key string, value ChallengeClaims) bool {
+		cache.WithCleanup(time.Minute, func(key string, value ChallengeClaims) bool {
 			return value.ExpiresAt.Time.Before(time.Now())
 		}),
 	)
@@ -242,7 +242,7 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken,
 	if !s.jwt.VerifyIPHash(claims, ip) {
 		return &VerificationResult{
 			Success: false,
-			Message: "IP mismatch",
+			Message: "",
 		}, fmt.Errorf("challenge IP mismatch")
 	}
 

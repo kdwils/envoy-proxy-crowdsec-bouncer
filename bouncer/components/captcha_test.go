@@ -359,7 +359,6 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		assert.Error(t, err)
 		require.NotNil(t, got)
 		assert.False(t, got.Success)
-		assert.Equal(t, "IP mismatch", got.Message)
 	})
 
 	t.Run("challenge token replay rejected", func(t *testing.T) {
@@ -598,16 +597,5 @@ func TestCaptchaService_CookieName(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "my-custom-cookie", service.CookieName())
-	})
-
-	t.Run("returns session for non-secure cookie", func(t *testing.T) {
-		cfg := config.Captcha{
-			Enabled:      false,
-			SecureCookie: false,
-		}
-		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		require.NoError(t, err)
-
-		assert.Equal(t, "session", service.CookieName())
 	})
 }

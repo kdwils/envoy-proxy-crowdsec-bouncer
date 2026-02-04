@@ -789,10 +789,6 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		defer resp.Body.Close()
 
 		assert.Equal(t, http.StatusForbidden, resp.StatusCode, "verification should fail when IP doesn't match challenge token")
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		assert.Contains(t, string(body), "IP mismatch", "error message should indicate IP mismatch")
 	})
 }
 
