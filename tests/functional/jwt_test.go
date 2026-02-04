@@ -228,7 +228,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	v.Set("captcha.secretKey", "test-secret-key")
 	v.Set("captcha.signingKey", "test-signing-key-for-jwt-sessions")
 	v.Set("captcha.callbackURL", "http://localhost")
-	v.Set("captcha.cookieDomain", ".kyledev.co")
+	v.Set("captcha.cookieDomain", "")
 	v.Set("captcha.secureCookie", false)
 	v.Set("captcha.challengeDuration", "5m")
 	v.Set("captcha.sessionDuration", "1h")
@@ -332,7 +332,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		form.Add("challengeToken", challengeToken)
 		form.Add("captchaResponse", "success")
 
-		verifyURL := "http://127.0.0.1:8081/captcha/verify"
+		verifyURL := "http://localhost:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -456,7 +456,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		form.Add("challengeToken", challengeToken)
 		form.Add("captchaResponse", "success")
 
-		verifyURL := "http://127.0.0.1:8081/captcha/verify"
+		verifyURL := "http://localhost:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -592,7 +592,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		form.Add("challengeToken", challengeToken)
 		form.Add("captchaResponse", "success")
 
-		verifyURL := "http://127.0.0.1:8081/captcha/verify"
+		verifyURL := "http://localhost:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -772,7 +772,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		form.Add("challengeToken", challengeToken)
 		form.Add("captchaResponse", "success")
 
-		verifyURL := "http://127.0.0.1:8081/captcha/verify"
+		verifyURL := "http://localhost:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
