@@ -67,6 +67,16 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    This release includes package upgrades to all go packages, including crowdsec to version 1.7.4.
+    ## ⚠️ Breaking Changes
+
+    This release contains breaking changes to the CAPTCHA API. If you use custom CAPTCHA templates or integrate with the CAPTCHA verification endpoints, you must update your configuration.
+
+    **Key changes:**
+    - Query parameter renamed from `session` to `challengeToken`
+    - Form fields standardized: `session` → `challengeToken`, provider-specific response fields → `captchaResponse`
+    - Cookie name changed from `captcha_verified` to `session`
+    - Template variable `SessionID` renamed to `ChallengeToken`
+
+    See the [v0.5.0 Breaking Changes](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/breaking-changes/v0.5.0.md) documentation for migration instructions.
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}

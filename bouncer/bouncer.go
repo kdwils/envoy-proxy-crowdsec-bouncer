@@ -40,10 +40,12 @@ type DecisionCache interface {
 //go:generate mockgen -destination=mocks/mock_captcha_service.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer CaptchaService
 type CaptchaService interface {
 	IsEnabled() bool
-	RequiresCaptcha(ip, verificationToken string) bool
-	CreateSession(ip, originalURL, verificationToken string) (*components.CaptchaSession, error)
-	GetSession(sessionID string) (*components.CaptchaSession, bool)
-	VerifyResponse(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error)
+	RequiresCaptcha(sessionToken string) bool
+	CreateSession(ip, originalURL, sessionToken string) (*components.CaptchaSession, error)
+	GetSession(challengeToken string) (*components.CaptchaSession, bool)
+	VerifyResponse(ctx context.Context, ip, challengeToken, challengeResponse string) (*components.VerificationResult, error)
+	CookieName() string
+	StartCleanup(ctx context.Context)
 }
 
 func ptr[T any](v T) *T {
@@ -400,10 +402,11 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	logger.Debug("running captcha")
 	originalURL := parsed.URL.String()
 
-	verificationToken := parsed.Cookies["captcha_verified"]
+	sessionToken := parsed.Cookies[b.CaptchaService.CookieName()]
 
-	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, verificationToken)
+	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, sessionToken)
 	if err != nil {
+		logger.Debug("error creating session", "error", err)
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 	if session == nil {

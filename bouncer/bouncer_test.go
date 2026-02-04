@@ -1573,6 +1573,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().CookieName().Return("session")
 		mc.EXPECT().CreateSession("12.12.12.12", "https://example.com/test", "").Return(nil, nil)
 
 		got := r.Check(context.Background(), req)
@@ -1601,6 +1602,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().CookieName().Return("session")
 		mc.EXPECT().CreateSession("13.13.13.13", "https://example.com/test", "").Return(nil, fmt.Errorf("session creation failed"))
 
 		got := r.Check(context.Background(), req)
@@ -1629,6 +1631,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "14.14.14.14").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().CookieName().Return("session")
 		mc.EXPECT().CreateSession("14.14.14.14", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123",
 		}, nil)
@@ -1672,6 +1675,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: ptr("captcha")}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().CookieName().Return("session")
 		mc.EXPECT().CreateSession("15.15.15.15", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
 		}, nil)
@@ -1769,6 +1773,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(nil, nil)
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().CookieName().Return("session")
 		mc.EXPECT().CreateSession("1.2.3.4", "https://example.com/test", "").Return(&components.CaptchaSession{
 			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=session123",
 		}, nil)

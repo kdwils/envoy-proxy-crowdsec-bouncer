@@ -41,34 +41,48 @@ func (m *MockCaptchaService) EXPECT() *MockCaptchaServiceMockRecorder {
 	return m.recorder
 }
 
-// CreateSession mocks base method.
-func (m *MockCaptchaService) CreateSession(ip, originalURL, verificationToken string) (*components.CaptchaSession, error) {
+// CookieName mocks base method.
+func (m *MockCaptchaService) CookieName() string {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateSession", ip, originalURL, verificationToken)
+	ret := m.ctrl.Call(m, "CookieName")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// CookieName indicates an expected call of CookieName.
+func (mr *MockCaptchaServiceMockRecorder) CookieName() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CookieName", reflect.TypeOf((*MockCaptchaService)(nil).CookieName))
+}
+
+// CreateSession mocks base method.
+func (m *MockCaptchaService) CreateSession(ip, originalURL, sessionToken string) (*components.CaptchaSession, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSession", ip, originalURL, sessionToken)
 	ret0, _ := ret[0].(*components.CaptchaSession)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateSession indicates an expected call of CreateSession.
-func (mr *MockCaptchaServiceMockRecorder) CreateSession(ip, originalURL, verificationToken any) *gomock.Call {
+func (mr *MockCaptchaServiceMockRecorder) CreateSession(ip, originalURL, sessionToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSession", reflect.TypeOf((*MockCaptchaService)(nil).CreateSession), ip, originalURL, verificationToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSession", reflect.TypeOf((*MockCaptchaService)(nil).CreateSession), ip, originalURL, sessionToken)
 }
 
 // GetSession mocks base method.
-func (m *MockCaptchaService) GetSession(sessionID string) (*components.CaptchaSession, bool) {
+func (m *MockCaptchaService) GetSession(challengeToken string) (*components.CaptchaSession, bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSession", sessionID)
+	ret := m.ctrl.Call(m, "GetSession", challengeToken)
 	ret0, _ := ret[0].(*components.CaptchaSession)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
 
 // GetSession indicates an expected call of GetSession.
-func (mr *MockCaptchaServiceMockRecorder) GetSession(sessionID any) *gomock.Call {
+func (mr *MockCaptchaServiceMockRecorder) GetSession(challengeToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSession", reflect.TypeOf((*MockCaptchaService)(nil).GetSession), sessionID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSession", reflect.TypeOf((*MockCaptchaService)(nil).GetSession), challengeToken)
 }
 
 // IsEnabled mocks base method.
@@ -86,30 +100,42 @@ func (mr *MockCaptchaServiceMockRecorder) IsEnabled() *gomock.Call {
 }
 
 // RequiresCaptcha mocks base method.
-func (m *MockCaptchaService) RequiresCaptcha(ip, verificationToken string) bool {
+func (m *MockCaptchaService) RequiresCaptcha(sessionToken string) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequiresCaptcha", ip, verificationToken)
+	ret := m.ctrl.Call(m, "RequiresCaptcha", sessionToken)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // RequiresCaptcha indicates an expected call of RequiresCaptcha.
-func (mr *MockCaptchaServiceMockRecorder) RequiresCaptcha(ip, verificationToken any) *gomock.Call {
+func (mr *MockCaptchaServiceMockRecorder) RequiresCaptcha(sessionToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequiresCaptcha", reflect.TypeOf((*MockCaptchaService)(nil).RequiresCaptcha), ip, verificationToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequiresCaptcha", reflect.TypeOf((*MockCaptchaService)(nil).RequiresCaptcha), sessionToken)
+}
+
+// StartCleanup mocks base method.
+func (m *MockCaptchaService) StartCleanup(ctx context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "StartCleanup", ctx)
+}
+
+// StartCleanup indicates an expected call of StartCleanup.
+func (mr *MockCaptchaServiceMockRecorder) StartCleanup(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartCleanup", reflect.TypeOf((*MockCaptchaService)(nil).StartCleanup), ctx)
 }
 
 // VerifyResponse mocks base method.
-func (m *MockCaptchaService) VerifyResponse(ctx context.Context, sessionID string, req components.VerificationRequest) (*components.VerificationResult, error) {
+func (m *MockCaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken, challengeResponse string) (*components.VerificationResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "VerifyResponse", ctx, sessionID, req)
+	ret := m.ctrl.Call(m, "VerifyResponse", ctx, ip, challengeToken, challengeResponse)
 	ret0, _ := ret[0].(*components.VerificationResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // VerifyResponse indicates an expected call of VerifyResponse.
-func (mr *MockCaptchaServiceMockRecorder) VerifyResponse(ctx, sessionID, req any) *gomock.Call {
+func (mr *MockCaptchaServiceMockRecorder) VerifyResponse(ctx, ip, challengeToken, challengeResponse any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VerifyResponse", reflect.TypeOf((*MockCaptchaService)(nil).VerifyResponse), ctx, sessionID, req)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VerifyResponse", reflect.TypeOf((*MockCaptchaService)(nil).VerifyResponse), ctx, ip, challengeToken, challengeResponse)
 }
