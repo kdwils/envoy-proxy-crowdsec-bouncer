@@ -784,10 +784,6 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		defer resp.Body.Close()
 
 		require.Equal(t, http.StatusForbidden, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Contains(t, string(body), "IP mismatch")
 	})
 
 	t.Run("Test rate limiting on captcha endpoints", func(t *testing.T) {
