@@ -20,7 +20,7 @@ A lightweight [CrowdSec](https://www.crowdsec.net/) bouncer for [Envoy Proxy](ht
 
 ## Supported CrowdSec Versions
 
-The following CrowdSec versions have been tested
+The following CrowdSec versions have been tested. Other versions may work but have not been validated.
 
 | CrowdSec Version | Status |
 |------------------|--------|
@@ -29,8 +29,6 @@ The following CrowdSec versions have been tested
 | v1.7.3           | ✅ |
 | v1.7.4           | ✅ |
 | v1.7.6           | ✅ |
-
-Other versions may work but have not been validated through automated testing.
 
 ## How It Works
 
