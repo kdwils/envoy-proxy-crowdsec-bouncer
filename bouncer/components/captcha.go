@@ -333,13 +333,7 @@ func (s *CaptchaService) StartCleanup(ctx context.Context) {
 }
 
 func (s *CaptchaService) CookieName() string {
-	if s.Config.CookieName != "" {
-		return s.Config.CookieName
-	}
-	if s.Config.SecureCookie {
-		return "__Host-session"
-	}
-	return "session"
+	return s.Config.CookieName
 }
 
 func (s *CaptchaService) CreateSession(ip, originalURL, sessionToken string) (*CaptchaSession, error) {

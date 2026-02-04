@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -231,11 +230,6 @@ func (s *Server) buildSessionCookie(name, value string) *http.Cookie {
 		Path:     "/",
 		HttpOnly: true,
 		MaxAge:   int(s.config.Captcha.SessionDuration.Seconds()),
-	}
-
-	if strings.HasPrefix(name, "__Host-") {
-		cookie.Secure = true
-		return cookie
 	}
 
 	cookie.Secure = s.config.Captcha.SecureCookie

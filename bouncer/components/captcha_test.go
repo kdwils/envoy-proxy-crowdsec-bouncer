@@ -600,17 +600,6 @@ func TestCaptchaService_CookieName(t *testing.T) {
 		assert.Equal(t, "my-custom-cookie", service.CookieName())
 	})
 
-	t.Run("returns __Host-session for secure cookie", func(t *testing.T) {
-		cfg := config.Captcha{
-			Enabled:      false,
-			SecureCookie: true,
-		}
-		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		require.NoError(t, err)
-
-		assert.Equal(t, "__Host-session", service.CookieName())
-	})
-
 	t.Run("returns session for non-secure cookie", func(t *testing.T) {
 		cfg := config.Captcha{
 			Enabled:      false,
