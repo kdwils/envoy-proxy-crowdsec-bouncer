@@ -87,6 +87,10 @@
                             "default": "",
                             "type": "string"
                         },
+                        "cookieName": {
+                            "default": "",
+                            "type": "string"
+                        },
                         "enabled": {
                             "default": false,
                             "type": "boolean"

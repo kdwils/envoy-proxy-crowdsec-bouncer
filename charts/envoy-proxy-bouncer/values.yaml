@@ -78,6 +78,7 @@ config:
     sessionDuration: "15m" # @schema default: "15m"
     callbackURL: "" # @schema default: ""
     cookieDomain: "" # @schema default: ""
+    cookieName: "" # @schema default: ""
     secureCookie: true # @schema default: true
 
   templates:
