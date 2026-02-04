@@ -16,7 +16,6 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
@@ -182,9 +181,15 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	challengeToken := r.FormValue("session")
+	challengeToken := r.FormValue("challengeToken")
 	if challengeToken == "" {
-		http.Error(w, "session id is required", http.StatusBadRequest)
+		http.Error(w, "challenge token is required", http.StatusBadRequest)
+		return
+	}
+
+	captchaResponse := r.FormValue("captchaResponse")
+	if captchaResponse == "" {
+		http.Error(w, "captcha response is required", http.StatusBadRequest)
 		return
 	}
 
@@ -195,31 +200,14 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientIP := s.bouncer.ExtractRealIPFromHTTP(r)
-	if clientIP != session.IP {
-		s.logger.Warn("IP mismatch during captcha verification", "session_ip", session.IP, "client_ip", clientIP)
-		http.Error(w, "IP address mismatch", http.StatusForbidden)
-		return
-	}
 
-	var captchaResponse string
-	switch strings.ToLower(session.Provider) {
-	case "recaptcha":
-		captchaResponse = r.FormValue("g-recaptcha-response")
-	case "turnstile":
-		captchaResponse = r.FormValue("cf-turnstile-response")
-	}
-
-	if captchaResponse == "" {
-		http.Error(w, "captcha response is required", http.StatusBadRequest)
-		return
-	}
-
-	verificationResult, err := s.captcha.VerifyResponse(r.Context(), challengeToken, components.VerificationRequest{
-		Response: captchaResponse,
-		IP:       session.IP,
-	})
+	verificationResult, err := s.captcha.VerifyResponse(r.Context(), clientIP, challengeToken, captchaResponse)
 	if err != nil {
 		s.logger.Error("captcha verification error", "error", err)
+		if verificationResult != nil && !verificationResult.Success {
+			http.Error(w, verificationResult.Message, http.StatusForbidden)
+			return
+		}
 		http.Error(w, "Verification failed", http.StatusInternalServerError)
 		return
 	}
@@ -229,24 +217,37 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cookieName := s.captcha.CookieName()
+	cookie := s.buildSessionCookie(cookieName, verificationResult.Token)
+	http.SetCookie(w, cookie)
+
+	http.Redirect(w, r, session.OriginalURL, http.StatusFound)
+}
+
+func (s *Server) buildSessionCookie(name, value string) *http.Cookie {
+	cookie := &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   int(s.config.Captcha.SessionDuration.Seconds()),
+	}
+
+	if strings.HasPrefix(name, "__Host-") {
+		cookie.Secure = true
+		return cookie
+	}
+
+	cookie.Secure = s.config.Captcha.SecureCookie
+	cookie.Domain = s.config.Captcha.CookieDomain
+
 	sameSite := http.SameSiteLaxMode
 	if s.config.Captcha.SecureCookie {
 		sameSite = http.SameSiteNoneMode
 	}
+	cookie.SameSite = sameSite
 
-	cookie := &http.Cookie{
-		Name:     "captcha_verified",
-		Value:    verificationResult.Token,
-		Path:     "/",
-		Domain:   s.config.Captcha.CookieDomain,
-		HttpOnly: true,
-		Secure:   s.config.Captcha.SecureCookie,
-		SameSite: sameSite,
-		MaxAge:   int(s.config.Captcha.SessionDuration.Seconds()),
-	}
-	http.SetCookie(w, cookie)
-
-	http.Redirect(w, r, session.OriginalURL, http.StatusFound)
+	return cookie
 }
 
 func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) {
@@ -261,9 +262,9 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	sessionID := r.URL.Query().Get("session")
-	if sessionID == "" {
-		http.Error(w, "Missing session parameter", http.StatusBadRequest)
+	challengeToken := r.URL.Query().Get("challengeToken")
+	if challengeToken == "" {
+		http.Error(w, "Missing challengeToken parameter", http.StatusBadRequest)
 		return
 	}
 
@@ -272,7 +273,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	session, exists := s.captcha.GetSession(sessionID)
+	session, exists := s.captcha.GetSession(challengeToken)
 	if !exists {
 		http.Error(w, "Invalid or expired session", http.StatusForbidden)
 		return
@@ -283,11 +284,11 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 	}
 
 	data := template.CaptchaTemplateData{
-		Provider:    session.Provider,
-		SiteKey:     session.SiteKey,
-		CallbackURL: session.CallbackURL,
-		RedirectURL: session.RedirectURL,
-		SessionID:   session.ID,
+		Provider:       session.Provider,
+		SiteKey:        session.SiteKey,
+		CallbackURL:    session.CallbackURL,
+		RedirectURL:    session.RedirectURL,
+		ChallengeToken: session.ID,
 	}
 
 	html, err := s.templateStore.RenderCaptcha(data)

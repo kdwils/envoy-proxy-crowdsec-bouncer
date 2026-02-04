@@ -535,7 +535,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Failed to parse form")
 	})
 
-	t.Run("missing session parameter", func(t *testing.T) {
+	t.Run("missing challengeToken parameter", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -551,7 +551,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
 		form := url.Values{}
-		form.Add("g-recaptcha-response", "test-response")
+		form.Add("captchaResponse", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -560,10 +560,10 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		s.handleCaptchaVerify(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "session id is required")
+		assert.Contains(t, w.Body.String(), "challenge token is required")
 	})
 
-	t.Run("missing captcha response - recaptcha", func(t *testing.T) {
+	t.Run("missing captcha response", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -573,63 +573,13 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			},
 		}
 
-		session := &components.CaptchaSession{
-			IP:          "192.0.2.1",
-			Provider:    "recaptcha",
-			SiteKey:     "test-site-key",
-			CallbackURL: "http://example.com/captcha",
-			RedirectURL: "http://example.com/original",
-			ID:          "test-session",
-		}
-
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
-		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.0.2.1")
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
 		form := url.Values{}
-		form.Add("session", "test-session")
-
-		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		s.handleCaptchaVerify(w, req)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "captcha response is required")
-	})
-
-	t.Run("missing captcha response - turnstile", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		cfg := config.Config{
-			Captcha: config.Captcha{
-				Enabled: true,
-			},
-		}
-
-		session := &components.CaptchaSession{
-			IP:          "192.0.2.1",
-			Provider:    "turnstile",
-			SiteKey:     "test-site-key",
-			CallbackURL: "http://example.com/captcha",
-			RedirectURL: "http://example.com/original",
-			ID:          "test-session",
-		}
-
-		mockBouncer := mocks.NewMockBouncer(ctrl)
-		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetSession("test-session").Times(1).Return(session, true)
-		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.0.2.1")
-
-		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
-
-		form := url.Values{}
-		form.Add("session", "test-session")
+		form.Add("challengeToken", "test-challenge-token")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -653,13 +603,13 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetSession("invalid-session").Return(nil, false)
+		mockCaptcha.EXPECT().GetSession("invalid-challenge-token").Return(nil, false)
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
 		form := url.Values{}
-		form.Add("session", "invalid-session")
-		form.Add("g-recaptcha-response", "test-response")
+		form.Add("challengeToken", "invalid-challenge-token")
+		form.Add("captchaResponse", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -682,26 +632,22 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 
 		session := &components.CaptchaSession{
-			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			ID:          "test-session",
+			ID:          "test-challenge-token",
 			Provider:    "recaptcha",
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetSession("test-session").Return(session, true)
+		mockCaptcha.EXPECT().GetSession("test-challenge-token").Return(session, true)
 		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
-		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
-			Response: "test-response",
-			IP:       "192.168.1.1",
-		}).Return(nil, assert.AnError)
+		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(nil, assert.AnError)
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
 		form := url.Values{}
-		form.Add("session", "test-session")
-		form.Add("g-recaptcha-response", "test-response")
+		form.Add("challengeToken", "test-challenge-token")
+		form.Add("captchaResponse", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -724,9 +670,8 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 
 		session := &components.CaptchaSession{
-			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com",
-			ID:          "test-session",
+			ID:          "test-challenge-token",
 			Provider:    "recaptcha",
 		}
 
@@ -737,18 +682,15 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetSession("test-session").Return(session, true)
+		mockCaptcha.EXPECT().GetSession("test-challenge-token").Return(session, true)
 		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
-		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
-			Response: "test-response",
-			IP:       "192.168.1.1",
-		}).Return(verificationResult, nil)
+		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(verificationResult, nil)
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
 		form := url.Values{}
-		form.Add("session", "test-session")
-		form.Add("g-recaptcha-response", "test-response")
+		form.Add("challengeToken", "test-challenge-token")
+		form.Add("captchaResponse", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -758,44 +700,6 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Contains(t, w.Body.String(), "Verification failed")
-	})
-
-	t.Run("IP mismatch", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		cfg := config.Config{
-			Captcha: config.Captcha{
-				Enabled: true,
-			},
-		}
-
-		session := &components.CaptchaSession{
-			IP:          "192.168.1.1",
-			OriginalURL: "http://example.com/original",
-			ID:          "test-session",
-			Provider:    "recaptcha",
-		}
-
-		mockBouncer := mocks.NewMockBouncer(ctrl)
-		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetSession("valid-session").Return(session, true)
-		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("10.0.0.1")
-
-		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
-
-		form := url.Values{}
-		form.Add("session", "valid-session")
-		form.Add("g-recaptcha-response", "test-response")
-
-		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		s.handleCaptchaVerify(w, req)
-
-		assert.Equal(t, http.StatusForbidden, w.Code)
-		assert.Contains(t, w.Body.String(), "IP address mismatch")
 	})
 
 	t.Run("successful verification", func(t *testing.T) {
@@ -809,30 +713,28 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		}
 
 		session := &components.CaptchaSession{
-			IP:          "192.168.1.1",
 			OriginalURL: "http://example.com/original",
-			ID:          "test-session",
+			ID:          "test-challenge-token",
 			Provider:    "recaptcha",
 		}
 
 		verificationResult := &components.VerificationResult{
 			Success: true,
+			Token:   "session-jwt-token",
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		mockCaptcha.EXPECT().GetSession("test-session").Return(session, true)
+		mockCaptcha.EXPECT().GetSession("test-challenge-token").Return(session, true)
 		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
-		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "test-session", components.VerificationRequest{
-			Response: "test-response",
-			IP:       "192.168.1.1",
-		}).Return(verificationResult, nil)
+		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(verificationResult, nil)
+		mockCaptcha.EXPECT().CookieName().Return("session")
 
 		s := NewServer(cfg, mockBouncer, mockCaptcha, mocks.NewMockTemplateStore(ctrl), log)
 
 		form := url.Values{}
-		form.Add("session", "test-session")
-		form.Add("g-recaptcha-response", "test-response")
+		form.Add("challengeToken", "test-challenge-token")
+		form.Add("captchaResponse", "test-response")
 
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -842,6 +744,10 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		assert.Equal(t, http.StatusFound, w.Code)
 		assert.Equal(t, "http://example.com/original", w.Header().Get("Location"))
+		cookies := w.Result().Cookies()
+		require.Len(t, cookies, 1, "expected one cookie to be set")
+		assert.Equal(t, "session", cookies[0].Name)
+		assert.Equal(t, "session-jwt-token", cookies[0].Value)
 	})
 }
 
@@ -872,7 +778,7 @@ func TestServer_handleCaptchaChallenge(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Captcha not enabled")
 	})
 
-	t.Run("missing session parameter", func(t *testing.T) {
+	t.Run("missing challengeToken parameter", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -893,7 +799,7 @@ func TestServer_handleCaptchaChallenge(t *testing.T) {
 		s.handleCaptchaChallenge(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "Missing session parameter")
+		assert.Contains(t, w.Body.String(), "Missing challengeToken parameter")
 	})
 }
 

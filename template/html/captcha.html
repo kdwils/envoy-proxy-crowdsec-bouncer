@@ -77,7 +77,8 @@
 
         <form id="captcha-form" method="POST" action="{{.CallbackURL}}/verify">
             <div id="captcha-container"></div>
-            <input type="hidden" name="session" value="{{.SessionID}}" />
+            <input type="hidden" name="challengeToken" value="{{.ChallengeToken}}" />
+            <input type="hidden" name="captchaResponse" id="captcha-response" />
             <button type="submit" id="submit-btn" class="submit-btn" disabled>Verify</button>
             <div id="error-message" class="error" style="display: none;"></div>
         </form>
@@ -87,6 +88,7 @@
     <script src="https://www.google.com/recaptcha/api.js" defer></script>
     <script>
         function onCaptchaSuccess(token) {
+            document.getElementById('captcha-response').value = token;
             document.getElementById('submit-btn').disabled = false;
             document.getElementById('error-message').style.display = 'none';
         }
@@ -108,6 +110,7 @@
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
     <script>
         function onTurnstileSuccess(token) {
+            document.getElementById('captcha-response').value = token;
             document.getElementById('submit-btn').disabled = false;
             document.getElementById('error-message').style.display = 'none';
         }

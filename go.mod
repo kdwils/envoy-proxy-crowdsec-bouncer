@@ -8,6 +8,7 @@ require (
 	github.com/crowdsecurity/go-cs-lib v0.0.24
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
@@ -71,7 +72,6 @@ require (
 	github.com/goccy/go-yaml v1.19.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect

@@ -325,12 +325,12 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		locationURL, err := url.Parse(locationHeader)
 		require.NoError(t, err)
 
-		sessionID := locationURL.Query().Get("session")
-		require.NotEmpty(t, sessionID)
+		challengeToken := locationURL.Query().Get("challengeToken")
+		require.NotEmpty(t, challengeToken)
 
 		form := url.Values{}
-		form.Add("session", sessionID)
-		form.Add("g-recaptcha-response", "success")
+		form.Add("challengeToken", challengeToken)
+		form.Add("captchaResponse", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
@@ -350,7 +350,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		require.Equal(t, http.StatusFound, resp.StatusCode)
 
-		verificationCookie := getCookie(resp, "captcha_verified")
+		verificationCookie := getCookie(resp, "session")
 		require.NotNil(t, verificationCookie)
 		require.NotEmpty(t, verificationCookie.Value)
 
@@ -370,7 +370,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 							":path":      "/protected",
 							":authority": "my-host.com",
 							":scheme":    "http",
-							"cookie":     fmt.Sprintf("captcha_verified=%s", verificationCookie.Value),
+							"cookie":     fmt.Sprintf("session=%s", verificationCookie.Value),
 						},
 					},
 				},
@@ -450,11 +450,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		locationURL, err := url.Parse(locationHeader)
 		require.NoError(t, err)
 
-		sessionID := locationURL.Query().Get("session")
+		challengeToken := locationURL.Query().Get("challengeToken")
 
 		form := url.Values{}
-		form.Add("session", sessionID)
-		form.Add("g-recaptcha-response", "success")
+		form.Add("challengeToken", challengeToken)
+		form.Add("captchaResponse", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
@@ -472,7 +472,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		verificationCookie := getCookie(resp, "captcha_verified")
+		verificationCookie := getCookie(resp, "session")
 		require.NotNil(t, verificationCookie)
 
 		for i := range 5 {
@@ -492,7 +492,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 								":path":      "/protected",
 								":authority": "my-host.com",
 								":scheme":    "http",
-								"cookie":     fmt.Sprintf("captcha_verified=%s", verificationCookie.Value),
+								"cookie":     fmt.Sprintf("session=%s", verificationCookie.Value),
 							},
 						},
 					},
@@ -586,11 +586,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		locationURL, err := url.Parse(locationHeader)
 		require.NoError(t, err)
 
-		sessionID := locationURL.Query().Get("session")
+		challengeToken := locationURL.Query().Get("challengeToken")
 
 		form := url.Values{}
-		form.Add("session", sessionID)
-		form.Add("g-recaptcha-response", "success")
+		form.Add("challengeToken", challengeToken)
+		form.Add("captchaResponse", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
@@ -608,7 +608,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		verificationCookie := getCookie(resp, "captcha_verified")
+		verificationCookie := getCookie(resp, "session")
 		require.NotNil(t, verificationCookie)
 
 		reqWithCookie := &auth.CheckRequest{
@@ -627,7 +627,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 							":path":      "/protected",
 							":authority": "my-host.com",
 							":scheme":    "http",
-							"cookie":     fmt.Sprintf("captcha_verified=%s", verificationCookie.Value),
+							"cookie":     fmt.Sprintf("session=%s", verificationCookie.Value),
 						},
 					},
 				},
@@ -691,7 +691,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Nil(t, expiredSession)
 	})
 
-	t.Run("IP binding enforced on verification token", func(t *testing.T) {
+	t.Run("IP binding enforced on challenge token verification", func(t *testing.T) {
 		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
@@ -733,11 +733,6 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		})
 		require.NoError(t, err)
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "add", "--type", "captcha", "--value", ipB,
-		})
-		require.NoError(t, err)
-
 		time.Sleep(2 * time.Second)
 
 		reqA := &auth.CheckRequest{
@@ -771,17 +766,17 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		locationURL, err := url.Parse(locationHeader)
 		require.NoError(t, err)
 
-		sessionID := locationURL.Query().Get("session")
+		challengeToken := locationURL.Query().Get("challengeToken")
 
 		form := url.Values{}
-		form.Add("session", sessionID)
-		form.Add("g-recaptcha-response", "success")
+		form.Add("challengeToken", challengeToken)
+		form.Add("captchaResponse", "success")
 
 		verifyURL := "http://127.0.0.1:8081/captcha/verify"
 		httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
 		require.NoError(t, err)
 		httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		httpReq.Header.Set("X-Forwarded-For", ipA)
+		httpReq.Header.Set("X-Forwarded-For", ipB)
 
 		httpClient := &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -793,35 +788,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		verificationCookie := getCookie(resp, "captcha_verified")
-		require.NotNil(t, verificationCookie)
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, "verification should fail when IP doesn't match challenge token")
 
-		reqB := &auth.CheckRequest{
-			Attributes: &auth.AttributeContext{
-				Source: &auth.AttributeContext_Peer{
-					Address: &corev3.Address{
-						Address: &corev3.Address_SocketAddress{
-							SocketAddress: &corev3.SocketAddress{Address: ipB},
-						},
-					},
-				},
-				Request: &auth.AttributeContext_Request{
-					Http: &auth.AttributeContext_HttpRequest{
-						Headers: map[string]string{
-							":method":    "GET",
-							":path":      "/protected",
-							":authority": "my-host.com",
-							":scheme":    "http",
-							"cookie":     fmt.Sprintf("captcha_verified=%s", verificationCookie.Value),
-						},
-					},
-				},
-			},
-		}
-
-		checkB, err := client.Check(context.TODO(), reqB)
+		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		assert.Equal(t, int32(302), checkB.Status.Code)
+		assert.Contains(t, string(body), "IP mismatch", "error message should indicate IP mismatch")
 	})
 }
 

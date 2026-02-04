@@ -664,18 +664,17 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		require.Equal(t, "/captcha/challenge", locationURL.Path)
 		require.Equal(t, "http", locationURL.Scheme)
 
-		captchaSessionID = locationURL.Query().Get("session")
+		captchaSessionID = locationURL.Query().Get("challengeToken")
 		t.Logf("Parsed location URL: %s", locationHeader)
-		t.Logf("Extracted session ID: %s", captchaSessionID)
+		t.Logf("Extracted challenge token: %s", captchaSessionID)
 		require.NotEmpty(t, captchaSessionID)
 
 		session, exists := testBouncer.CaptchaService.GetSession(captchaSessionID)
 		require.True(t, exists)
-		require.Equal(t, "192.168.1.100", session.IP)
 		require.Equal(t, "http://my-host.com/protected", session.OriginalURL)
 		require.Equal(t, "http://my-host.com/protected", session.RedirectURL)
 
-		challengeURL := fmt.Sprintf("http://localhost:8081/captcha/challenge?session=%s", captchaSessionID)
+		challengeURL := fmt.Sprintf("http://localhost:8081/captcha/challenge?challengeToken=%s", captchaSessionID)
 		t.Logf("Making HTTP request to: %s", challengeURL)
 		resp, err := http.Get(challengeURL)
 		require.NoError(t, err, "Failed to make HTTP request to challenge page")
@@ -712,12 +711,11 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		require.Equal(t, "/captcha/challenge", locationURL.Path)
 		require.Equal(t, "http", locationURL.Scheme)
 
-		sessionID := locationURL.Query().Get("session")
-		require.NotEmpty(t, sessionID)
+		challengeToken := locationURL.Query().Get("challengeToken")
+		require.NotEmpty(t, challengeToken)
 
-		session, exists := testBouncer.CaptchaService.GetSession(sessionID)
+		session, exists := testBouncer.CaptchaService.GetSession(challengeToken)
 		require.True(t, exists)
-		require.Equal(t, "192.168.1.1", session.IP)
 		require.Equal(t, "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", session.OriginalURL)
 		require.Equal(t, "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", session.RedirectURL)
 	})
@@ -767,12 +765,12 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		locationURL, err := url.Parse(locationHeader)
 		require.NoError(t, err)
 
-		sessionID := locationURL.Query().Get("session")
-		require.NotEmpty(t, sessionID)
+		challengeToken := locationURL.Query().Get("challengeToken")
+		require.NotEmpty(t, challengeToken)
 
 		form := url.Values{}
-		form.Add("session", sessionID)
-		form.Add("g-recaptcha-response", "success")
+		form.Add("challengeToken", challengeToken)
+		form.Add("captchaResponse", "success")
 
 		verifyURL := "http://localhost:8081/captcha/verify"
 		httpClient := &http.Client{}
@@ -789,7 +787,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Contains(t, string(body), "IP address mismatch")
+		require.Contains(t, string(body), "IP mismatch")
 	})
 
 	t.Run("Test rate limiting on captcha endpoints", func(t *testing.T) {
@@ -808,10 +806,10 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		locationURL, err := url.Parse(locationHeader)
 		require.NoError(t, err)
 
-		sessionID := locationURL.Query().Get("session")
-		require.NotEmpty(t, sessionID)
+		challengeToken := locationURL.Query().Get("challengeToken")
+		require.NotEmpty(t, challengeToken)
 
-		challengeURL := "http://localhost:8081/captcha/challenge?session=" + sessionID
+		challengeURL := "http://localhost:8081/captcha/challenge?challengeToken=" + challengeToken
 		httpClient := &http.Client{}
 
 		successCount := 0

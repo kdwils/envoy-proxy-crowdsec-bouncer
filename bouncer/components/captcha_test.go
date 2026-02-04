@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/stretchr/testify/assert"
@@ -19,45 +18,42 @@ func TestJWTManager_ChallengeToken(t *testing.T) {
 		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 		now := time.Now()
 
-		claims := ChallengeClaims{
-			IP:          "192.168.1.1",
-			OriginalURL: "http://example.com",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
-				IssuedAt:  jwt.NewNumericDate(now),
-			},
-		}
-
-		token, err := manager.CreateChallengeToken(claims)
+		token, claims, err := manager.CreateChallengeToken("http://example.com", "192.168.1.1", now, 5*time.Minute)
 
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
+		require.NotNil(t, claims)
+		assert.NotEmpty(t, claims.IPHash)
+		assert.Equal(t, "http://example.com", claims.OriginalURL)
+		assert.NotEmpty(t, claims.ID)
 
-		verifiedClaims, err := manager.VerifyChallengeToken(token)
+		verifiedClaims, err := manager.CheckChallengeToken(token)
 
 		require.NoError(t, err)
 		require.NotNil(t, verifiedClaims)
-		assert.Equal(t, "192.168.1.1", verifiedClaims.IP)
+		assert.Equal(t, claims.IPHash, verifiedClaims.IPHash)
 		assert.Equal(t, "http://example.com", verifiedClaims.OriginalURL)
+	})
+
+	t.Run("verifies IP hash correctly", func(t *testing.T) {
+		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
+		now := time.Now()
+
+		_, claims, err := manager.CreateChallengeToken("http://example.com", "192.168.1.1", now, 5*time.Minute)
+		require.NoError(t, err)
+
+		assert.True(t, manager.VerifyIPHash(claims, "192.168.1.1"))
+		assert.False(t, manager.VerifyIPHash(claims, "192.168.1.2"))
 	})
 
 	t.Run("rejects expired challenge token", func(t *testing.T) {
 		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
-		now := time.Now()
+		now := time.Now().Add(-2 * time.Hour)
 
-		claims := ChallengeClaims{
-			IP:          "192.168.1.1",
-			OriginalURL: "http://example.com",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
-				IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
-			},
-		}
-
-		token, err := manager.CreateChallengeToken(claims)
+		token, _, err := manager.CreateChallengeToken("http://example.com", "192.168.1.1", now, 1*time.Hour)
 		require.NoError(t, err)
 
-		verifiedClaims, err := manager.VerifyChallengeToken(token)
+		verifiedClaims, err := manager.CheckChallengeToken(token)
 
 		assert.Error(t, err)
 		assert.Nil(t, verifiedClaims)
@@ -66,85 +62,61 @@ func TestJWTManager_ChallengeToken(t *testing.T) {
 	t.Run("rejects invalid challenge token", func(t *testing.T) {
 		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 
-		verifiedClaims, err := manager.VerifyChallengeToken("invalid-token")
+		verifiedClaims, err := manager.CheckChallengeToken("invalid-token")
 
 		assert.Error(t, err)
 		assert.Nil(t, verifiedClaims)
 	})
 
 	t.Run("rejects challenge token with wrong signing key", func(t *testing.T) {
-		manager1 := NewJWTManager("key-1")
-		manager2 := NewJWTManager("key-2")
+		manager1 := NewJWTManager("key-1-that-is-at-least-32-bytes-long")
+		manager2 := NewJWTManager("key-2-that-is-at-least-32-bytes-long")
+		now := time.Now()
 
-		claims := ChallengeClaims{
-			IP:          "192.168.1.1",
-			OriginalURL: "http://example.com",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-			},
-		}
-
-		token, err := manager1.CreateChallengeToken(claims)
+		token, _, err := manager1.CreateChallengeToken("http://example.com", "192.168.1.1", now, 5*time.Minute)
 		require.NoError(t, err)
 
-		verifiedClaims, err := manager2.VerifyChallengeToken(token)
+		verifiedClaims, err := manager2.CheckChallengeToken(token)
 
 		assert.Error(t, err)
 		assert.Nil(t, verifiedClaims)
 	})
 }
 
-func TestJWTManager_VerificationToken(t *testing.T) {
-	t.Run("creates and verifies verification token", func(t *testing.T) {
+func TestJWTManager_SessionToken(t *testing.T) {
+	t.Run("creates and verifies session token", func(t *testing.T) {
 		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 		now := time.Now()
 
-		claims := VerificationClaims{
-			IP: "192.168.1.1",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
-				IssuedAt:  jwt.NewNumericDate(now),
-			},
-		}
-
-		token, err := manager.CreateVerificationToken(claims)
+		token, err := manager.CreateSessionToken("test-session-id", now, 1*time.Hour)
 
 		require.NoError(t, err)
 		require.NotEmpty(t, token)
 
-		verifiedClaims, err := manager.VerifyVerificationToken(token)
+		verifiedClaims, err := manager.VerifySessionToken(token)
 
 		require.NoError(t, err)
 		require.NotNil(t, verifiedClaims)
-		assert.Equal(t, "192.168.1.1", verifiedClaims.IP)
+		assert.Equal(t, "test-session-id", verifiedClaims.SID)
 	})
 
-	t.Run("rejects expired verification token", func(t *testing.T) {
+	t.Run("rejects expired session token", func(t *testing.T) {
 		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
-		now := time.Now()
+		now := time.Now().Add(-2 * time.Hour)
 
-		claims := VerificationClaims{
-			IP: "192.168.1.1",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
-				IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
-			},
-		}
-
-		token, err := manager.CreateVerificationToken(claims)
+		token, err := manager.CreateSessionToken("test-session-id", now, 1*time.Hour)
 		require.NoError(t, err)
 
-		verifiedClaims, err := manager.VerifyVerificationToken(token)
+		verifiedClaims, err := manager.VerifySessionToken(token)
 
 		assert.Error(t, err)
 		assert.Nil(t, verifiedClaims)
 	})
 
-	t.Run("rejects invalid verification token", func(t *testing.T) {
+	t.Run("rejects invalid session token", func(t *testing.T) {
 		manager := NewJWTManager("test-signing-key-that-is-at-least-32-bytes-long")
 
-		verifiedClaims, err := manager.VerifyVerificationToken("invalid-token")
+		verifiedClaims, err := manager.VerifySessionToken("invalid-token")
 
 		assert.Error(t, err)
 		assert.Nil(t, verifiedClaims)
@@ -164,15 +136,15 @@ func TestNewCaptchaService(t *testing.T) {
 		assert.NotNil(t, got.jwt)
 		assert.Equal(t, 10*time.Second, got.RequestTimeout)
 		assert.NotNil(t, got.nowFunc)
+		assert.NotNil(t, got.challengeCache)
 	})
 
 	t.Run("recaptcha provider", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:      true,
-			Provider:     "recaptcha",
-			SecretKey:    "test-secret",
-			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain: ".example.com",
+			Enabled:    true,
+			Provider:   "recaptcha",
+			SecretKey:  "test-secret",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -186,11 +158,10 @@ func TestNewCaptchaService(t *testing.T) {
 
 	t.Run("turnstile provider", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:      true,
-			Provider:     "turnstile",
-			SecretKey:    "test-secret",
-			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain: ".example.com",
+			Enabled:    true,
+			Provider:   "turnstile",
+			SecretKey:  "test-secret",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -229,85 +200,50 @@ func TestNewCaptchaService(t *testing.T) {
 }
 
 func TestCaptchaService_RequiresCaptcha(t *testing.T) {
-	t.Run("no verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
+	t.Run("no session token", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
-		got := service.RequiresCaptcha("192.168.1.1", "")
+		got := service.RequiresCaptcha("")
 
 		assert.True(t, got)
 	})
 
-	t.Run("expired verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
+	t.Run("expired session token", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
-		now := time.Now()
-		expiredClaims := VerificationClaims{
-			IP: "192.168.1.1",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)),
-				IssuedAt:  jwt.NewNumericDate(now.Add(-2 * time.Hour)),
-			},
-		}
-		expiredToken, err := service.jwt.CreateVerificationToken(expiredClaims)
+		now := time.Now().Add(-2 * time.Hour)
+		expiredToken, err := service.jwt.CreateSessionToken("test-session", now, 1*time.Hour)
 		require.NoError(t, err)
 
-		got := service.RequiresCaptcha("192.168.1.1", expiredToken)
+		got := service.RequiresCaptcha(expiredToken)
 
 		assert.True(t, got)
 	})
 
-	t.Run("valid verification token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
+	t.Run("valid session token", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
 		now := time.Now()
-		validClaims := VerificationClaims{
-			IP: "192.168.1.1",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
-				IssuedAt:  jwt.NewNumericDate(now),
-			},
-		}
-		validToken, err := service.jwt.CreateVerificationToken(validClaims)
+		validToken, err := service.jwt.CreateSessionToken("test-session", now, 1*time.Hour)
 		require.NoError(t, err)
 
-		got := service.RequiresCaptcha("192.168.1.1", validToken)
+		got := service.RequiresCaptcha(validToken)
 
 		assert.False(t, got)
 	})
 
-	t.Run("valid token but different IP", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
+	t.Run("invalid session token format", func(t *testing.T) {
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
-		now := time.Now()
-		validClaims := VerificationClaims{
-			IP: "192.168.1.1",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
-				IssuedAt:  jwt.NewNumericDate(now),
-			},
-		}
-		validToken, err := service.jwt.CreateVerificationToken(validClaims)
-		require.NoError(t, err)
-
-		got := service.RequiresCaptcha("192.168.1.2", validToken)
-
-		assert.True(t, got)
-	})
-
-	t.Run("invalid verification token format", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
-		service, err := NewCaptchaService(cfg, http.DefaultClient)
-		require.NoError(t, err)
-
-		got := service.RequiresCaptcha("192.168.1.1", "invalid-jwt-token")
+		got := service.RequiresCaptcha("invalid-jwt-token")
 
 		assert.True(t, got)
 	})
@@ -320,37 +256,26 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
 		cfg := config.Captcha{
-			Enabled:         true,
-			Provider:        "recaptcha",
-			SecretKey:       "test",
-			SigningKey:      "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain:    ".example.com",
-			SessionDuration: 1 * time.Hour,
+			Enabled:           true,
+			Provider:          "recaptcha",
+			SecretKey:         "test",
+			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
+			SessionDuration:   1 * time.Hour,
+			ChallengeDuration: 5 * time.Minute,
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 		service.Provider = mockProvider
+		mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 
-		challengeClaims := ChallengeClaims{
-			IP:          "192.168.1.1",
-			OriginalURL: "http://example.com",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-			},
-		}
-		challengeToken, err := service.jwt.CreateChallengeToken(challengeClaims)
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		require.NoError(t, err)
+		require.NotNil(t, session)
 
-		req := VerificationRequest{
-			Response: "test-token",
-			IP:       "192.168.1.1",
-		}
+		mockProvider.EXPECT().Verify(gomock.Any(), "test-captcha-response", "192.168.1.1").Return(true, nil).Times(1)
 
-		mockProvider.EXPECT().Verify(gomock.Any(), "test-token", "192.168.1.1").Return(true, nil).Times(1)
-
-		got, err := service.VerifyResponse(context.Background(), challengeToken, req)
+		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-captcha-response")
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -358,11 +283,11 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		assert.Equal(t, "Captcha verified successfully", got.Message)
 		assert.NotEmpty(t, got.Token)
 
-		claims, err := service.jwt.VerifyVerificationToken(got.Token)
+		claims, err := service.jwt.VerifySessionToken(got.Token)
 
 		require.NoError(t, err)
-		assert.Equal(t, "192.168.1.1", claims.IP)
-		assert.False(t, service.RequiresCaptcha("192.168.1.1", got.Token))
+		assert.NotEmpty(t, claims.SID)
+		assert.False(t, service.RequiresCaptcha(got.Token))
 	})
 
 	t.Run("provider verification failure", func(t *testing.T) {
@@ -370,32 +295,26 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
+		cfg := config.Captcha{
+			Enabled:           true,
+			Provider:          "recaptcha",
+			SecretKey:         "test",
+			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
+			ChallengeDuration: 5 * time.Minute,
+		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 		service.Provider = mockProvider
+		mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 
-		challengeClaims := ChallengeClaims{
-			IP:          "192.168.1.1",
-			OriginalURL: "http://example.com",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-			},
-		}
-		challengeToken, err := service.jwt.CreateChallengeToken(challengeClaims)
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		require.NoError(t, err)
-
-		req := VerificationRequest{
-			Response: "invalid-token",
-			IP:       "192.168.1.1",
-		}
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "invalid-token", "192.168.1.1").Return(false, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), challengeToken, req)
+		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "invalid-token")
 
-		require.NoError(t, err)
+		assert.ErrorIs(t, err, ErrFailedChallenge)
 		require.NotNil(t, got)
 		assert.False(t, got.Success)
 		assert.Equal(t, "Captcha verification failed", got.Message)
@@ -403,16 +322,11 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 	})
 
 	t.Run("invalid challenge token", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
+		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
 
-		req := VerificationRequest{
-			Response: "test-token",
-			IP:       "192.168.1.1",
-		}
-
-		got, err := service.VerifyResponse(context.Background(), "invalid-token", req)
+		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", "invalid-token", "test-response")
 
 		assert.Error(t, err)
 		require.NotNil(t, got)
@@ -421,44 +335,75 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 	})
 
 	t.Run("IP mismatch between challenge and request", func(t *testing.T) {
-		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long", CookieDomain: ".example.com"}
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
+
+		cfg := config.Captcha{
+			Enabled:           true,
+			Provider:          "recaptcha",
+			SecretKey:         "test",
+			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
+			ChallengeDuration: 5 * time.Minute,
+		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
+		service.Provider = mockProvider
+		mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 
-		challengeClaims := ChallengeClaims{
-			IP:          "192.168.1.1",
-			OriginalURL: "http://example.com",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-			},
-		}
-		challengeToken, err := service.jwt.CreateChallengeToken(challengeClaims)
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		require.NoError(t, err)
 
-		req := VerificationRequest{
-			Response: "test-token",
-			IP:       "192.168.1.2",
-		}
-
-		got, err := service.VerifyResponse(context.Background(), challengeToken, req)
+		got, err := service.VerifyResponse(context.Background(), "192.168.1.2", session.ID, "test-response")
 
 		assert.Error(t, err)
 		require.NotNil(t, got)
 		assert.False(t, got.Success)
 		assert.Equal(t, "IP mismatch", got.Message)
 	})
+
+	t.Run("challenge token replay rejected", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
+
+		cfg := config.Captcha{
+			Enabled:           true,
+			Provider:          "recaptcha",
+			SecretKey:         "test",
+			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
+			SessionDuration:   1 * time.Hour,
+			ChallengeDuration: 5 * time.Minute,
+		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+		service.Provider = mockProvider
+		mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
+
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
+		require.NoError(t, err)
+
+		mockProvider.EXPECT().Verify(gomock.Any(), "test-response", "192.168.1.1").Return(true, nil).Times(1)
+
+		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		require.NoError(t, err)
+		assert.True(t, got.Success)
+
+		got2, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		assert.Error(t, err)
+		assert.False(t, got2.Success)
+		assert.Equal(t, "Challenge already used or expired", got2.Message)
+	})
 }
 
 func TestCaptchaService_GetSession(t *testing.T) {
 	t.Run("invalid JWT token", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:      true,
-			Provider:     "recaptcha",
-			SecretKey:    "test",
-			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain: ".example.com",
-			CallbackURL:  "http://localhost:8081",
+			Enabled:     true,
+			Provider:    "recaptcha",
+			SecretKey:   "test",
+			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
+			CallbackURL: "http://localhost:8081",
 		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
 		require.NoError(t, err)
@@ -478,7 +423,6 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			Provider:          "recaptcha",
 			SecretKey:         "test",
 			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain:      ".example.com",
 			SiteKey:           "test-site-key",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 1 * time.Millisecond,
@@ -512,7 +456,6 @@ func TestCaptchaService_GetSession(t *testing.T) {
 			Provider:          "recaptcha",
 			SecretKey:         "test",
 			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain:      ".example.com",
 			SiteKey:           "test-site-key",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 24 * time.Hour,
@@ -533,7 +476,6 @@ func TestCaptchaService_GetSession(t *testing.T) {
 
 		require.True(t, gotExists)
 		require.NotNil(t, got)
-		assert.Equal(t, "192.168.1.1", got.IP)
 		assert.Equal(t, "http://example.com", got.OriginalURL)
 		assert.Equal(t, "recaptcha", got.Provider)
 		assert.Equal(t, "test-site-key", got.SiteKey)
@@ -551,7 +493,6 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 			SiteKey:           "test-site-key",
 			SecretKey:         "test-secret",
 			SigningKey:        "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain:      ".example.com",
 			CallbackURL:       "http://localhost:8081",
 			ChallengeDuration: 5 * time.Minute,
 		}
@@ -570,7 +511,6 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
-		assert.Equal(t, "192.168.1.1", got.IP)
 		assert.Equal(t, "http://example.com/original", got.OriginalURL)
 		assert.Equal(t, "http://example.com/original", got.RedirectURL)
 		assert.Equal(t, fixedTime, got.CreatedAt)
@@ -582,16 +522,15 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		assert.NotEmpty(t, got.ChallengeURL)
 	})
 
-	t.Run("returns nil when verification token is valid", func(t *testing.T) {
+	t.Run("returns nil when session token is valid", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		cfg := config.Captcha{
-			Enabled:      true,
-			Provider:     "recaptcha",
-			SecretKey:    "test",
-			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain: ".example.com",
+			Enabled:    true,
+			Provider:   "recaptcha",
+			SecretKey:  "test",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
 		}
 
 		provider := mocks.NewMockCaptchaProvider(ctrl)
@@ -601,14 +540,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		service.Provider = provider
 
 		now := time.Now()
-		validClaims := VerificationClaims{
-			IP: "192.168.1.1",
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
-				IssuedAt:  jwt.NewNumericDate(now),
-			},
-		}
-		validToken, err := service.jwt.CreateVerificationToken(validClaims)
+		validToken, err := service.jwt.CreateSessionToken("test-session", now, 1*time.Hour)
 		require.NoError(t, err)
 
 		session, err := service.CreateSession("192.168.1.1", "http://example.com", validToken)
@@ -619,13 +551,12 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 	t.Run("rejects javascript URL", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:      true,
-			Provider:     "turnstile",
-			SiteKey:      "test-site-key",
-			SecretKey:    "test-secret",
-			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain: ".example.com",
-			CallbackURL:  "http://localhost:8081",
+			Enabled:     true,
+			Provider:    "turnstile",
+			SiteKey:     "test-site-key",
+			SecretKey:   "test-secret",
+			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
+			CallbackURL: "http://localhost:8081",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -639,13 +570,12 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 	t.Run("rejects URL without host", func(t *testing.T) {
 		cfg := config.Captcha{
-			Enabled:      true,
-			Provider:     "turnstile",
-			SiteKey:      "test-site-key",
-			SecretKey:    "test-secret",
-			SigningKey:   "test-signing-key-that-is-at-least-32-bytes-long",
-			CookieDomain: ".example.com",
-			CallbackURL:  "http://localhost:8081",
+			Enabled:     true,
+			Provider:    "turnstile",
+			SiteKey:     "test-site-key",
+			SecretKey:   "test-secret",
+			SigningKey:  "test-signing-key-that-is-at-least-32-bytes-long",
+			CallbackURL: "http://localhost:8081",
 		}
 
 		service, err := NewCaptchaService(cfg, http.DefaultClient)
@@ -655,5 +585,40 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
+	})
+}
+
+func TestCaptchaService_CookieName(t *testing.T) {
+	t.Run("returns configured cookie name", func(t *testing.T) {
+		cfg := config.Captcha{
+			Enabled:    false,
+			CookieName: "my-custom-cookie",
+		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+
+		assert.Equal(t, "my-custom-cookie", service.CookieName())
+	})
+
+	t.Run("returns __Host-session for secure cookie", func(t *testing.T) {
+		cfg := config.Captcha{
+			Enabled:      false,
+			SecureCookie: true,
+		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+
+		assert.Equal(t, "__Host-session", service.CookieName())
+	})
+
+	t.Run("returns session for non-secure cookie", func(t *testing.T) {
+		cfg := config.Captcha{
+			Enabled:      false,
+			SecureCookie: false,
+		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient)
+		require.NoError(t, err)
+
+		assert.Equal(t, "session", service.CookieName())
 	})
 }
