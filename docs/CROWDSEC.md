@@ -244,29 +244,9 @@ waf:
   appSecURL: "http://appsec:7422"
 ```
 
-### Kubernetes/Helm Example
+### Kubernetes/Helm
 
-```yaml
-config:
-  trustedProxies:
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-
-  bouncer:
-    enabled: true
-    metrics: true
-    lapiURL: "http://crowdsec.monitoring.svc:8080"
-    apiKeySecretRef:
-      name: crowdsec-secrets
-      key: bouncer-key
-
-  waf:
-    enabled: true
-    appSecURL: "http://crowdsec-appsec.monitoring.svc:7422"
-    apiKeySecretRef:
-      name: crowdsec-secrets
-      key: appsec-key
-```
+For Helm-specific configuration, see the [Helm Chart README](../charts/envoy-proxy-bouncer/README.md).
 
 ## See Also
 

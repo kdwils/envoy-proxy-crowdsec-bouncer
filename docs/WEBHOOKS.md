@@ -99,20 +99,7 @@ Webhook subscriptions must be configured via YAML file.
 
 ## Kubernetes/Helm
 
-```yaml
-config:
-  webhook:
-    subscriptions:
-      - url: "https://siem.example.com/security-events"
-        events:
-          - request_blocked
-          - captcha_required
-    signingKeySecretRef:
-      name: webhook-secrets
-      key: signing-key
-    timeout: "5s"
-    bufferSize: 100
-```
+For Helm-specific configuration, see the [Helm Chart README](../charts/envoy-proxy-bouncer/README.md).
 
 ## See Also
 

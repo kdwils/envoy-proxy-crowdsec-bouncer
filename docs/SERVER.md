@@ -52,13 +52,7 @@ Default: `8081`
 
 ## Kubernetes/Helm
 
-```yaml
-config:
-  server:
-    grpcPort: 8080
-    httpPort: 8081
-    logLevel: "info"
-```
+For Helm-specific configuration, see the [Helm Chart README](../charts/envoy-proxy-bouncer/README.md).
 
 ## See Also
 

@@ -197,13 +197,7 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
 
 ### Installation with Values File
 
-For configuration options, see:
-- [Configuration Guide](CONFIGURATION.md) - General configuration overview
-- [Server Configuration](SERVER.md) - Server ports and log levels
-- [CrowdSec Configuration](CROWDSEC.md) - CrowdSec bouncer and WAF setup
-- [CAPTCHA Configuration](CAPTCHA.md) - CAPTCHA challenge setup
-- [Webhook Configuration](WEBHOOKS.md) - Webhook event notifications
-- [Custom Templates](CUSTOM_TEMPLATES.md) - Template customization
+For complete chart configuration options and values, see the [Helm Chart README](../charts/envoy-proxy-bouncer/README.md).
 
 Install with values:
 
@@ -323,29 +317,7 @@ When SecurityPolicies reference services in different namespaces, a ReferenceGra
 
 #### Using Helm
 
-The Helm chart can automatically create ReferenceGrants:
-
-```yaml
-# values.yaml
-referenceGrant:
-  create: true
-  fromNamespaces:
-    - media
-    - blog
-    - argocd
-    - vaultwarden
-```
-
-Install with ReferenceGrant:
-
-```bash
-helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
-  --namespace envoy-gateway-system \
-  --set config.bouncer.apiKey=<lapi-key> \
-  --set config.bouncer.lapiURL=http://crowdsec:8080 \
-  --set referenceGrant.create=true \
-  --set referenceGrant.fromNamespaces="{media,blog,argocd}"
-```
+The Helm chart can automatically create ReferenceGrants. For configuration details, see the [Helm Chart README](../charts/envoy-proxy-bouncer/README.md).
 
 #### Manual ReferenceGrant
 

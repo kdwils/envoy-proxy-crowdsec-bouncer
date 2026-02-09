@@ -238,49 +238,9 @@ trustedProxies:
 5. Complete the CAPTCHA
 6. Verify redirect back to original resource
 
-## Helm Configuration
+## Helm Deployment
 
-When deploying via Helm, configure CAPTCHA using the chart values:
-
-```yaml
-config:
-  server:
-    httpPort: 8081  # HTTP port for CAPTCHA endpoints
-
-  captcha:
-    enabled: true
-    provider: "turnstile"
-    siteKey: "0x4AAAAAAAA..."
-    secretKeySecretRef:
-      name: captcha-secrets
-      key: secret-key
-    signingKeySecretRef:
-      name: captcha-secrets
-      key: signing-key
-    callbackURL: "https://auth.example.com"
-    cookieDomain: ".example.com"
-    secureCookie: true
-    sessionDuration: "15m"
-    challengeDuration: "5m"
-    timeout: "10s"
-
-httproute:
-  enabled: true
-  hostnames:
-    - auth.example.com
-  parentRefs:
-    - name: my-gateway
-      namespace: envoy-gateway-system
-```
-
-Create the secret with your keys:
-
-```bash
-kubectl create secret generic captcha-secrets \
-  --namespace envoy-gateway-system \
-  --from-literal=secret-key=your-captcha-secret-key \
-  --from-literal=signing-key=$(openssl rand -base64 32)
-```
+For Helm-specific configuration and deployment instructions, see the [Helm Chart README](../charts/envoy-proxy-bouncer/README.md).
 
 ## See Also
 
