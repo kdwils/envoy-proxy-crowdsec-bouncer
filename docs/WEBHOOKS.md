@@ -31,10 +31,6 @@ webhook:
   bufferSize: 100
 ```
 
-```bash
-envoy-proxy-bouncer serve --config config.yaml
-```
-
 ## Events
 
 | Event | Description |
@@ -69,19 +65,6 @@ envoy-proxy-bouncer serve --config config.yaml
 ## Signing
 
 Set `signingKey` to sign payloads with HMAC-SHA256. Signature goes in `X-Signature-SHA256` header as hex. See [Signing Key Generation](SIGNING_KEYS.md) for key generation instructions.
-
-```python
-import hmac
-import hashlib
-
-def verify_webhook(payload, signature, secret):
-    expected = hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature)
-```
 
 ## Delivery
 
