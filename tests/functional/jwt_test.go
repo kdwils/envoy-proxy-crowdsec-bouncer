@@ -273,13 +273,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger)
 
 		testCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		serverDone := make(chan struct{})
+		defer func() {
+			cancel()
+			<-serverDone
+		}()
 
 		go func() {
 			err := srv.ServeDual(testCtx)
 			if err != nil && err != context.Canceled {
 				t.Logf("server error: %v", err)
 			}
+			close(serverDone)
 		}()
 
 		time.Sleep(2 * time.Second)
@@ -402,13 +407,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger)
 
 		testCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		serverDone := make(chan struct{})
+		defer func() {
+			cancel()
+			<-serverDone
+		}()
 
 		go func() {
 			err := srv.ServeDual(testCtx)
 			if err != nil && err != context.Canceled {
 				t.Logf("server error: %v", err)
 			}
+			close(serverDone)
 		}()
 
 		time.Sleep(2 * time.Second)
@@ -540,13 +550,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger)
 
 		testCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		serverDone := make(chan struct{})
+		defer func() {
+			cancel()
+			<-serverDone
+		}()
 
 		go func() {
 			err := srv.ServeDual(testCtx)
 			if err != nil && err != context.Canceled {
 				t.Logf("server error: %v", err)
 			}
+			close(serverDone)
 		}()
 
 		time.Sleep(2 * time.Second)
@@ -667,13 +682,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger)
 
 		testCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		serverDone := make(chan struct{})
+		defer func() {
+			cancel()
+			<-serverDone
+		}()
 
 		go func() {
 			err := srv.ServeDual(testCtx)
 			if err != nil && err != context.Canceled {
 				t.Logf("server error: %v", err)
 			}
+			close(serverDone)
 		}()
 
 		time.Sleep(2 * time.Second)
@@ -710,13 +730,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger)
 
 		testCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
+		serverDone := make(chan struct{})
+		defer func() {
+			cancel()
+			<-serverDone
+		}()
 
 		go func() {
 			err := srv.ServeDual(testCtx)
 			if err != nil && err != context.Canceled {
 				t.Logf("server error: %v", err)
 			}
+			close(serverDone)
 		}()
 
 		time.Sleep(2 * time.Second)
