@@ -197,64 +197,13 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
 
 ### Installation with Values File
 
-Create a `values.yaml`:
-
-```yaml
-replicaCount: 2
-
-config:
-  server:
-    grpcPort: 8080
-    httpPort: 8081
-    logLevel: "info"
-
-  trustedProxies:
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-
-  bouncer:
-    enabled: true
-    metrics: true
-    lapiURL: "http://crowdsec.monitoring.svc:8080"
-    apiKeySecretRef:
-      name: crowdsec-secrets
-      key: bouncer-key
-
-  waf:
-    enabled: true
-    appSecURL: "http://crowdsec-appsec.monitoring.svc:7422"
-    apiKeySecretRef:
-      name: crowdsec-secrets
-      key: appsec-key
-
-  captcha:
-    enabled: true
-    provider: "turnstile"
-    siteKey: "0x4AAAAAAAA..."
-    secretKeySecretRef:
-      name: captcha-secrets
-      key: secret-key
-    signingKeySecretRef:
-      name: captcha-secrets
-      key: signing-key
-    callbackURL: "https://auth.example.com"
-    cookieDomain: ".example.com"
-    secureCookie: true
-
-resources:
-  limits:
-    cpu: 200m
-    memory: 256Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-```
+For configuration options, see:
+- [Configuration Guide](CONFIGURATION.md) - General configuration overview
+- [Server Configuration](SERVER.md) - Server ports and log levels
+- [CrowdSec Configuration](CROWDSEC.md) - CrowdSec bouncer and WAF setup
+- [CAPTCHA Configuration](CAPTCHA.md) - CAPTCHA challenge setup
+- [Webhook Configuration](WEBHOOKS.md) - Webhook event notifications
+- [Custom Templates](CUSTOM_TEMPLATES.md) - Template customization
 
 Install with values:
 
@@ -489,8 +438,11 @@ grpcurl -plaintext localhost:8080 list
 
 ## See Also
 
-- [Configuration Guide](CONFIGURATION.md)
-- [CAPTCHA Configuration](CAPTCHA.md)
-- [Custom Templates](CUSTOM_TEMPLATES.md)
+- [Configuration Guide](CONFIGURATION.md) - General configuration overview
+- [Server Configuration](SERVER.md) - Server ports and log levels
+- [CrowdSec Configuration](CROWDSEC.md) - CrowdSec bouncer and WAF setup
+- [CAPTCHA Configuration](CAPTCHA.md) - CAPTCHA challenge setup
+- [Webhook Configuration](WEBHOOKS.md) - Webhook event notifications
+- [Custom Templates](CUSTOM_TEMPLATES.md) - Template customization
 - [Envoy Gateway Documentation](https://gateway.envoyproxy.io/)
 - [CrowdSec Documentation](https://docs.crowdsec.net/)

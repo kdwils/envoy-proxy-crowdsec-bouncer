@@ -1,14 +1,32 @@
-# Custom Templates Guide
+# Custom Templates
 
-This guide explains how to customize the ban and CAPTCHA pages displayed by the Envoy Proxy CrowdSec Bouncer.
+Customize the ban and CAPTCHA pages displayed by the Envoy Proxy CrowdSec Bouncer.
 
-## Overview
+## Template Configuration
 
-The bouncer uses Go templates to render HTML pages for:
-- **Ban Page**: Shown when a request is blocked by CrowdSec
-- **CAPTCHA Page**: Shown when the WAF triggers a CAPTCHA challenge
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `deniedTemplatePath` | string | `""` | Path to custom ban page template |
+| `deniedTemplateHeaders` | string | `"text/html; charset=utf-8"` | Content-Type header for ban page |
+| `captchaTemplatePath` | string | `""` | Path to custom CAPTCHA page template |
+| `captchaTemplateHeaders` | string | `"text/html; charset=utf-8"` | Content-Type header for CAPTCHA page |
 
-You can customize these pages to match your brand, add additional information, or modify the layout.
+```yaml
+templates:
+  deniedTemplatePath: "/path/to/custom-ban.html"
+  deniedTemplateHeaders: "text/html; charset=utf-8"
+  captchaTemplatePath: "/path/to/custom-captcha.html"
+  captchaTemplateHeaders: "text/html; charset=utf-8"
+```
+
+### Environment Variables
+
+```bash
+export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH=/path/to/ban.html
+export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS="text/html; charset=utf-8"
+export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH=/path/to/captcha.html
+export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS="text/html; charset=utf-8"
+```
 
 ## Go Template Basics
 
@@ -85,54 +103,11 @@ The CAPTCHA template receives a `CaptchaTemplateData` struct with the following 
 | `.SiteKey` | string | Public site key for the CAPTCHA provider | `"6LdX..."` |
 | `.CallbackURL` | string | Base URL for CAPTCHA verification endpoint | `"https://example.com/captcha"` |
 | `.RedirectURL` | string | URL to redirect after successful verification | `"https://example.com/original-page"` |
-| `.SessionID` | string | Session ID for this CAPTCHA challenge | `"abc123..."` |
-| `.CSRFToken` | string | CSRF token for form submission | `"xyz789..."` |
+| `.ChallengeToken` | string | Challenge token for this CAPTCHA session | `"abc123..."` |
 
-The default CAPTCHA template lives 
+## Deployment Examples
 
-## Configuration
-
-### Non-Containerized Deployment
-
-#### Configuration File (YAML/JSON)
-
-Create a configuration file (e.g., `config.yaml`):
-
-```yaml
-templates:
-  # Path to custom ban page template
-  deniedTemplatePath: "/path/to/custom-ban.html"
-  # Content-Type header for ban page (optional)
-  deniedTemplateHeaders: "text/html; charset=utf-8"
-
-  # Path to custom CAPTCHA page template
-  captchaTemplatePath: "/path/to/custom-captcha.html"
-  # Content-Type header for CAPTCHA page (optional)
-  captchaTemplateHeaders: "text/html; charset=utf-8"
-```
-
-Start the bouncer with the config file:
-
-```bash
-./envoy-proxy-bouncer serve --config config.yaml
-```
-
-#### Environment Variables
-
-Set environment variables directly:
-
-```bash
-export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH="/path/to/custom-ban.html"
-export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS="text/html; charset=utf-8"
-export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH="/path/to/custom-captcha.html"
-export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS="text/html; charset=utf-8"
-
-./envoy-proxy-bouncer serve
-```
-
-### Containerized Deployment (Docker)
-
-#### Volume Mount
+### Docker
 
 Mount your custom templates into the container:
 
@@ -145,7 +120,7 @@ docker run -d \
   ghcr.io/kdwils/envoy-proxy-bouncer:latest
 ```
 
-#### Docker Compose
+### Docker Compose
 
 ```yaml
 version: '3.8'
@@ -160,9 +135,9 @@ services:
       ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH: /templates/captcha.html
 ```
 
-### Kubernetes/Helm Deployment
+### Kubernetes/Helm
 
-#### Method 1: Inline Templates
+#### Inline Templates
 
 The Helm chart can automatically create and mount a ConfigMap from inline template content.
 
@@ -199,7 +174,7 @@ The Helm chart will automatically:
 - Mount it at `/app/template/html/`
 - Configure the bouncer to use the custom templates
 
-#### Method 2: External ConfigMap
+#### External ConfigMap
 
 If you prefer to manage the ConfigMap separately, create it first:
 
@@ -257,40 +232,16 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
   -f values.yaml
 ```
 
-## Customizing HTTP Headers
-
-You can customize the `Content-Type` header sent with template responses:
-
-### Default Headers
-
-- Ban page: `text/html; charset=utf-8`
-- CAPTCHA page: `text/html; charset=utf-8`
-
-### Custom Headers
-
-```yaml
-templates:
-  deniedTemplateHeaders: "text/html; charset=utf-8"
-  captchaTemplateHeaders: "text/html; charset=utf-8"
-```
-
-Or via environment variables:
-
-```bash
-export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS="text/html; charset=utf-8"
-export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS="text/html; charset=utf-8"
-```
-
-## Examples
+## Default Templates
 
 See the default templates for reference:
 - Ban template: [template/html/denied.html](../template/html/denied.html)
 - CAPTCHA template: [template/html/captcha.html](../template/html/captcha.html)
 
-## Additional Resources
+## See Also
 
+- [Configuration Guide](CONFIGURATION.md) - General configuration overview
+- [Server Configuration](SERVER.md) - Server ports and log levels
+- [CrowdSec Configuration](CROWDSEC.md) - CrowdSec bouncer and WAF setup
+- [CAPTCHA Configuration](CAPTCHA.md) - CAPTCHA challenge setup
 - [Go html/template documentation](https://pkg.go.dev/html/template)
-- [Go text/template documentation](https://pkg.go.dev/text/template)
-- [CrowdSec Documentation](https://docs.crowdsec.net/)
-- [reCAPTCHA Documentation](https://developers.google.com/recaptcha)
-- [Cloudflare Turnstile Documentation](https://developers.cloudflare.com/turnstile/)

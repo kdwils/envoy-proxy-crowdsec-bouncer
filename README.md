@@ -66,16 +66,19 @@ When CAPTCHA is enabled and a suspicious request is detected:
 
 ## Documentation
 
-- **[Configuration Guide](docs/CONFIGURATION.md)** - Configuration options, environment variables, and examples
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Kubernetes, Helm, Docker, and binary deployment instructions
-- **[CAPTCHA Setup](docs/CAPTCHA.md)** - CAPTCHA provider configuration and integration
+- **[Configuration Guide](docs/CONFIGURATION.md)** - Configuration methods and overview
+- **[Server Configuration](docs/SERVER.md)** - Server ports and log levels
+- **[CrowdSec Configuration](docs/CROWDSEC.md)** - Bouncer, WAF, metrics, and trusted proxies
+- **[CAPTCHA Configuration](docs/CAPTCHA.md)** - CAPTCHA challenge setup and providers
+- **[Webhook Configuration](docs/WEBHOOKS.md)** - Webhook event notifications
 - **[Custom Templates](docs/CUSTOM_TEMPLATES.md)** - Customize ban and CAPTCHA page templates
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Kubernetes, Helm, Docker, and binary deployment
 
 ## Examples
 
 Kubernetes manifest examples can be found below:
 - [Kubernetes Deployment](examples/deploy/README.md)
-- [Real Example](https://github.com/kdwils/homelab/blob/main/monitoring/envoy-proxy-bouncer/bouncer.yaml)
+- [Real Example](https://github.com/kdwils/homelab/blob/main/monitoring/envoy-proxy-bouncer/environments/homelab/homelab.yaml)
 - [Custom Templates](examples/deploy/custom-templates.yaml)
 
 ## Acknowledgments
