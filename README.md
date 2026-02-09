@@ -71,6 +71,7 @@ When CAPTCHA is enabled and a suspicious request is detected:
 - **[CrowdSec Configuration](docs/CROWDSEC.md)** - Bouncer, WAF, metrics, and trusted proxies
 - **[CAPTCHA Configuration](docs/CAPTCHA.md)** - CAPTCHA challenge setup and providers
 - **[Webhook Configuration](docs/WEBHOOKS.md)** - Webhook event notifications
+- **[Signing Key Generation](docs/SIGNING_KEYS.md)** - Generate signing keys for CAPTCHA and webhooks
 - **[Custom Templates](docs/CUSTOM_TEMPLATES.md)** - Customize ban and CAPTCHA page templates
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Kubernetes, Helm, Docker, and binary deployment
 

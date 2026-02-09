@@ -67,7 +67,7 @@ captcha:
 | `provider` | string | `""` | Yes | CAPTCHA provider: `recaptcha` or `turnstile` |
 | `siteKey` | string | `""` | Yes | Public site key from CAPTCHA provider |
 | `secretKey` | string | `""` | Yes | Secret key from CAPTCHA provider |
-| `signingKey` | string | `""` | Yes | JWT signing key (minimum 32 bytes). Generate with `openssl rand -base64 32` |
+| `signingKey` | string | `""` | Yes | JWT signing key (minimum 32 bytes). See [Signing Key Generation](SIGNING_KEYS.md) |
 | `callbackURL` | string | `""` | Yes | Base URL for CAPTCHA callbacks (public-facing hostname) |
 | `cookieDomain` | string | `""` | Yes | Parent domain for cookies (e.g., `.example.com`) to share across subdomains |
 | `secureCookie` | bool | `true` | No | Use Secure flag and SameSite=None (true for HTTPS, false for local dev) |
@@ -210,7 +210,7 @@ Example:
 
 ### Session Security
 
-The `signingKey` must be at least 32 bytes. Generate one with `openssl rand -base64 32`.
+The `signingKey` must be at least 32 bytes. See [Signing Key Generation](SIGNING_KEYS.md) for generation instructions.
 
 Verification tokens are stored in HTTP-only cookies. When `secureCookie` is true, cookies use the Secure flag and SameSite=None (required for cross-site access over HTTPS). When false, SameSite=Lax is used (for local development).
 

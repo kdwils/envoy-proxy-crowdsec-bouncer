@@ -8,7 +8,7 @@ Send HTTP POST requests when security events happen. Delivery is async - won't b
 |--------|------|---------|----------|-------------|
 | `subscriptions[].url` | string | - | Yes | HTTP endpoint to receive webhook events |
 | `subscriptions[].events` | []string | - | Yes | List of events to subscribe to |
-| `signingKey` | string | `""` | No | HMAC-SHA256 signing key for payload verification |
+| `signingKey` | string | `""` | No | HMAC-SHA256 signing key for payload verification. See [Signing Key Generation](SIGNING_KEYS.md) |
 | `timeout` | duration | `"5s"` | No | HTTP timeout for webhook delivery |
 | `bufferSize` | int | `100` | No | Event channel buffer size |
 
@@ -68,7 +68,7 @@ envoy-proxy-bouncer serve --config config.yaml
 
 ## Signing
 
-Set `signingKey` to sign payloads with HMAC-SHA256. Signature goes in `X-Signature-SHA256` header as hex.
+Set `signingKey` to sign payloads with HMAC-SHA256. Signature goes in `X-Signature-SHA256` header as hex. See [Signing Key Generation](SIGNING_KEYS.md) for key generation instructions.
 
 ```python
 import hmac
