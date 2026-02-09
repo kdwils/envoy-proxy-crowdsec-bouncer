@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.5.0](https://img.shields.io/badge/Version-0.5.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.5.0](https://img.shields.io/badge/AppVersion-v0.5.0-informational?style=flat-square)
+![Version: 0.5.1](https://img.shields.io/badge/Version-0.5.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.5.1](https://img.shields.io/badge/AppVersion-v0.5.1-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -50,6 +50,12 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.waf.apiKeySecretRef.name | string | `""` |  |
 | config.waf.appSecURL | string | `"http://crowdsec-appsec-service:7422"` |  |
 | config.waf.enabled | bool | `false` |  |
+| config.webhook.bufferSize | int | `100` |  |
+| config.webhook.signingKey | string | `""` |  |
+| config.webhook.signingKeySecretRef.key | string | `""` |  |
+| config.webhook.signingKeySecretRef.name | string | `""` |  |
+| config.webhook.subscriptions | list | `[]` |  |
+| config.webhook.timeout | string | `"5s"` |  |
 | fullnameOverride | string | `""` |  |
 | httproute.annotations | object | `{}` |  |
 | httproute.enabled | bool | `false` |  |

@@ -222,6 +222,40 @@
                             "type": "boolean"
                         }
                     }
+                },
+                "webhook": {
+                    "type": "object",
+                    "properties": {
+                        "bufferSize": {
+                            "default": 100,
+                            "type": "integer"
+                        },
+                        "signingKey": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "signingKeySecretRef": {
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "default": "",
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "default": "",
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "subscriptions": {
+                            "default": [],
+                            "type": "array"
+                        },
+                        "timeout": {
+                            "default": "5s",
+                            "type": "string"
+                        }
+                    }
                 }
             }
         },

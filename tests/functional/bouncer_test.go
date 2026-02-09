@@ -24,6 +24,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
+	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -288,7 +289,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, templateStore, slogger)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
 
 	go func() {
 		err := server.ServeDual(ctx)
@@ -621,7 +622,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, testBouncer, testBouncer.CaptchaService, templateStore, slogger)
+	server := server.NewServer(config, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
 
 	log.Printf("TestBouncerWithCaptcha: Created context, about to start goroutine")
 	go func() {

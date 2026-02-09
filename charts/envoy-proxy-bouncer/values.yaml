@@ -81,6 +81,15 @@ config:
     cookieName: "" # @schema default: ""
     secureCookie: true # @schema default: true
 
+  webhook:
+    subscriptions: [] # @schema default: []
+    signingKey: "" # @schema default: ""
+    signingKeySecretRef: # @schema type: object
+      name: "" # @schema default: ""
+      key: "" # @schema default: ""
+    timeout: "5s" # @schema default: "5s"
+    bufferSize: 100 # @schema default: 100
+
   templates:
     deniedTemplatePath: "" # @schema default: ""
     deniedTemplateHeaders: "" # @schema default: ""

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +14,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
+	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -67,7 +69,10 @@ var ServeCmd = &cobra.Command{
 			templateStore = nil
 		}
 
-		server := server.NewServer(config, bouncer, bouncer.CaptchaService, templateStore, slogger)
+		notifier := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
+		go notifier.Start(ctx)
+
+		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger)
 
 		sigCtx, cancel := context.WithCancel(ctx)
 		defer cancel()

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/spf13/viper"
 )
 
@@ -12,6 +13,7 @@ type Config struct {
 	Bouncer        Bouncer   `yaml:"bouncer" json:"bouncer"`
 	WAF            WAF       `yaml:"waf" json:"waf"`
 	Captcha        Captcha   `yaml:"captcha" json:"captcha"`
+	Webhook        Webhook   `yaml:"webhook" json:"webhook"`
 	TrustedProxies []string  `yaml:"trustedProxies" json:"trustedProxies"`
 	Templates      Templates `yaml:"templates" json:"templates"`
 }
@@ -51,6 +53,13 @@ type WAF struct {
 	Enabled   bool   `yaml:"enabled" json:"enabled"`
 	AppSecURL string `yaml:"appSecURL" json:"appSecURL"`
 	ApiKey    string `yaml:"apiKey" json:"apiKey"`
+}
+
+type Webhook struct {
+	Subscriptions []webhook.Subscription `yaml:"subscriptions" json:"subscriptions"`
+	SigningKey     string                 `yaml:"signingKey" json:"signingKey"`
+	Timeout        time.Duration          `yaml:"timeout" json:"timeout"`
+	BufferSize     int                    `yaml:"bufferSize" json:"bufferSize"`
 }
 
 type Templates struct {

@@ -18,6 +18,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
+	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -34,6 +35,7 @@ type Server struct {
 	auth.UnimplementedAuthorizationServer
 	bouncer       Bouncer
 	captcha       Captcha
+	notifier      Notifier
 	config        config.Config
 	logger        *slog.Logger
 	templateStore TemplateStore
@@ -42,7 +44,7 @@ type Server struct {
 	healthServer  *health.Server
 }
 
-func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateStore TemplateStore, logger *slog.Logger) *Server {
+func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger) *Server {
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus(healthCheckServiceLiveness, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(healthCheckServiceReadiness, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
@@ -52,6 +54,7 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, templateS
 		bouncer:       bouncer,
 		logger:        logger,
 		captcha:       captcha,
+		notifier:      notifier,
 		templateStore: templateStore,
 		now:           time.Now,
 		rateLimiter:   NewRateLimiter(10, 20),
@@ -220,6 +223,14 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	cookie := s.buildSessionCookie(cookieName, verificationResult.Token)
 	http.SetCookie(w, cookie)
 
+	s.notifier.Notify(r.Context(), webhook.Event{
+		Type:      webhook.EventCaptchaVerified,
+		Timestamp: s.now().UTC(),
+		IP:        clientIP,
+		Action:    "allow",
+		Reason:    "captcha verified",
+	})
+
 	http.Redirect(w, r, session.OriginalURL, http.StatusFound)
 }
 
@@ -327,6 +338,39 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 	return handler(logger.WithContext(ctx, reqLogger), req)
 }
 
+func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event {
+	eventType := webhook.EventRequestAllowed
+	switch result.Action {
+	case "allow":
+		eventType = webhook.EventRequestAllowed
+	case "ban", "deny":
+		eventType = webhook.EventRequestBlocked
+	case "captcha":
+		eventType = webhook.EventCaptchaRequired
+	}
+
+	event := webhook.Event{
+		Type:      eventType,
+		Timestamp: s.now().UTC(),
+		IP:        result.IP,
+		Action:    result.Action,
+		Reason:    result.Reason,
+	}
+
+	if result.ParsedRequest != nil {
+		event.Request = &webhook.Request{
+			Method:    result.ParsedRequest.Method,
+			URL:       result.ParsedRequest.URL.String(),
+			Host:      result.ParsedRequest.URL.Host,
+			Scheme:    result.ParsedRequest.URL.Scheme,
+			Path:      result.ParsedRequest.URL.Path,
+			UserAgent: result.ParsedRequest.UserAgent,
+		}
+	}
+
+	return event
+}
+
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
 	if s.bouncer == nil {
 		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil, nil))
@@ -335,6 +379,9 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 
 	result := s.bouncer.Check(ctx, req)
 	s.logger.Info("remediation result", slog.Any("result", result))
+	if result.Action != "error" {
+		s.notifier.Notify(ctx, s.buildWebhookEvent(result))
+	}
 	switch result.Action {
 	case "allow":
 		return getAllowedResponse(), nil

@@ -53,6 +53,18 @@ captcha:
   challengeDuration: "5m"                   # How long before a CAPTCHA challenge expires
   sessionDuration: "15m"                    # How long captcha verification is valid
 
+webhook:
+  subscriptions:                            # List of webhook endpoints
+    - url: "https://example.com/webhook"
+      events:
+        - request_blocked                   # Fired when request is blocked (ban/deny)
+        - captcha_required                  # Fired when captcha challenge is issued
+        - captcha_verified                  # Fired when captcha is successfully verified
+        - request_allowed                   # Fired when request is allowed
+  signingKey: ""                            # HMAC-SHA256 signing key (optional)
+  timeout: "5s"                             # HTTP timeout for webhook delivery
+  bufferSize: 100                           # Event channel buffer size
+
 templates:
   deniedTemplatePath: ""                    # Path to custom ban page template
   deniedTemplateHeaders: ""                 # Content-Type header for ban page
@@ -105,6 +117,11 @@ export ENVOY_BOUNCER_CAPTCHA_SECURECOOKIE=true
 export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
 export ENVOY_BOUNCER_CAPTCHA_CHALLENGEDURATION=5m
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
+
+# Webhook configuration (subscriptions require config file)
+export ENVOY_BOUNCER_WEBHOOK_SIGNINGKEY=your-hmac-signing-key
+export ENVOY_BOUNCER_WEBHOOK_TIMEOUT=5s
+export ENVOY_BOUNCER_WEBHOOK_BUFFERSIZE=100
 
 # Template configuration
 export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH=/path/to/ban.html
@@ -317,4 +334,5 @@ templates:
 
 - [Deployment Guide](DEPLOYMENT.md)
 - [CAPTCHA Configuration](CAPTCHA.md)
+- [Webhook Configuration](WEBHOOKS.md)
 - [Custom Templates](CUSTOM_TEMPLATES.md)

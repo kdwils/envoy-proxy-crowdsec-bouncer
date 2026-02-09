@@ -72,6 +72,11 @@ func initConfig() {
 	viper.SetDefault("captcha.challengeDuration", "5m")
 	viper.SetDefault("captcha.sessionDuration", "15m")
 
+	viper.SetDefault("webhook.subscriptions", nil)
+	viper.SetDefault("webhook.signingKey", "")
+	viper.SetDefault("webhook.timeout", "5s")
+	viper.SetDefault("webhook.bufferSize", 100)
+
 	viper.SetDefault("templates.deniedTemplatePath", "")
 	viper.SetDefault("templates.deniedTemplateHeaders", "text/html; charset=utf-8")
 	viper.SetDefault("templates.captchaTemplatePath", "")

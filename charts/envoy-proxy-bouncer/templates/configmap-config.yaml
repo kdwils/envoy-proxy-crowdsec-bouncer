@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "envoy-proxy-bouncer.fullname" . }}-config
+  labels:
+    {{- include "envoy-proxy-bouncer.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- .Values.config | toYaml | nindent 4 }}

@@ -17,6 +17,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
+	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,7 +123,7 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, templateStore, slogger)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
 
 	go func() {
 		err := server.ServeDual(ctx)
@@ -217,7 +218,7 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, templateStore, slogger)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
 
 	go func() {
 		err := server.ServeDual(ctx)
