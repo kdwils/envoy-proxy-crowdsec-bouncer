@@ -60,6 +60,18 @@ func waitForServer(t *testing.T, addr string, timeout time.Duration) {
 	t.Fatalf("server at %s did not become ready within %v: %v", addr, timeout, lastErr)
 }
 
+func waitForDecisionCache(t *testing.T, dc *components.DecisionCache, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if dc.IsReady() {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("decision cache did not become ready within %v", timeout)
+}
+
 func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -271,6 +283,8 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	mockProvider.EXPECT().Verify(gomock.Any(), gomock.Not("success"), gomock.Any()).Return(false, nil).AnyTimes()
 
 	go decisionCache.Sync(ctx)
+
+	waitForDecisionCache(t, decisionCache, 10*time.Second)
 
 	t.Run("Complete JWT verification flow with cookie bypass", func(t *testing.T) {
 		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
