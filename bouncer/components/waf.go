@@ -70,7 +70,7 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 	}
 
 	forwardReqMethod := http.MethodGet
-	if req.Body != nil {
+	if len(req.Body) > 0 {
 		forwardReqMethod = http.MethodPost
 	}
 
@@ -116,7 +116,7 @@ func buildAppSecHeaders(req AppSecRequest, realIP, apiKey string) map[string]str
 		"X-Crowdsec-Appsec-Host":       req.URL.Host,
 		"X-Crowdsec-Appsec-Verb":       req.Method,
 		"X-Crowdsec-Appsec-Api-Key":    apiKey,
-		"X-Crowdsec-Appsec-User-Agent": req.Headers["User-Agent"],
+		"X-Crowdsec-Appsec-User-Agent": req.Headers["user-agent"],
 	}
 
 	if req.ProtoMajor > 0 {
