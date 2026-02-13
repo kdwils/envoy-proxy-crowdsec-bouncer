@@ -44,6 +44,22 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 	}
 }
 
+func waitForServer(t *testing.T, addr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err == nil {
+			conn.Close()
+			return
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("server at %s did not become ready within %v: %v", addr, timeout, lastErr)
+}
+
 func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -287,7 +303,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -421,7 +437,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -564,7 +580,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -744,7 +760,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
