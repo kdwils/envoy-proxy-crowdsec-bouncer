@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.5.1](https://img.shields.io/badge/Version-0.5.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.5.1](https://img.shields.io/badge/AppVersion-v0.5.1-informational?style=flat-square)
+![Version: 0.5.2](https://img.shields.io/badge/Version-0.5.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.5.2](https://img.shields.io/badge/AppVersion-v0.5.2-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -17,7 +17,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.bouncer.apiKeySecretRef.key | string | `""` |  |
 | config.bouncer.apiKeySecretRef.name | string | `""` |  |
 | config.bouncer.enabled | bool | `true` |  |
-| config.bouncer.lapiURL | string | `"http://crowdsec-service:8080"` |  |
+| config.bouncer.lapiURL | string | `""` |  |
 | config.bouncer.metrics | bool | `false` |  |
 | config.bouncer.metricsInterval | string | `"10m"` |  |
 | config.bouncer.tickerInterval | string | `"10s"` |  |
@@ -48,7 +48,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.waf.apiKey | string | `""` |  |
 | config.waf.apiKeySecretRef.key | string | `""` |  |
 | config.waf.apiKeySecretRef.name | string | `""` |  |
-| config.waf.appSecURL | string | `"http://crowdsec-appsec-service:7422"` |  |
+| config.waf.appSecURL | string | `""` |  |
 | config.waf.enabled | bool | `false` |  |
 | config.webhook.bufferSize | int | `100` |  |
 | config.webhook.signingKey | string | `""` |  |
