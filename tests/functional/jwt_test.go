@@ -44,6 +44,34 @@ func TestJWTCompleteVerificationFlow(t *testing.T) {
 	}
 }
 
+func waitForServer(t *testing.T, addr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err == nil {
+			conn.Close()
+			return
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("server at %s did not become ready within %v: %v", addr, timeout, lastErr)
+}
+
+func waitForDecisionCache(t *testing.T, dc *components.DecisionCache, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if dc.IsReady() {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("decision cache did not become ready within %v", timeout)
+}
+
 func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -256,6 +284,8 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 	go decisionCache.Sync(ctx)
 
+	waitForDecisionCache(t, decisionCache, 10*time.Second)
+
 	t.Run("Complete JWT verification flow with cookie bypass", func(t *testing.T) {
 		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
 		require.NoError(t, err)
@@ -287,7 +317,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -421,7 +451,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -564,7 +594,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -744,7 +774,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			close(serverDone)
 		}()
 
-		time.Sleep(2 * time.Second)
+		waitForServer(t, "localhost:8080", 10*time.Second)
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)

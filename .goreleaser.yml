@@ -67,21 +67,10 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    ## v0.5.1
+    ## v0.5.2
 
-    ### Webhook Support
-    Added webhook notifications for events. Send HTTP POST requests to external endpoints when events occur such as:
-    - `request_allowed` - Request allowed
-    - `request_blocked` - Request blocked
-    - `captcha_required` - CAPTCHA challenge issued
-    - `captcha_verified` - CAPTCHA challenge successfully completed 
-
-    See the [Webhook Documentation](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/WEBHOOKS.md) for configuration examples.
-
-    ### Helm Chart Changes
-    - Empty string values in Helm values.yaml now properly allow environment variables and application defaults to take precedence
-    - Removed hardcoded default URLs (`lapiURL`, `appSecURL`) that prevented environment variable overrides
-    - Added helper template to clean empty config values for proper precedence handling
+    ### WAF inspection bugfix
+    This changes includes bugfixes for determining if a http request body is present and parsing the user-agent from a request to forward to crowdsec
 
     ### Breaking Changes ⚠️
     See the [v0.5.0 Breaking Changes](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/breaking-changes/v0.5.0.md) if migrating from v0.4.x or lower.

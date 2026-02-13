@@ -45,7 +45,7 @@ func (m httpReqMatcher) String() string { return "httpReqMatcher" }
 
 func TestBuildAppSecHeaders(t *testing.T) {
 	req := AppSecRequest{
-		Headers:    map[string]string{"User-Agent": "Go-http-client/1.1"},
+		Headers:    map[string]string{"user-agent": "Go-http-client/1.1"},
 		URL:        url.URL{Path: "/test/uri", Host: "example.com"},
 		Method:     "POST",
 		ProtoMajor: 1,
@@ -141,7 +141,7 @@ func TestWAF_Inspect(t *testing.T) {
 			"X-Crowdsec-Appsec-User-Agent": "test-agent",
 		}
 		mockHTTP.EXPECT().Do(httpReqMatcher{method: "GET", urlStr: "http://test", headers: expectedHeaders}).Return(response, nil).Times(1)
-		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"User-Agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
 		ctx := context.Background()
 		result, err := waf.Inspect(ctx, areq)
 		assert.NoError(t, err)
@@ -167,7 +167,7 @@ func TestWAF_Inspect(t *testing.T) {
 			"X-Crowdsec-Appsec-User-Agent": "test-agent",
 		}
 		mockHTTP.EXPECT().Do(httpReqMatcher{method: "POST", urlStr: "http://test", headers: expectedHeaders}).Return(response, nil).Times(1)
-		areq := AppSecRequest{Method: "POST", Headers: map[string]string{"Content-Type": "application/json", "User-Agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}, Body: []byte("test")}
+		areq := AppSecRequest{Method: "POST", Headers: map[string]string{"Content-Type": "application/json", "user-agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}, Body: []byte("test")}
 		ctx := context.Background()
 		result, err := waf.Inspect(ctx, areq)
 		assert.NoError(t, err)

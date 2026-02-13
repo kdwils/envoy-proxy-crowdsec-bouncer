@@ -57,9 +57,9 @@ type WAF struct {
 
 type Webhook struct {
 	Subscriptions []webhook.Subscription `yaml:"subscriptions" json:"subscriptions"`
-	SigningKey     string                 `yaml:"signingKey" json:"signingKey"`
-	Timeout        time.Duration          `yaml:"timeout" json:"timeout"`
-	BufferSize     int                    `yaml:"bufferSize" json:"bufferSize"`
+	SigningKey    string                 `yaml:"signingKey" json:"signingKey"`
+	Timeout       time.Duration          `yaml:"timeout" json:"timeout"`
+	BufferSize    int                    `yaml:"bufferSize" json:"bufferSize"`
 }
 
 type Templates struct {
