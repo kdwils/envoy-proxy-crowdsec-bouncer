@@ -91,12 +91,16 @@ func (s *Server) ServeDual(ctx context.Context) error {
 		close(errChan)
 	}()
 
+	var firstErr error
 	select {
 	case err := <-errChan:
-		return err
+		firstErr = err
 	case <-ctx.Done():
-		return ctx.Err()
+		firstErr = ctx.Err()
 	}
+
+	wg.Wait()
+	return firstErr
 }
 
 // Serve provides backward compatibility - serves only gRPC
