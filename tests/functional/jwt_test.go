@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -49,7 +50,7 @@ func waitForServer(t *testing.T, addr string, timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
-		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := net.DialTimeout("tcp", addr, time.Second)
 		if err == nil {
 			conn.Close()
 			return
