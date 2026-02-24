@@ -6,12 +6,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
@@ -64,43 +65,21 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier 
 
 // ServeDual starts both gRPC and HTTP servers concurrently
 func (s *Server) ServeDual(ctx context.Context) error {
-	var wg sync.WaitGroup
-	errChan := make(chan error, 2)
+	g, gctx := errgroup.WithContext(ctx)
 
-	grpcPort := s.config.Server.GRPCPort
-	httpPort := s.config.Server.HTTPPort
-
-	wg.Go(func() {
-		s.logger.Info("starting gRPC server", "port", grpcPort)
-		if err := s.serveGRPC(ctx, grpcPort); err != nil {
-			errChan <- fmt.Errorf("gRPC server error: %w", err)
-		}
+	g.Go(func() error {
+		s.logger.Info("starting gRPC server", "port", s.config.Server.GRPCPort)
+		return s.serveGRPC(gctx, s.config.Server.GRPCPort)
 	})
 
 	if s.config.Captcha.Enabled {
-		wg.Go(func() {
-			s.logger.Info("starting HTTP server", "port", httpPort)
-			if err := s.serveHTTP(ctx, httpPort); err != nil {
-				errChan <- fmt.Errorf("HTTP server error: %w", err)
-			}
+		g.Go(func() error {
+			s.logger.Info("starting HTTP server", "port", s.config.Server.HTTPPort)
+			return s.serveHTTP(gctx, s.config.Server.HTTPPort)
 		})
 	}
 
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
-
-	var firstErr error
-	select {
-	case err := <-errChan:
-		firstErr = err
-	case <-ctx.Done():
-		firstErr = ctx.Err()
-	}
-
-	wg.Wait()
-	return firstErr
+	return g.Wait()
 }
 
 // Serve provides backward compatibility - serves only gRPC
