@@ -42,6 +42,13 @@ func TestNewClient(t *testing.T) {
 		require.NotNil(t, client)
 	})
 
+	t.Run("returns error with empty lapi url", func(t *testing.T) {
+		cfg := config.Bouncer{ApiKey: "test-key", LAPIURL: ""}
+		_, err := NewClient(cfg, "test-agent")
+		require.Error(t, err)
+		assert.Equal(t, "LAPI URL is required", err.Error())
+	})
+
 	t.Run("returns error with invalid lapi url", func(t *testing.T) {
 		cfg := config.Bouncer{ApiKey: "test-key", LAPIURL: "://invalid-url"}
 		_, err := NewClient(cfg, "test-agent")
