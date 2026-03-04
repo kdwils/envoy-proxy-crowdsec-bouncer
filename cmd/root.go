@@ -54,6 +54,10 @@ func initConfig() {
 	viper.SetDefault("bouncer.tickerInterval", "10s")
 	viper.SetDefault("bouncer.metricsInterval", "10m")
 	viper.SetDefault("bouncer.banStatusCode", 403)
+	viper.SetDefault("bouncer.tls.certPath", "")
+	viper.SetDefault("bouncer.tls.keyPath", "")
+	viper.SetDefault("bouncer.tls.caPath", "")
+	viper.SetDefault("bouncer.tls.insecureSkipVerify", false)
 
 	viper.SetDefault("waf.enabled", false)
 	viper.SetDefault("waf.apiKey", "")

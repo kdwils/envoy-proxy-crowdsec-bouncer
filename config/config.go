@@ -39,6 +39,13 @@ type Captcha struct {
 	SessionDuration   time.Duration `yaml:"sessionDuration" json:"sessionDuration"`
 }
 
+type BouncerTLS struct {
+	CertPath           string `yaml:"certPath" json:"certPath"`
+	KeyPath            string `yaml:"keyPath" json:"keyPath"`
+	CAPath             string `yaml:"caPath" json:"caPath"`
+	InsecureSkipVerify bool   `yaml:"insecureSkipVerify" json:"insecureSkipVerify"`
+}
+
 type Bouncer struct {
 	Enabled         bool          `yaml:"enabled" json:"enabled"`
 	Metrics         bool          `yaml:"metrics" json:"metrics"`
@@ -47,6 +54,7 @@ type Bouncer struct {
 	ApiKey          string        `yaml:"apiKey" json:"apiKey"`
 	LAPIURL         string        `yaml:"lapiUrl" json:"lapiUrl"`
 	BanStatusCode   int           `yaml:"banStatusCode" json:"banStatusCode"`
+	TLS             BouncerTLS    `yaml:"tls" json:"tls"`
 }
 
 type WAF struct {

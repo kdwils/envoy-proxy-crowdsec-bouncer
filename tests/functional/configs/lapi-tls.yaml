@@ -1,0 +1,11 @@
+api:
+  client:
+    insecure_skip_verify: true
+  server:
+    tls:
+      cert_file: /etc/crowdsec/ssl/server.crt
+      key_file: /etc/crowdsec/ssl/server.key
+      ca_cert_path: /etc/crowdsec/ssl/ca.crt
+      client_verification: VerifyClientCertIfGiven
+      bouncers_allowed_ou:
+        - bouncer

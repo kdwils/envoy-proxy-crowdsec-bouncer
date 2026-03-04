@@ -7,11 +7,75 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func TestValidateAuth(t *testing.T) {
+	t.Run("returns error when no auth provided", func(t *testing.T) {
+		cfg := config.Bouncer{}
+		err := validateAuth(cfg)
+		require.Error(t, err)
+		assert.Equal(t, "api key or certificate (cert and key paths) required", err.Error())
+	})
+
+	t.Run("returns error when both api key and cert path provided", func(t *testing.T) {
+		cfg := config.Bouncer{
+			ApiKey: "test-key",
+			TLS:    config.BouncerTLS{CertPath: "/path/to/cert"},
+		}
+		err := validateAuth(cfg)
+		require.Error(t, err)
+		assert.Equal(t, "cannot use both API key and certificate auth", err.Error())
+	})
+
+	t.Run("returns error when both api key and key path provided", func(t *testing.T) {
+		cfg := config.Bouncer{
+			ApiKey: "test-key",
+			TLS:    config.BouncerTLS{KeyPath: "/path/to/key"},
+		}
+		err := validateAuth(cfg)
+		require.Error(t, err)
+		assert.Equal(t, "cannot use both API key and certificate auth", err.Error())
+	})
+
+	t.Run("returns nil when only api key provided", func(t *testing.T) {
+		cfg := config.Bouncer{ApiKey: "test-key"}
+		err := validateAuth(cfg)
+		assert.Nil(t, err)
+	})
+
+	t.Run("returns nil when cert and key paths provided", func(t *testing.T) {
+		cfg := config.Bouncer{
+			TLS: config.BouncerTLS{CertPath: "/path/cert", KeyPath: "/path/key"},
+		}
+		err := validateAuth(cfg)
+		assert.Nil(t, err)
+	})
+
+	t.Run("returns error when only cert path provided", func(t *testing.T) {
+		cfg := config.Bouncer{
+			TLS: config.BouncerTLS{CertPath: "/path/to/cert"},
+		}
+		err := validateAuth(cfg)
+		require.Error(t, err)
+		assert.Equal(t, "api key or certificate (cert and key paths) required", err.Error())
+	})
+
+	t.Run("returns error when only key path provided", func(t *testing.T) {
+		cfg := config.Bouncer{
+			TLS: config.BouncerTLS{KeyPath: "/path/to/key"},
+		}
+		err := validateAuth(cfg)
+		require.Error(t, err)
+		assert.Equal(t, "api key or certificate (cert and key paths) required", err.Error())
+	})
 }
 
 func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {

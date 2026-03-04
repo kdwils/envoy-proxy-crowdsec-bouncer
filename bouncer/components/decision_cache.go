@@ -8,6 +8,7 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
@@ -22,8 +23,22 @@ type DecisionCache struct {
 	syncComplete   bool
 }
 
-func NewDecisionCache(apiKey, apiURL, tickerInterval string, MetricsService *crowdsec.MetricsService) (*DecisionCache, error) {
-	stream, err := newStreamBouncer(apiKey, apiURL, tickerInterval)
+func validateAuth(cfg config.Bouncer) error {
+	if cfg.ApiKey != "" && (cfg.TLS.CertPath != "" || cfg.TLS.KeyPath != "") {
+		return errors.New("cannot use both API key and certificate auth")
+	}
+	if cfg.ApiKey == "" && (cfg.TLS.CertPath == "" || cfg.TLS.KeyPath == "") {
+		return errors.New("api key or certificate (cert and key paths) required")
+	}
+	return nil
+}
+
+func NewDecisionCache(cfg config.Bouncer, MetricsService *crowdsec.MetricsService) (*DecisionCache, error) {
+	if err := validateAuth(cfg); err != nil {
+		return nil, err
+	}
+
+	stream, err := newStreamBouncer(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -37,12 +52,18 @@ func NewDecisionCache(apiKey, apiURL, tickerInterval string, MetricsService *cro
 	return dc, nil
 }
 
-func newStreamBouncer(apiKey, apiURL, tickerInterval string) (*csbouncer.StreamBouncer, error) {
+func newStreamBouncer(cfg config.Bouncer) (*csbouncer.StreamBouncer, error) {
 	b := &csbouncer.StreamBouncer{
-		APIKey:         apiKey,
-		APIUrl:         apiURL,
+		APIKey:         cfg.ApiKey,
+		APIUrl:         cfg.LAPIURL,
 		UserAgent:      "envoy-proxy-bouncer/" + version.Version,
-		TickerInterval: tickerInterval,
+		TickerInterval: cfg.TickerInterval,
+		CertPath:       cfg.TLS.CertPath,
+		KeyPath:        cfg.TLS.KeyPath,
+		CAPath:         cfg.TLS.CAPath,
+	}
+	if cfg.TLS.InsecureSkipVerify {
+		b.InsecureSkipVerify = &cfg.TLS.InsecureSkipVerify
 	}
 	b.RetryInitialConnect = true
 
@@ -50,11 +71,21 @@ func newStreamBouncer(apiKey, apiURL, tickerInterval string) (*csbouncer.StreamB
 	return b, err
 }
 
-func NewLiveBouncer(apiKey, apiURL string) (*csbouncer.LiveBouncer, error) {
+func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
+	if err := validateAuth(cfg); err != nil {
+		return nil, err
+	}
+
 	b := &csbouncer.LiveBouncer{
-		APIKey:    apiKey,
-		APIUrl:    apiURL,
+		APIKey:    cfg.ApiKey,
+		APIUrl:    cfg.LAPIURL,
 		UserAgent: "envoy-proxy-bouncer/" + version.Version,
+		CertPath:  cfg.TLS.CertPath,
+		KeyPath:   cfg.TLS.KeyPath,
+		CAPath:    cfg.TLS.CAPath,
+	}
+	if cfg.TLS.InsecureSkipVerify {
+		b.InsecureSkipVerify = &cfg.TLS.InsecureSkipVerify
 	}
 
 	err := b.Init()

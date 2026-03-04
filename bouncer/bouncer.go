@@ -74,7 +74,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
 		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
-		client, err := crowdsec.NewClient(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, userAgent)
+		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent)
 		if err != nil {
 			return nil, err
 		}
@@ -93,7 +93,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval, bouncer.MetricsService)
+		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService)
 		if err != nil {
 			return nil, err
 		}
