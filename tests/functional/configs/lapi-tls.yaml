@@ -1,6 +1,4 @@
 api:
-  client:
-    insecure_skip_verify: true
   server:
     tls:
       cert_file: /etc/crowdsec/ssl/server.crt
