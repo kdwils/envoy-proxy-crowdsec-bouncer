@@ -61,6 +61,10 @@ func NewClient(cfg config.Bouncer, userAgent string) (*apiclient.ApiClient, erro
 		return nil, errors.New("cannot use both API key and certificate auth")
 	}
 
+	if cfg.LAPIURL == "" {
+		return nil, errors.New("LAPI URL is required")
+	}
+
 	apiURL := cfg.LAPIURL
 	if apiURL[len(apiURL)-1] != '/' {
 		apiURL += "/"

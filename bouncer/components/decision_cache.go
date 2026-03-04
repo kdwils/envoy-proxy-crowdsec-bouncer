@@ -63,7 +63,8 @@ func newStreamBouncer(cfg config.Bouncer) (*csbouncer.StreamBouncer, error) {
 		CAPath:         cfg.TLS.CAPath,
 	}
 	if cfg.TLS.InsecureSkipVerify {
-		b.InsecureSkipVerify = &cfg.TLS.InsecureSkipVerify
+		v := cfg.TLS.InsecureSkipVerify
+		b.InsecureSkipVerify = &v
 	}
 	b.RetryInitialConnect = true
 
@@ -85,7 +86,8 @@ func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
 		CAPath:    cfg.TLS.CAPath,
 	}
 	if cfg.TLS.InsecureSkipVerify {
-		b.InsecureSkipVerify = &cfg.TLS.InsecureSkipVerify
+		v := cfg.TLS.InsecureSkipVerify
+		b.InsecureSkipVerify = &v
 	}
 
 	err := b.Init()

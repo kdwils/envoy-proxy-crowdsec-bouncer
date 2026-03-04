@@ -76,7 +76,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 			{HostFilePath: certs.serverKeyPath, ContainerFilePath: "/etc/crowdsec/ssl/server.key", FileMode: 0600},
 			{HostFilePath: certs.caPath, ContainerFilePath: "/etc/crowdsec/ssl/ca.crt", FileMode: 0644},
 			{HostFilePath: "./configs/lapi-tls.yaml", ContainerFilePath: "/etc/crowdsec/config.yaml.local", FileMode: 0644},
-		{HostFilePath: "./configs/local_api_credentials.yaml.local", ContainerFilePath: "/etc/crowdsec/local_api_credentials.yaml.local", FileMode: 0644},
+			{HostFilePath: "./configs/local_api_credentials.yaml.local", ContainerFilePath: "/etc/crowdsec/local_api_credentials.yaml.local", FileMode: 0644},
 		},
 		WaitingFor: wait.ForHTTP("/health").WithPort("8080/tcp").
 			WithTLS(true, &tls.Config{InsecureSkipVerify: true}).
