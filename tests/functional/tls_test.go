@@ -208,7 +208,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 		require.Equal(t, int32(0), check.Status.Code)
 	})
 
-	t.Run("metrics collected with tls auth", func(t *testing.T) {
+	t.Run("metrics sent to lapi with tls auth", func(t *testing.T) {
 		require.NotNil(t, b.MetricsService)
 
 		snapshot := b.MetricsService.GetSnapshot()
@@ -217,6 +217,10 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 		bypassMetric, ok := snapshot["CAPI:bypass"]
 		require.True(t, ok, "expected CAPI:bypass metric to exist")
 		require.Greater(t, bypassMetric.Value, int64(0), "expected bypass count to be non-zero")
+
+		allMetrics := b.MetricsService.Calculate(time.Second)
+		err := b.MetricsService.Send(context.Background(), allMetrics)
+		require.NoError(t, err, "expected metrics to be sent to LAPI over TLS")
 	})
 }
 
