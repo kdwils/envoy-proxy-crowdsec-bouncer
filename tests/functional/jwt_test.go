@@ -273,7 +273,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	decisionCache, err := components.NewDecisionCache(cfg.Bouncer.ApiKey, cfg.Bouncer.LAPIURL, cfg.Bouncer.TickerInterval, nil)
+	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil)
 	require.NoError(t, err)
 
 	waf := components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)

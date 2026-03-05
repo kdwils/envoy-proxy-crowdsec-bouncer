@@ -32,7 +32,7 @@ var bounceCmd = &cobra.Command{
 		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		logger := slog.New(handler)
 
-		client, err := components.NewLiveBouncer(config.Bouncer.ApiKey, config.Bouncer.LAPIURL)
+		client, err := components.NewLiveBouncer(config.Bouncer)
 		if err != nil {
 			return err
 		}
