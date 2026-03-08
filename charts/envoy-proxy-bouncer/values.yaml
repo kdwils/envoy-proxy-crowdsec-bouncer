@@ -59,6 +59,7 @@ config:
       keyKey: "tls.key" # @schema default: "tls.key"
       caKey: "ca.crt" # @schema default: "ca.crt"
 
+    # the default paths are where the secret is mounted, do not change these unless mounting the certs another way
     tls: # @schema type: object
       enabled: false # @schema default: false
       certPath: "/app/tls/tls.crt" # @schema default: "/app/tls/tls.crt"
