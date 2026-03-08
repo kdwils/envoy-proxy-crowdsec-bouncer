@@ -16,6 +16,12 @@ bouncer:
   tickerInterval: "10s"
   metricsInterval: "10m"
   banStatusCode: 403
+  tls:
+    enabled: false
+    certPath: ""
+    keyPath: ""
+    caPath: ""
+    insecureSkipVerify: false
 
 waf:
   enabled: false

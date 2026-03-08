@@ -28,7 +28,7 @@ func TestNewClient(t *testing.T) {
 		cfg := config.Bouncer{
 			ApiKey:  "test-key",
 			LAPIURL: "http://localhost:8080",
-			TLS:     config.BouncerTLS{CertPath: "/path/to/cert", KeyPath: "/path/to/key"},
+			TLS:     config.BouncerTLS{Enabled: true, CertPath: "/path/to/cert", KeyPath: "/path/to/key"},
 		}
 		_, err := NewClient(cfg, "test-agent")
 		require.Error(t, err)
@@ -58,7 +58,7 @@ func TestNewClient(t *testing.T) {
 	t.Run("returns error with missing cert files", func(t *testing.T) {
 		cfg := config.Bouncer{
 			LAPIURL: "https://localhost:8080",
-			TLS:     config.BouncerTLS{CertPath: "/nonexistent/cert.pem", KeyPath: "/nonexistent/key.pem"},
+			TLS:     config.BouncerTLS{Enabled: true, CertPath: "/nonexistent/cert.pem", KeyPath: "/nonexistent/key.pem"},
 		}
 		_, err := NewClient(cfg, "test-agent")
 		require.Error(t, err)
@@ -68,7 +68,7 @@ func TestNewClient(t *testing.T) {
 		certPath, keyPath, _ := generateTestClientCert(t)
 		cfg := config.Bouncer{
 			LAPIURL: "https://localhost:8080",
-			TLS:     config.BouncerTLS{CertPath: certPath, KeyPath: keyPath},
+			TLS:     config.BouncerTLS{Enabled: true, CertPath: certPath, KeyPath: keyPath},
 		}
 		client, err := NewClient(cfg, "test-agent")
 		require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestNewClient(t *testing.T) {
 		certPath, keyPath, caPath := generateTestClientCert(t)
 		cfg := config.Bouncer{
 			LAPIURL: "https://localhost:8080",
-			TLS:     config.BouncerTLS{CertPath: certPath, KeyPath: keyPath, CAPath: caPath},
+			TLS:     config.BouncerTLS{Enabled: true, CertPath: certPath, KeyPath: keyPath, CAPath: caPath},
 		}
 		client, err := NewClient(cfg, "test-agent")
 		require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestNewClient(t *testing.T) {
 		certPath, keyPath, _ := generateTestClientCert(t)
 		cfg := config.Bouncer{
 			LAPIURL: "https://localhost:8080",
-			TLS:     config.BouncerTLS{CertPath: certPath, KeyPath: keyPath, CAPath: "/nonexistent/ca.pem"},
+			TLS:     config.BouncerTLS{Enabled: true, CertPath: certPath, KeyPath: keyPath, CAPath: "/nonexistent/ca.pem"},
 		}
 		_, err := NewClient(cfg, "test-agent")
 		require.Error(t, err)
@@ -100,7 +100,7 @@ func TestNewClient(t *testing.T) {
 		certPath, keyPath, _ := generateTestClientCert(t)
 		cfg := config.Bouncer{
 			LAPIURL: "https://localhost:8080",
-			TLS:     config.BouncerTLS{CertPath: certPath, KeyPath: keyPath, InsecureSkipVerify: true},
+			TLS:     config.BouncerTLS{Enabled: true, CertPath: certPath, KeyPath: keyPath, InsecureSkipVerify: true},
 		}
 		client, err := NewClient(cfg, "test-agent")
 		require.NoError(t, err)

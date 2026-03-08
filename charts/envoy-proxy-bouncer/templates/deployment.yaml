@@ -121,6 +121,11 @@ spec:
               mountPath: /app/template/html
               readOnly: true
           {{- end }}
+          {{- if and .Values.config.bouncer.tls.enabled .Values.config.bouncer.tlsSecretRef.name }}
+            - name: bouncer-tls
+              mountPath: /app/tls
+              readOnly: true
+          {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -132,6 +137,11 @@ spec:
         - name: custom-templates
           configMap:
             name: {{ include "envoy-proxy-bouncer.fullname" . }}-templates
+      {{- end }}
+      {{- if and .Values.config.bouncer.tls.enabled .Values.config.bouncer.tlsSecretRef.name }}
+        - name: bouncer-tls
+          secret:
+            secretName: {{ .Values.config.bouncer.tlsSecretRef.name | quote }}
       {{- end }}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
