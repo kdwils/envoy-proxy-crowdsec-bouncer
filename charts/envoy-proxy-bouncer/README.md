@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.5.2](https://img.shields.io/badge/Version-0.5.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.5.2](https://img.shields.io/badge/AppVersion-v0.5.2-informational?style=flat-square)
+![Version: 0.5.3](https://img.shields.io/badge/Version-0.5.3-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.5.3](https://img.shields.io/badge/AppVersion-v0.5.3-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -21,6 +21,15 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.bouncer.metrics | bool | `false` |  |
 | config.bouncer.metricsInterval | string | `"10m"` |  |
 | config.bouncer.tickerInterval | string | `"10s"` |  |
+| config.bouncer.tls.caPath | string | `"/app/tls/ca.crt"` |  |
+| config.bouncer.tls.certPath | string | `"/app/tls/tls.crt"` |  |
+| config.bouncer.tls.enabled | bool | `false` |  |
+| config.bouncer.tls.insecureSkipVerify | bool | `false` |  |
+| config.bouncer.tls.keyPath | string | `"/app/tls/tls.key"` |  |
+| config.bouncer.tlsSecretRef.caKey | string | `"ca.crt"` |  |
+| config.bouncer.tlsSecretRef.certKey | string | `"tls.crt"` |  |
+| config.bouncer.tlsSecretRef.keyKey | string | `"tls.key"` |  |
+| config.bouncer.tlsSecretRef.name | string | `""` |  |
 | config.captcha.callbackURL | string | `""` |  |
 | config.captcha.challengeDuration | string | `"5m"` |  |
 | config.captcha.cookieDomain | string | `""` |  |

@@ -46,13 +46,12 @@ Integrates with Envoy as an external authorization service. Each request is eval
 
 ## Documentation
 
-- [Configuration Guide](docs/CONFIGURATION.md)
-- [Server Configuration](docs/SERVER.md)
-- [CrowdSec Configuration](docs/CROWDSEC.md)
-- [CAPTCHA Configuration](docs/CAPTCHA.md)
-- [Webhook Configuration](docs/WEBHOOKS.md)
-- [Signing Key Generation](docs/SIGNING_KEYS.md)
+- [Configuration Reference](docs/CONFIGURATION.md)
+- [CrowdSec Integration](docs/CROWDSEC.md)
+- [CAPTCHA Integration](docs/CAPTCHA.md)
+- [Webhooks](docs/WEBHOOKS.md)
 - [Custom Templates](docs/CUSTOM_TEMPLATES.md)
+- [Signing Key Generation](docs/SIGNING_KEYS.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
 
 ## Examples

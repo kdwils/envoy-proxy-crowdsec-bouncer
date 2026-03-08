@@ -53,11 +53,11 @@ func buildCertClient(certPath, keyPath, caPath string, insecureSkipVerify bool) 
 }
 
 func NewClient(cfg config.Bouncer, userAgent string) (*apiclient.ApiClient, error) {
-	if cfg.ApiKey == "" && cfg.TLS.CertPath == "" && cfg.TLS.KeyPath == "" {
+	if cfg.ApiKey == "" && !cfg.TLS.Enabled {
 		return nil, errors.New("no API key nor certificate provided")
 	}
 
-	if cfg.ApiKey != "" && (cfg.TLS.CertPath != "" || cfg.TLS.KeyPath != "") {
+	if cfg.ApiKey != "" && cfg.TLS.Enabled {
 		return nil, errors.New("cannot use both API key and certificate auth")
 	}
 

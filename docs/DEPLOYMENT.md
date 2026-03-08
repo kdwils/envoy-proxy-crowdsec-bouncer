@@ -1,11 +1,5 @@
 # Deployment Guide
 
-This guide covers deployment options for the Envoy Proxy CrowdSec Bouncer.
-
-## Overview
-
-The bouncer is primarily tested in Kubernetes environments with Envoy Gateway. For other environments, please open an issue if you encounter problems.
-
 ## Table of Contents
 
 - [Binary Installation](#binary-installation)
@@ -224,18 +218,10 @@ helm uninstall bouncer --namespace envoy-gateway-system
 
 ## Envoy Gateway Integration
 
-### Overview
-
-The bouncer integrates with Envoy Gateway using SecurityPolicies that reference the ext_authz filter.
-
-**Important**: SecurityPolicies must be created at the HTTPRoute level, not at the Gateway level, to ensure proper CAPTCHA redirect functionality.
+The bouncer integrates with Envoy Gateway using SecurityPolicies that reference the ext_authz filter. SecurityPolicies must be created at the HTTPRoute level, not at the Gateway level, and in the same namespace as your HTTPRoutes:
 
 ### SecurityPolicy Configuration
 
-#### Creating HTTPRoute-Level SecurityPolicies
-
-SecurityPolicies should be created in the same namespace as your HTTPRoutes:
-
 ```yaml
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
@@ -250,57 +236,6 @@ spec:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
       name: overseerr
-  extAuth:
-    grpc:
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: envoy-proxy-bouncer
-          port: 8080
-          namespace: envoy-gateway-system
-```
-
-#### Example: Multiple Namespaces
-
-If you have HTTPRoutes across multiple namespaces, create a SecurityPolicy in each:
-
-**Namespace: media**
-```yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: SecurityPolicy
-metadata:
-  name: media-security
-  namespace: media
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: plex
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: overseerr
-  extAuth:
-    grpc:
-      backendRefs:
-        - group: ""
-          kind: Service
-          name: envoy-proxy-bouncer
-          port: 8080
-          namespace: envoy-gateway-system
-```
-
-**Namespace: blog**
-```yaml
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: SecurityPolicy
-metadata:
-  name: blog-security
-  namespace: blog
-spec:
-  targetRefs:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      name: blog
   extAuth:
     grpc:
       backendRefs:
@@ -344,40 +279,6 @@ spec:
     name: envoy-proxy-bouncer
 ```
 
-### CAPTCHA Endpoint Configuration
-
-When CAPTCHA is enabled, ensure the CAPTCHA endpoints are accessible and **not** protected by the bouncer:
-
-The bouncer automatically handles CAPTCHA endpoints (`/captcha/challenge` and `/captcha/verify`), but you must ensure:
-
-1. The HTTP port (8081) is accessible
-2. CAPTCHA endpoints are not included in SecurityPolicy target HTTPRoutes
-3. The `callbackURL` matches the public-facing hostname
-
-Example HTTPRoute for CAPTCHA access:
-
-```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: bouncer-captcha
-  namespace: envoy-gateway-system
-spec:
-  hostnames:
-    - auth.example.com
-  parentRefs:
-    - name: my-gateway
-      namespace: envoy-gateway-system
-  rules:
-    - matches:
-      - path:
-          type: PathPrefix
-          value: /captcha
-      backendRefs:
-        - name: envoy-proxy-bouncer
-          port: 8081
-```
-
 ## Health Checks
 
 The bouncer does not currently expose health check endpoints. Monitor the service using:
@@ -410,8 +311,7 @@ grpcurl -plaintext localhost:8080 list
 
 ## See Also
 
-- [Configuration Guide](CONFIGURATION.md) - General configuration overview
-- [Server Configuration](SERVER.md) - Server ports and log levels
+- [Configuration Reference](CONFIGURATION.md)
 - [CrowdSec Configuration](CROWDSEC.md) - CrowdSec bouncer and WAF setup
 - [CAPTCHA Configuration](CAPTCHA.md) - CAPTCHA challenge setup
 - [Webhook Configuration](WEBHOOKS.md) - Webhook event notifications

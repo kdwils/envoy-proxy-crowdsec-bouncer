@@ -1,257 +1,71 @@
-# CrowdSec Configuration
+# CrowdSec Integration
 
-All CrowdSec-related configuration for the Envoy Proxy CrowdSec Bouncer.
-
-## Overview
-
-The bouncer integrates with CrowdSec for IP-based blocking (bouncer) and request inspection (WAF/AppSec). Both features use the CrowdSec LAPI (Local API) for decision streaming and metrics reporting.
+How the bouncer integrates with CrowdSec. For configuration options see the [Configuration Reference](CONFIGURATION.md).
 
 ## Table of Contents
 
-- [Bouncer Configuration](#bouncer-configuration)
-- [WAF Configuration](#waf-configuration)
+- [Bouncer](#bouncer)
+- [WAF / AppSec](#waf--appsec)
 - [Trusted Proxies](#trusted-proxies)
-- [Metrics Reporting](#metrics-reporting)
-- [Environment Variables](#environment-variables)
-- [Examples](#examples)
+- [Metrics](#metrics)
+- [Authentication](#authentication)
 
-## Bouncer Configuration
+## Bouncer
 
-Controls CrowdSec bouncer integration for IP-based blocking.
+The bouncer uses CrowdSec's stream mode: it maintains a local in-memory cache of decisions synced from the LAPI on a configurable ticker interval. Every incoming request is checked against this cache — no network call to CrowdSec happens per request.
 
-### Configuration Options
+On startup, the bouncer fetches all active decisions. After that, each tick fetches only the delta (new and expired decisions) and applies it to the cache.
 
-| Option | Type | Default | Required | Description |
-|--------|------|---------|----------|-------------|
-| `enabled` | bool | `true` | No | Enable CrowdSec bouncer functionality |
-| `apiKey` | string | `""` | Yes (when enabled) | CrowdSec LAPI bouncer API key |
-| `lapiURL` | string | `""` | Yes (when enabled) | CrowdSec LAPI URL |
-| `metrics` | bool | `false` | No | Enable metrics reporting to CrowdSec |
-| `tickerInterval` | duration | `"10s"` | No | Interval to fetch decisions from LAPI |
-| `metricsInterval` | duration | `"10m"` | No | Interval to report metrics to LAPI |
-| `banStatusCode` | int | `403` | No | HTTP status code for ban responses |
+When a decision exists for an IP, the bouncer returns a deny response to Envoy with the configured `banStatusCode`. When no decision exists, the request is allowed to continue to the next check (WAF, if enabled).
 
-### YAML Configuration
-
-```yaml
-bouncer:
-  enabled: true
-  apiKey: "<lapi-key>"
-  lapiURL: "http://crowdsec:8080"
-  metrics: false
-  tickerInterval: "10s"
-  metricsInterval: "10m"
-  banStatusCode: 403
-```
-
-### Generating API Key
-
-Generate a bouncer API key on your CrowdSec instance:
+### Generating an API Key
 
 ```bash
 cscli bouncers add envoy-proxy-bouncer
 ```
 
-The output will include an API key. Use this value for `apiKey` in your configuration.
+## WAF / AppSec
 
-### Custom Ban Status Codes
+When WAF is enabled, requests that pass the bouncer IP check are forwarded to the CrowdSec AppSec component for rule-based inspection. The bouncer sends the request metadata (method, path, headers, body) to the AppSec URL and interprets the response:
 
-By default, the bouncer returns HTTP 403 (Forbidden) for banned IPs. You can customize this to avoid feedback loops when CrowdSec processes Envoy logs:
+- **allow** — request proceeds
+- **ban** — request is denied immediately
+- **captcha** — a CAPTCHA challenge is issued (requires CAPTCHA to be enabled)
 
-```yaml
-bouncer:
-  banStatusCode: 418  # Use 418 "I'm a teapot" to distinguish from legitimate 403s
-```
-
-This is useful when CrowdSec analyzes Envoy access logs, as it can ignore ban responses (418) while still processing genuine errors (403).
-
-**Common alternatives:**
-- `418` - "I'm a teapot" (RFC 2324)
-- `429` - "Too Many Requests"
-- `444` - Nginx-style "Connection closed without response"
-
-## WAF Configuration
-
-Controls CrowdSec AppSec (WAF) integration for request inspection.
-
-### Configuration Options
-
-| Option | Type | Default | Required | Description |
-|--------|------|---------|----------|-------------|
-| `enabled` | bool | `false` | No | Enable WAF request inspection |
-| `apiKey` | string | `""` | Yes (when enabled) | CrowdSec AppSec API key |
-| `appSecURL` | string | `""` | Yes (when enabled) | CrowdSec AppSec service URL |
-
-### YAML Configuration
-
-```yaml
-waf:
-  enabled: true
-  apiKey: "<lapi-key>"
-  appSecURL: "http://appsec:7422"
-```
-
-You can use the same API key as the bouncer, or generate a separate one.
+WAF inspection only runs if the bouncer check passes. A banned IP never reaches WAF.
 
 ## Trusted Proxies
 
-List of trusted proxy IPs or CIDR ranges. Used to extract the real client IP from forwarded headers for CrowdSec decision lookups.
+Before any decision lookup, the bouncer must determine the real client IP. When requests pass through proxies (load balancers, ingress controllers), the source IP seen by the bouncer is the proxy, not the client.
 
-### Configuration Options
+Trusted proxies tell the bouncer which intermediate IPs to skip when walking the `X-Forwarded-For` chain. The first IP in the chain that does not belong to a trusted proxy is used as the client IP. If no `X-Forwarded-For` header is present, `X-Real-IP` is used as a fallback.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `trustedProxies` | []string | `[]` | List of trusted proxy IPs/CIDRs |
+## Metrics
 
-### YAML Configuration
-
-```yaml
-trustedProxies:
-  - 192.168.0.1
-  - 10.0.0.0/8
-  - 2001:db8::1
-  - 100.64.0.0/10
-```
-
-**Important:** Configure this carefully to prevent IP spoofing. Only list proxies you control.
-
-### IP Extraction Logic
-
-The bouncer extracts the real client IP from headers and trusted proxies:
-1. Checks `X-Forwarded-For` header (case-insensitive)
-2. Falls back to `X-Real-IP` header
-3. Respects trusted proxy configuration
-4. Validates IP format before use
-
-## Metrics Reporting
-
-Enable metrics reporting to track bouncer effectiveness and view statistics in CrowdSec.
-
-### Enabling Metrics
-
-```yaml
-bouncer:
-  metrics: true
-  metricsInterval: "10m"
-```
-
-### Viewing Metrics
-
-Metrics can be viewed using `cscli metrics` on your CrowdSec instance:
+When metrics are enabled, the bouncer periodically reports request counts (allowed, blocked, per-scenario) to the LAPI. This feeds CrowdSec's dashboard and `cscli metrics` output.
 
 ```bash
 cscli metrics
 ```
 
-This shows:
-- Total requests processed
-- Requests bounced
-- Requests allowed
-- Per-scenario statistics
+Metrics delivery is best-effort — a failed report is logged and skipped, not retried.
 
-## Environment Variables
+## Authentication
 
-All CrowdSec configuration options can be set via environment variables using the prefix `ENVOY_BOUNCER_`:
+### API Key
 
-### Bouncer
+The standard method. Generate a key with `cscli bouncers add` and set it as `bouncer.apiKey`. The key is sent as a header on every LAPI request.
 
-```bash
-export ENVOY_BOUNCER_BOUNCER_ENABLED=true
-export ENVOY_BOUNCER_BOUNCER_APIKEY=your-lapi-bouncer-api-key
-export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
-export ENVOY_BOUNCER_BOUNCER_TICKERINTERVAL=10s
-export ENVOY_BOUNCER_BOUNCER_METRICSINTERVAL=10m
-export ENVOY_BOUNCER_BOUNCER_METRICS=false
-export ENVOY_BOUNCER_BOUNCER_BANSTATUSCODE=403
-```
+### mTLS
 
-### WAF
+For environments where secret distribution is undesirable, the bouncer supports mutual TLS authentication with the LAPI. The bouncer presents a client certificate instead of an API key. API key and mTLS are mutually exclusive — enabling TLS disables API key auth.
 
-```bash
-export ENVOY_BOUNCER_WAF_ENABLED=true
-export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:7422
-export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
-```
-
-### Trusted Proxies
-
-```bash
-export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
-```
-
-## Examples
-
-### Minimal Setup (Bouncer Only)
-
-The bouncer component is enabled by default. A minimal configuration requires only the API key and LAPI URL:
-
-```yaml
-bouncer:
-  apiKey: "<lapi-key>"
-  lapiURL: "http://crowdsec:8080"
-```
-
-Or via environment variables:
-
-```bash
-export ENVOY_BOUNCER_BOUNCER_APIKEY=your-api-key
-export ENVOY_BOUNCER_BOUNCER_LAPIURL=http://crowdsec:8080
-```
-
-### Bouncer with Metrics
-
-```yaml
-bouncer:
-  apiKey: "<lapi-key>"
-  lapiURL: "http://crowdsec:8080"
-  metrics: true
-  metricsInterval: "10m"
-```
-
-### Bouncer with WAF
-
-```yaml
-bouncer:
-  apiKey: "<lapi-key>"
-  lapiURL: "http://crowdsec:8080"
-
-waf:
-  enabled: true
-  apiKey: "<lapi-key>"
-  appSecURL: "http://appsec:7422"
-```
-
-### Full CrowdSec Configuration
-
-```yaml
-trustedProxies:
-  - 10.0.0.0/8
-  - 172.16.0.0/12
-  - 192.168.0.0/16
-
-bouncer:
-  enabled: true
-  apiKey: "<lapi-key>"
-  lapiURL: "http://crowdsec:8080"
-  metrics: true
-  tickerInterval: "10s"
-  metricsInterval: "10m"
-  banStatusCode: 418
-
-waf:
-  enabled: true
-  apiKey: "<lapi-key>"
-  appSecURL: "http://appsec:7422"
-```
-
-### Kubernetes/Helm
-
-For Helm-specific configuration, see the [Helm Chart README](../charts/envoy-proxy-bouncer/README.md).
+The CA certificate (`tls.caPath`) is optional. When omitted, the system trust store is used to verify the LAPI's server certificate.
 
 ## See Also
 
-- [Configuration Guide](CONFIGURATION.md) - General configuration overview
-- [CAPTCHA Configuration](CAPTCHA.md) - CAPTCHA challenge setup
-- [Webhook Configuration](WEBHOOKS.md) - Webhook event notifications
-- [Deployment Guide](DEPLOYMENT.md) - Deployment instructions
-- [CrowdSec Documentation](https://docs.crowdsec.net/) - Official CrowdSec docs
+- [Configuration Reference](CONFIGURATION.md)
+- [CAPTCHA Integration](CAPTCHA.md)
+- [Webhook Configuration](WEBHOOKS.md)
+- [Deployment Guide](DEPLOYMENT.md)
+- [CrowdSec Documentation](https://docs.crowdsec.net/)

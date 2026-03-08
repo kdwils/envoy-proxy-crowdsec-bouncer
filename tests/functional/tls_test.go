@@ -117,6 +117,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 	v.Set("server.grpcPort", 8082)
 	v.Set("server.logLevel", "debug")
 	v.Set("bouncer.lapiURL", hostLAPI.String())
+	v.Set("bouncer.tls.enabled", true)
 	v.Set("bouncer.tls.certPath", certs.clientCertPath)
 	v.Set("bouncer.tls.keyPath", certs.clientKeyPath)
 	v.Set("bouncer.tls.caPath", certs.caPath)

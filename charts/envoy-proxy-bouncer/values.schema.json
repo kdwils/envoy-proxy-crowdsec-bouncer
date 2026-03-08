@@ -69,6 +69,52 @@
                         "tickerInterval": {
                             "default": "10s",
                             "type": "string"
+                        },
+                        "tls": {
+                            "type": "object",
+                            "properties": {
+                                "caPath": {
+                                    "default": "/app/tls/ca.crt",
+                                    "type": "string"
+                                },
+                                "certPath": {
+                                    "default": "/app/tls/tls.crt",
+                                    "type": "string"
+                                },
+                                "enabled": {
+                                    "default": false,
+                                    "type": "boolean"
+                                },
+                                "insecureSkipVerify": {
+                                    "default": false,
+                                    "type": "boolean"
+                                },
+                                "keyPath": {
+                                    "default": "/app/tls/tls.key",
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "tlsSecretRef": {
+                            "type": "object",
+                            "properties": {
+                                "caKey": {
+                                    "default": "ca.crt",
+                                    "type": "string"
+                                },
+                                "certKey": {
+                                    "default": "tls.crt",
+                                    "type": "string"
+                                },
+                                "keyKey": {
+                                    "default": "tls.key",
+                                    "type": "string"
+                                },
+                                "name": {
+                                    "default": "",
+                                    "type": "string"
+                                }
+                            }
                         }
                     }
                 },

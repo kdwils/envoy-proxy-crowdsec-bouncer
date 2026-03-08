@@ -53,6 +53,19 @@ config:
       name: "" # @schema default: ""
       key: "" # @schema default: ""
 
+    tlsSecretRef: # @schema type: object
+      name: "" # @schema default: ""
+      certKey: "tls.crt" # @schema default: "tls.crt"
+      keyKey: "tls.key" # @schema default: "tls.key"
+      caKey: "ca.crt" # @schema default: "ca.crt"
+
+    tls: # @schema type: object
+      enabled: false # @schema default: false
+      certPath: "/app/tls/tls.crt" # @schema default: "/app/tls/tls.crt"
+      keyPath: "/app/tls/tls.key" # @schema default: "/app/tls/tls.key"
+      caPath: "/app/tls/ca.crt" # @schema default: "/app/tls/ca.crt"
+      insecureSkipVerify: false # @schema default: false
+
   waf:
     enabled: false # @schema default: false
     appSecURL: "" # @schema default: "http://crowdsec-appsec-service:7422"

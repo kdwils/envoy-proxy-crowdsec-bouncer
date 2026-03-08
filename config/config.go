@@ -40,6 +40,7 @@ type Captcha struct {
 }
 
 type BouncerTLS struct {
+	Enabled            bool   `yaml:"enabled" json:"enabled"`
 	CertPath           string `yaml:"certPath" json:"certPath"`
 	KeyPath            string `yaml:"keyPath" json:"keyPath"`
 	CAPath             string `yaml:"caPath" json:"caPath"`
