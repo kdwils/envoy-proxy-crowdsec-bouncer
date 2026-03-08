@@ -12,12 +12,7 @@ How the bouncer integrates with CrowdSec. For configuration options see the [Con
 
 ## Bouncer
 
-The bouncer uses CrowdSec's stream mode: it maintains a local in-memory cache of decisions synced from the LAPI on a configurable ticker interval. Every incoming request is checked against this cache — no network call to CrowdSec happens per request.
-
-On startup, the bouncer fetches all active decisions. After that, each tick fetches only the delta (new and expired decisions) and applies it to the cache.
-
-When a decision exists for an IP, the bouncer returns a deny response to Envoy with the configured `banStatusCode`. When no decision exists, the request is allowed to continue to the next check (WAF, if enabled).
-
+The bouncer uses CrowdSec's stream mode. It maintains a local in-memory cache of decisions synced from the local crowdsec instance.
 ### Generating an API Key
 
 ```bash
@@ -26,13 +21,11 @@ cscli bouncers add envoy-proxy-bouncer
 
 ## WAF / AppSec
 
-When WAF is enabled, requests that pass the bouncer IP check are forwarded to the CrowdSec AppSec component for rule-based inspection. The bouncer sends the request metadata (method, path, headers, body) to the AppSec URL and interprets the response:
+When WAF is enabled, requests that pass the bouncer IP check are forwarded to the CrowdSec AppSec component for rule-based inspection
 
 - **allow** — request proceeds
 - **ban** — request is denied immediately
 - **captcha** — a CAPTCHA challenge is issued (requires CAPTCHA to be enabled)
-
-WAF inspection only runs if the bouncer check passes. A banned IP never reaches WAF.
 
 ## Trusted Proxies
 

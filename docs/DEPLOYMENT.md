@@ -84,91 +84,11 @@ networks:
 
 ## Kubernetes
 
-### Using Flat YAML
+### Manifest File
 
 See [examples/deploy/README.md](../examples/deploy/README.md) for a flat YAML deployment example.
 
 You can also reference this [homelab manifest](https://github.com/kdwils/homelab/blob/main/monitoring/envoy-proxy-bouncer/bouncer.yaml) for a complete example.
-
-### Manual Deployment
-
-Create a deployment manifest:
-
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: envoy-gateway-system
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: bouncer-secrets
-  namespace: envoy-gateway-system
-type: Opaque
-stringData:
-  api-key: "your-crowdsec-api-key"
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: envoy-proxy-bouncer
-  namespace: envoy-gateway-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: envoy-proxy-bouncer
-  template:
-    metadata:
-      labels:
-        app: envoy-proxy-bouncer
-    spec:
-      containers:
-      - name: bouncer
-        image: ghcr.io/kdwils/envoy-proxy-bouncer:latest
-        ports:
-        - containerPort: 8080
-          name: grpc
-          protocol: TCP
-        - containerPort: 8081
-          name: http
-          protocol: TCP
-        env:
-        - name: ENVOY_BOUNCER_BOUNCER_APIKEY
-          valueFrom:
-            secretKeyRef:
-              name: bouncer-secrets
-              key: api-key
-        - name: ENVOY_BOUNCER_BOUNCER_LAPIURL
-          value: "http://crowdsec.monitoring:8080"
-        - name: ENVOY_BOUNCER_SERVER_LOGLEVEL
-          value: "info"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: envoy-proxy-bouncer
-  namespace: envoy-gateway-system
-spec:
-  selector:
-    app: envoy-proxy-bouncer
-  ports:
-  - name: grpc
-    port: 8080
-    targetPort: 8080
-    protocol: TCP
-  - name: http
-    port: 8081
-    targetPort: 8081
-    protocol: TCP
-```
-
-Apply the manifest:
-
-```bash
-kubectl apply -f bouncer.yaml
-```
 
 ## Helm
 

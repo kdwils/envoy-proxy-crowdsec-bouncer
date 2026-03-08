@@ -47,8 +47,6 @@ When `secureCookie` is true, cookies use `Secure` and `SameSite=None`. When fals
 | Google reCAPTCHA v2 | `recaptcha` |
 | Cloudflare Turnstile | `turnstile` |
 
-Both providers follow the same flow — the difference is which JavaScript widget is rendered and which verification API is called.
-
 - [reCAPTCHA setup](https://developers.google.com/recaptcha/intro)
 - [Turnstile setup](https://developers.cloudflare.com/turnstile/)
 
@@ -81,17 +79,6 @@ spec:
 Do not apply a SecurityPolicy to this HTTPRoute.
 
 `callbackURL` must be set to the public-facing base URL where the bouncer is reachable. The bouncer appends `/captcha/challenge` and `/captcha/verify` to construct endpoint URLs.
-
-## Testing
-
-1. Add a test CAPTCHA decision:
-   ```bash
-   cscli decisions add -i <your-ip> -t captcha -d 1h
-   ```
-2. Access a protected resource — you should be redirected to the challenge page
-3. Complete the CAPTCHA
-4. Verify redirect back to the original URL
-5. Confirm subsequent requests from the same IP are allowed without re-challenging
 
 ## See Also
 
