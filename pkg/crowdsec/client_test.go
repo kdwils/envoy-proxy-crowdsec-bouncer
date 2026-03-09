@@ -21,7 +21,7 @@ func TestNewClient(t *testing.T) {
 		cfg := config.Bouncer{LAPIURL: "http://localhost:8080"}
 		_, err := NewClient(cfg, "test-agent")
 		require.Error(t, err)
-		assert.Equal(t, "no API key nor certificate provided", err.Error())
+		assert.Equal(t, "api key or certificate auth required", err.Error())
 	})
 
 	t.Run("returns error when both api key and cert path provided", func(t *testing.T) {
@@ -33,6 +33,17 @@ func TestNewClient(t *testing.T) {
 		_, err := NewClient(cfg, "test-agent")
 		require.Error(t, err)
 		assert.Equal(t, "cannot use both API key and certificate auth", err.Error())
+	})
+
+	t.Run("creates client with api key when tls disabled but paths set", func(t *testing.T) {
+		cfg := config.Bouncer{
+			ApiKey:  "test-key",
+			LAPIURL: "http://localhost:8080",
+			TLS:     config.BouncerTLS{Enabled: false, CertPath: "/app/tls/tls.crt", KeyPath: "/app/tls/tls.key"},
+		}
+		client, err := NewClient(cfg, "test-agent")
+		require.NoError(t, err)
+		require.NotNil(t, client)
 	})
 
 	t.Run("creates client with api key", func(t *testing.T) {

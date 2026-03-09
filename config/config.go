@@ -58,6 +58,19 @@ type Bouncer struct {
 	TLS             BouncerTLS    `yaml:"tls" json:"tls"`
 }
 
+func (b Bouncer) ValidateAuth() error {
+	if b.ApiKey != "" && b.TLS.Enabled {
+		return errors.New("cannot use both API key and certificate auth")
+	}
+	if b.ApiKey == "" && !b.TLS.Enabled {
+		return errors.New("api key or certificate auth required")
+	}
+	if b.TLS.Enabled && (b.TLS.CertPath == "" || b.TLS.KeyPath == "") {
+		return errors.New("certificate auth requires both certPath and keyPath")
+	}
+	return nil
+}
+
 type WAF struct {
 	Enabled   bool   `yaml:"enabled" json:"enabled"`
 	AppSecURL string `yaml:"appSecURL" json:"appSecURL"`

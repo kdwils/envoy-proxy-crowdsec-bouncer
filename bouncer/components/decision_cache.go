@@ -23,21 +23,8 @@ type DecisionCache struct {
 	syncComplete   bool
 }
 
-func validateAuth(cfg config.Bouncer) error {
-	if cfg.ApiKey != "" && cfg.TLS.Enabled {
-		return errors.New("cannot use both API key and certificate auth")
-	}
-	if cfg.ApiKey == "" && !cfg.TLS.Enabled {
-		return errors.New("api key or certificate (cert and key paths) required")
-	}
-	if cfg.TLS.Enabled && (cfg.TLS.CertPath == "" || cfg.TLS.KeyPath == "") {
-		return errors.New("certificate auth requires both certPath and keyPath")
-	}
-	return nil
-}
-
 func NewDecisionCache(cfg config.Bouncer, MetricsService *crowdsec.MetricsService) (*DecisionCache, error) {
-	if err := validateAuth(cfg); err != nil {
+	if err := cfg.ValidateAuth(); err != nil {
 		return nil, err
 	}
 
@@ -61,11 +48,13 @@ func newStreamBouncer(cfg config.Bouncer) (*csbouncer.StreamBouncer, error) {
 		APIUrl:         cfg.LAPIURL,
 		UserAgent:      "envoy-proxy-bouncer/" + version.Version,
 		TickerInterval: cfg.TickerInterval,
-		CertPath:       cfg.TLS.CertPath,
-		KeyPath:        cfg.TLS.KeyPath,
-		CAPath:         cfg.TLS.CAPath,
 	}
-	if cfg.TLS.InsecureSkipVerify {
+	if cfg.TLS.Enabled {
+		b.CertPath = cfg.TLS.CertPath
+		b.KeyPath = cfg.TLS.KeyPath
+		b.CAPath = cfg.TLS.CAPath
+	}
+	if cfg.TLS.Enabled && cfg.TLS.InsecureSkipVerify {
 		v := cfg.TLS.InsecureSkipVerify
 		b.InsecureSkipVerify = &v
 	}
@@ -76,7 +65,7 @@ func newStreamBouncer(cfg config.Bouncer) (*csbouncer.StreamBouncer, error) {
 }
 
 func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
-	if err := validateAuth(cfg); err != nil {
+	if err := cfg.ValidateAuth(); err != nil {
 		return nil, err
 	}
 
@@ -84,10 +73,14 @@ func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
 		APIKey:    cfg.ApiKey,
 		APIUrl:    cfg.LAPIURL,
 		UserAgent: "envoy-proxy-bouncer/" + version.Version,
-		CertPath:  cfg.TLS.CertPath,
-		KeyPath:   cfg.TLS.KeyPath,
-		CAPath:    cfg.TLS.CAPath,
 	}
+
+	if cfg.TLS.Enabled {
+		b.CertPath = cfg.TLS.CertPath
+		b.KeyPath = cfg.TLS.KeyPath
+		b.CAPath = cfg.TLS.CAPath
+	}
+
 	if cfg.TLS.InsecureSkipVerify {
 		v := cfg.TLS.InsecureSkipVerify
 		b.InsecureSkipVerify = &v
