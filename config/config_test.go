@@ -5,7 +5,68 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestBouncer_ValidateAuth(t *testing.T) {
+	t.Run("returns error when no auth provided", func(t *testing.T) {
+		cfg := Bouncer{}
+		err := cfg.ValidateAuth()
+		require.Error(t, err)
+		assert.Equal(t, "api key or certificate auth required", err.Error())
+	})
+
+	t.Run("returns error when api key and tls both enabled", func(t *testing.T) {
+		cfg := Bouncer{
+			ApiKey: "test-key",
+			TLS:    BouncerTLS{Enabled: true, CertPath: "/path/to/cert", KeyPath: "/path/to/key"},
+		}
+		err := cfg.ValidateAuth()
+		require.Error(t, err)
+		assert.Equal(t, "cannot use both API key and certificate auth", err.Error())
+	})
+
+	t.Run("returns nil when only api key provided", func(t *testing.T) {
+		cfg := Bouncer{ApiKey: "test-key"}
+		err := cfg.ValidateAuth()
+		assert.Nil(t, err)
+	})
+
+	t.Run("returns nil when api key provided and tls disabled with default paths", func(t *testing.T) {
+		cfg := Bouncer{
+			ApiKey: "test-key",
+			TLS:    BouncerTLS{Enabled: false, CertPath: "/app/tls/tls.crt", KeyPath: "/app/tls/tls.key"},
+		}
+		err := cfg.ValidateAuth()
+		assert.Nil(t, err)
+	})
+
+	t.Run("returns nil when tls enabled with cert and key paths", func(t *testing.T) {
+		cfg := Bouncer{
+			TLS: BouncerTLS{Enabled: true, CertPath: "/path/cert", KeyPath: "/path/key"},
+		}
+		err := cfg.ValidateAuth()
+		assert.Nil(t, err)
+	})
+
+	t.Run("returns error when tls enabled but cert path missing", func(t *testing.T) {
+		cfg := Bouncer{
+			TLS: BouncerTLS{Enabled: true, KeyPath: "/path/to/key"},
+		}
+		err := cfg.ValidateAuth()
+		require.Error(t, err)
+		assert.Equal(t, "certificate auth requires both certPath and keyPath", err.Error())
+	})
+
+	t.Run("returns error when tls enabled but key path missing", func(t *testing.T) {
+		cfg := Bouncer{
+			TLS: BouncerTLS{Enabled: true, CertPath: "/path/to/cert"},
+		}
+		err := cfg.ValidateAuth()
+		require.Error(t, err)
+		assert.Equal(t, "certificate auth requires both certPath and keyPath", err.Error())
+	})
+}
 
 func TestNew(t *testing.T) {
 	t.Run("nil viper returns error", func(t *testing.T) {
