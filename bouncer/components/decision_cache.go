@@ -24,11 +24,14 @@ type DecisionCache struct {
 }
 
 func validateAuth(cfg config.Bouncer) error {
-	if cfg.ApiKey != "" && (cfg.TLS.CertPath != "" || cfg.TLS.KeyPath != "") {
+	if cfg.ApiKey != "" && cfg.TLS.Enabled {
 		return errors.New("cannot use both API key and certificate auth")
 	}
-	if cfg.ApiKey == "" && (cfg.TLS.CertPath == "" || cfg.TLS.KeyPath == "") {
+	if cfg.ApiKey == "" && !cfg.TLS.Enabled {
 		return errors.New("api key or certificate (cert and key paths) required")
+	}
+	if cfg.TLS.Enabled && (cfg.TLS.CertPath == "" || cfg.TLS.KeyPath == "") {
+		return errors.New("certificate auth requires both certPath and keyPath")
 	}
 	return nil
 }

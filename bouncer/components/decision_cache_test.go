@@ -25,20 +25,10 @@ func TestValidateAuth(t *testing.T) {
 		assert.Equal(t, "api key or certificate (cert and key paths) required", err.Error())
 	})
 
-	t.Run("returns error when both api key and cert path provided", func(t *testing.T) {
+	t.Run("returns error when api key and tls both enabled", func(t *testing.T) {
 		cfg := config.Bouncer{
 			ApiKey: "test-key",
-			TLS:    config.BouncerTLS{CertPath: "/path/to/cert"},
-		}
-		err := validateAuth(cfg)
-		require.Error(t, err)
-		assert.Equal(t, "cannot use both API key and certificate auth", err.Error())
-	})
-
-	t.Run("returns error when both api key and key path provided", func(t *testing.T) {
-		cfg := config.Bouncer{
-			ApiKey: "test-key",
-			TLS:    config.BouncerTLS{KeyPath: "/path/to/key"},
+			TLS:    config.BouncerTLS{Enabled: true, CertPath: "/path/to/cert", KeyPath: "/path/to/key"},
 		}
 		err := validateAuth(cfg)
 		require.Error(t, err)
@@ -51,30 +41,39 @@ func TestValidateAuth(t *testing.T) {
 		assert.Nil(t, err)
 	})
 
-	t.Run("returns nil when cert and key paths provided", func(t *testing.T) {
+	t.Run("returns nil when api key provided and tls disabled with default paths", func(t *testing.T) {
 		cfg := config.Bouncer{
-			TLS: config.BouncerTLS{CertPath: "/path/cert", KeyPath: "/path/key"},
+			ApiKey: "test-key",
+			TLS:    config.BouncerTLS{Enabled: false, CertPath: "/app/tls/tls.crt", KeyPath: "/app/tls/tls.key"},
 		}
 		err := validateAuth(cfg)
 		assert.Nil(t, err)
 	})
 
-	t.Run("returns error when only cert path provided", func(t *testing.T) {
+	t.Run("returns nil when tls enabled with cert and key paths", func(t *testing.T) {
 		cfg := config.Bouncer{
-			TLS: config.BouncerTLS{CertPath: "/path/to/cert"},
+			TLS: config.BouncerTLS{Enabled: true, CertPath: "/path/cert", KeyPath: "/path/key"},
 		}
 		err := validateAuth(cfg)
-		require.Error(t, err)
-		assert.Equal(t, "api key or certificate (cert and key paths) required", err.Error())
+		assert.Nil(t, err)
 	})
 
-	t.Run("returns error when only key path provided", func(t *testing.T) {
+	t.Run("returns error when tls enabled but cert path missing", func(t *testing.T) {
 		cfg := config.Bouncer{
-			TLS: config.BouncerTLS{KeyPath: "/path/to/key"},
+			TLS: config.BouncerTLS{Enabled: true, KeyPath: "/path/to/key"},
 		}
 		err := validateAuth(cfg)
 		require.Error(t, err)
-		assert.Equal(t, "api key or certificate (cert and key paths) required", err.Error())
+		assert.Equal(t, "certificate auth requires both certPath and keyPath", err.Error())
+	})
+
+	t.Run("returns error when tls enabled but key path missing", func(t *testing.T) {
+		cfg := config.Bouncer{
+			TLS: config.BouncerTLS{Enabled: true, CertPath: "/path/to/cert"},
+		}
+		err := validateAuth(cfg)
+		require.Error(t, err)
+		assert.Equal(t, "certificate auth requires both certPath and keyPath", err.Error())
 	})
 }
 
