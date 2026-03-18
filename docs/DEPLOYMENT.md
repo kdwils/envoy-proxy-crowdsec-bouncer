@@ -99,6 +99,8 @@ helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-crowdsec-
 helm repo update
 ```
 
+The chart is also available via OCI at `oci://ghcr.io/kdwils/envoy-proxy-bouncer`.
+
 ### Basic Installation
 
 ```bash
