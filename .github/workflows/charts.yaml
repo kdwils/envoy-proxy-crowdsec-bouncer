@@ -19,3 +19,4 @@ jobs:
     uses: kdwils/homelab-workflow/.github/workflows/helm-release.yml@main
     with:
       publish_oci: true
+      charts_dir: charts/envoy-proxy-bouncer
