@@ -17,3 +17,5 @@ jobs:
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'charts/')
     uses: kdwils/homelab-workflow/.github/workflows/helm-release.yml@main
+    with:
+      publish_oci: true
