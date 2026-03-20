@@ -67,10 +67,16 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    ## v0.5.3
+    ### Helm Chart
+    > [!WARNING]
+    > This is a breaking change to the way the helm charts are published
 
-    ### TLS Auth
-    This version adds support for TLS authentication with the local crowdsec instance
+    All new Helm chart versions will be available via OCI at `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`
+    The github pages Helm repository `https://kdwils.github.io/envoy-proxy-crowdsec-bouncer` will still be available for some time, but will no longer receive updates for new helm chart versions.
+    Please update helm chart references to use `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`
+    
+    ### Bouncer
+    This update includes minor go package version bumps to dependencies
 
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
