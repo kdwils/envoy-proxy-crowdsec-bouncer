@@ -69,14 +69,13 @@ release:
   header: |
     ### Helm Chart
     > [!WARNING]
-    > This is a breaking change to the way the helm charts are published
+    > This is a breaking change to the way the Helm chart is published.
+    > All new Helm chart versions will be available via OCI at `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`
+    > The GitHub Pages Helm repository `https://kdwils.github.io/envoy-proxy-crowdsec-bouncer` will remain available but will no longer receive updates for new chart versions.
+    > Please update Helm chart references to use `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`
 
-    All new Helm chart versions will be available via OCI at `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`
-    The github pages Helm repository `https://kdwils.github.io/envoy-proxy-crowdsec-bouncer` will still be available for some time, but will no longer receive updates for new helm chart versions.
-    Please update helm chart references to use `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`
-    
     ### Bouncer
-    This update includes minor go package version bumps to dependencies
+    This update includes minor dependency version bumps.
 
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
