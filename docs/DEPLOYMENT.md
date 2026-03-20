@@ -92,19 +92,12 @@ You can also reference this [homelab manifest](https://github.com/kdwils/homelab
 
 ## Helm
 
-### Add Repository
-
-```bash
-helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-crowdsec-bouncer
-helm repo update
-```
-
-The chart is also available via OCI at `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`.
+The chart is available via OCI at `oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer`.
 
 ### Basic Installation
 
 ```bash
-helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
+helm install bouncer oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer \
   --namespace envoy-gateway-system \
   --create-namespace \
   --set config.bouncer.apiKey=<lapi-key> \
@@ -118,7 +111,7 @@ For complete chart configuration options and values, see the [Helm Chart README]
 Install with values:
 
 ```bash
-helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
+helm install bouncer oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer \
   --namespace envoy-gateway-system \
   --create-namespace \
   -f values.yaml
@@ -127,7 +120,7 @@ helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
 ### Upgrade
 
 ```bash
-helm upgrade bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
+helm upgrade bouncer oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer \
   --namespace envoy-gateway-system \
   -f values.yaml
 ```

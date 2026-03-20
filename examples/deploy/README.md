@@ -50,15 +50,9 @@ The bouncer can be configured as an external authorization service in Envoy Gate
 
 # Helm
 
-Add the Helm repository:
-```bash
-helm repo add envoy-proxy-bouncer https://kdwils.github.io/envoy-proxy-crowdsec-bouncer
-helm repo update
-```
-
 Install the chart and create a security policy:
 ```bash
-helm install bouncer envoy-proxy-bouncer/envoy-proxy-bouncer \
+helm install bouncer oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer \
   --set crowdsec.apiKey=<your-api-key> \
   --set crowdsec.apiURL=<your-host-url> \
   --set securityPolicy.create=true \

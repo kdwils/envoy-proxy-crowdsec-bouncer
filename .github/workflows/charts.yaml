@@ -16,7 +16,6 @@ jobs:
     if: >
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'charts/')
-    uses: kdwils/homelab-workflow/.github/workflows/helm-release.yml@main
+    uses: kdwils/homelab-workflow/.github/workflows/helm-publish-oci.yml@main
     with:
-      publish_oci: true
       charts_dir: charts/envoy-proxy-bouncer

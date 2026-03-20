@@ -22,7 +22,9 @@ jobs:
 
   charts:
     needs: [tag]
-    uses: kdwils/homelab-workflow/.github/workflows/helm-release.yml@main
+    uses: kdwils/homelab-workflow/.github/workflows/helm-publish-oci.yml@main
+    with:
+      charts_dir: charts/envoy-proxy-bouncer
 
   goreleaser:
     needs: [tag]
