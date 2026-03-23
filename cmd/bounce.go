@@ -53,7 +53,7 @@ var bounceCmd = &cobra.Command{
 				}
 
 				if *d.Type == "ban" {
-					logger.Warn("not allowed", "ip", ip, "type", *d.Type)
+					logger.Info("not allowed", "ip", ip, "type", *d.Type)
 					continue
 				}
 			}
