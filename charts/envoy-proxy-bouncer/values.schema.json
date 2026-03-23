@@ -232,6 +232,10 @@
                         "deniedTemplatePath": {
                             "default": "",
                             "type": "string"
+                        },
+                        "showDeniedPage": {
+                            "default": true,
+                            "type": "boolean"
                         }
                     }
                 },

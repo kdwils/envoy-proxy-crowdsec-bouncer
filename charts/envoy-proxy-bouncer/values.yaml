@@ -107,6 +107,7 @@ config:
   templates:
     deniedTemplatePath: "" # @schema default: ""
     deniedTemplateHeaders: "" # @schema default: ""
+    showDeniedPage: true # @schema default: true
     captchaTemplatePath: "" # @schema default: ""
     captchaTemplateHeaders: "" # @schema default: ""
 

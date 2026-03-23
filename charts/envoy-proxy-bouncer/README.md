@@ -53,6 +53,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.templates.captchaTemplatePath | string | `""` |  |
 | config.templates.deniedTemplateHeaders | string | `""` |  |
 | config.templates.deniedTemplatePath | string | `""` |  |
+| config.templates.showDeniedPage | bool | `true` |  |
 | config.trustedProxies | list | `[]` |  |
 | config.waf.apiKey | string | `""` |  |
 | config.waf.apiKeySecretRef.key | string | `""` |  |

@@ -87,6 +87,7 @@ type Webhook struct {
 type Templates struct {
 	DeniedTemplatePath     string `yaml:"deniedTemplatePath" json:"deniedTemplatePath"`
 	DeniedTemplateHeaders  string `yaml:"deniedTemplateHeaders" json:"deniedTemplateHeaders"`
+	ShowDeniedPage         bool   `yaml:"showDeniedPage" json:"showDeniedPage"`
 	CaptchaTemplatePath    string `yaml:"captchaTemplatePath" json:"captchaTemplatePath"`
 	CaptchaTemplateHeaders string `yaml:"captchaTemplateHeaders" json:"captchaTemplateHeaders"`
 }
