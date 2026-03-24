@@ -33,6 +33,7 @@ func getDefaultConfig() config.Config {
 		Templates: config.Templates{
 			DeniedTemplateHeaders:  "text/plain; charset=utf-8",
 			CaptchaTemplateHeaders: "text/html; charset=utf-8",
+			ShowDeniedPage:         true,
 		},
 	}
 }
@@ -456,6 +457,33 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, int32(envoy_type.StatusCode_InternalServerError), resp.Status.Code)
 		assert.Contains(t, resp.GetDeniedResponse().Body, "unknown action")
+	})
+
+	t.Run("show denied page disabled returns reason without template", func(t *testing.T) {
+		log := logger.FromContext(context.Background())
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
+			Action:     "ban",
+			Reason:     "crowdsecurity/http-bad",
+			HTTPStatus: 403,
+		})
+
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
+
+		cfg := getDefaultConfig()
+		cfg.Templates.ShowDeniedPage = false
+
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log)
+		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(403), resp.Status.Code)
+		deny := resp.GetDeniedResponse()
+		require.NotNil(t, deny, "expected denied response")
+		assert.Equal(t, "crowdsecurity/http-bad", deny.Body)
 	})
 }
 

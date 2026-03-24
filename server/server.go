@@ -361,16 +361,18 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	}
 
 	result := s.bouncer.Check(ctx, req)
-	s.logger.Info("remediation result", slog.Any("result", result))
+	s.logger.Debug("remediation result", slog.Any("result", result))
 	if result.Action != "error" {
 		s.notifier.Notify(ctx, s.buildWebhookEvent(result))
 	}
+
 	switch result.Action {
 	case "allow":
 		return getAllowedResponse(), nil
 	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
 	case "deny", "ban":
+		s.logger.Info("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		body, headers := s.renderDeniedResponse(result)
 		return getDeniedResponse(httpStatusToEnvoyStatus(result.HTTPStatus), body, headers), nil
 	case "error":
@@ -384,11 +386,12 @@ func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest) (string, ma
 	contentType := s.config.Templates.DeniedTemplateHeaders
 	headers := map[string]string{"Content-Type": contentType}
 
-	if s.templateStore == nil {
-		reason := result.Reason
-		if reason == "" {
-			reason = "access denied"
-		}
+	reason := result.Reason
+	if reason == "" {
+		reason = "access denied"
+	}
+
+	if !s.config.Templates.ShowDeniedPage || s.templateStore == nil {
 		return reason, headers
 	}
 
@@ -396,10 +399,6 @@ func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest) (string, ma
 	body, err := s.templateStore.RenderDenied(data)
 	if err != nil {
 		s.logger.Error("failed to render denied response template", "error", err)
-		reason := result.Reason
-		if reason == "" {
-			reason = "access denied"
-		}
 		return reason, headers
 	}
 

@@ -84,6 +84,7 @@ func initConfig() {
 
 	viper.SetDefault("templates.deniedTemplatePath", "")
 	viper.SetDefault("templates.deniedTemplateHeaders", "text/html; charset=utf-8")
+	viper.SetDefault("templates.showDeniedPage", true)
 	viper.SetDefault("templates.captchaTemplatePath", "")
 	viper.SetDefault("templates.captchaTemplateHeaders", "text/html; charset=utf-8")
 }

@@ -65,7 +65,7 @@ var ServeCmd = &cobra.Command{
 			CaptchaTemplatePath: config.Templates.CaptchaTemplatePath,
 		})
 		if err != nil {
-			slogger.Error("failed to create template store", "error", err)
+			slogger.Warn("failed to create template store", "error", err)
 			templateStore = nil
 		}
 
