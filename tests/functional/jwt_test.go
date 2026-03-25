@@ -22,6 +22,7 @@ import (
 	componentmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -273,7 +274,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil)
+	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, metrics.NewRecorder(nil))
 	require.NoError(t, err)
 
 	waf := components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
@@ -292,16 +293,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
+		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
 			DecisionCache:  decisionCache,
 			WAF:            waf,
 			CaptchaService: captchaService,
+			Prom:           recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -426,16 +429,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
+		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
 			DecisionCache:  decisionCache,
 			WAF:            waf,
 			CaptchaService: captchaService,
+			Prom:           recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -569,16 +574,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
+		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
 			DecisionCache:  decisionCache,
 			WAF:            waf,
 			CaptchaService: captchaServiceShort,
+			Prom:           recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger)
+		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -701,16 +708,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
+		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
 			DecisionCache:  decisionCache,
 			WAF:            waf,
 			CaptchaService: captchaServiceShort,
+			Prom:           recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger)
+		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -749,16 +758,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
+		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
 			DecisionCache:  decisionCache,
 			WAF:            waf,
 			CaptchaService: captchaService,
+			Prom:           recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})

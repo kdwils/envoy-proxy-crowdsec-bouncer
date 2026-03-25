@@ -77,6 +77,9 @@ func initConfig() {
 	viper.SetDefault("captcha.challengeDuration", "5m")
 	viper.SetDefault("captcha.sessionDuration", "15m")
 
+	viper.SetDefault("prometheus.enabled", false)
+	viper.SetDefault("prometheus.port", 9090)
+
 	viper.SetDefault("webhook.subscriptions", nil)
 	viper.SetDefault("webhook.signingKey", "")
 	viper.SetDefault("webhook.timeout", "5s")

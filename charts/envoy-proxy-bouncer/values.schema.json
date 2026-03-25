@@ -197,6 +197,19 @@
                         }
                     }
                 },
+                "prometheus": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        "port": {
+                            "default": 9090,
+                            "type": "integer"
+                        }
+                    }
+                },
                 "server": {
                     "type": "object",
                     "properties": {
@@ -486,6 +499,10 @@
                 },
                 "httpPort": {
                     "default": 8081,
+                    "type": "integer"
+                },
+                "metricsPort": {
+                    "default": 9090,
                     "type": "integer"
                 },
                 "type": {

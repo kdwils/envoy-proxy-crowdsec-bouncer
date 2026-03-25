@@ -10,6 +10,7 @@ import (
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
@@ -20,10 +21,11 @@ type DecisionCache struct {
 	decisions      *cache.Cache[models.Decision]
 	mu             *sync.RWMutex
 	MetricsService *crowdsec.MetricsService
+	prom           *metrics.Recorder
 	syncComplete   bool
 }
 
-func NewDecisionCache(cfg config.Bouncer, MetricsService *crowdsec.MetricsService) (*DecisionCache, error) {
+func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom *metrics.Recorder) (*DecisionCache, error) {
 	if err := cfg.ValidateAuth(); err != nil {
 		return nil, err
 	}
@@ -36,7 +38,8 @@ func NewDecisionCache(cfg config.Bouncer, MetricsService *crowdsec.MetricsServic
 		stream:         stream,
 		decisions:      cache.New[models.Decision](),
 		mu:             new(sync.RWMutex),
-		MetricsService: MetricsService,
+		MetricsService: metricsService,
+		prom:           prom,
 	}
 
 	return dc, nil
@@ -107,7 +110,6 @@ func (dc *DecisionCache) GetDecision(ctx context.Context, ip string) (*models.De
 
 	decision, ok := dc.decisions.Get(ip)
 	if !ok {
-		logger.Debug("not found in cache")
 		return nil, nil
 	}
 
@@ -150,6 +152,7 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 	}
 
 	logger := logger.FromContext(ctx).With(slog.String("component", "bouncer"), slog.String("method", "sync"))
+	dc.prom.SetLAPIStreamConnected(1)
 	go func() {
 		dc.stream.Run(ctx)
 	}()
@@ -158,10 +161,12 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			logger.Debug("sync context done")
+			dc.prom.SetLAPIStreamConnected(0)
 			return nil
 		case d, ok := <-dc.stream.Stream:
 			if !ok {
 				logger.Warn("decision stream closed; stopping sync")
+				dc.prom.SetLAPIStreamConnected(0)
 				return nil
 			}
 			if d == nil {
@@ -175,17 +180,6 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 
 				logger.Debug("deleting decision", "decision", decision)
 				dc.decisions.Delete(*decision.Value)
-
-				if dc.MetricsService == nil || decision.Origin == nil {
-					continue
-				}
-
-				origin := *decision.Origin
-				key := "active_decisions:" + origin
-				dc.MetricsService.Dec(key, "active_decisions", "ip", map[string]string{
-					"origin": origin,
-				})
-
 			}
 
 			for _, decision := range d.New {
@@ -194,17 +188,24 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				}
 				logger.Debug("received new decision", "decision", decision)
 				dc.decisions.Set(*decision.Value, *decision)
-
-				if dc.MetricsService == nil || decision.Origin == nil {
-					continue
-				}
-
-				origin := *decision.Origin
-				key := "active_decisions:" + origin
-				dc.MetricsService.Inc(key, "active_decisions", "ip", map[string]string{
-					"origin": origin,
-				})
 			}
+
+			originCounts := dc.GetOriginCounts()
+
+			for origin, count := range originCounts {
+				dc.prom.SetDecisionCacheSize(origin, float64(count))
+			}
+
+			if dc.MetricsService != nil {
+				for origin, count := range originCounts {
+					key := "active_decisions:" + origin
+					dc.MetricsService.Set(key, "active_decisions", "ip", int64(count), map[string]string{
+						"origin": origin,
+					})
+				}
+			}
+
+			dc.prom.SetLAPILastSyncTimestamp()
 
 			dc.mu.Lock()
 			if !dc.syncComplete {

@@ -18,8 +18,10 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -43,9 +45,10 @@ type Server struct {
 	now           func() time.Time
 	rateLimiter   *RateLimiter
 	healthServer  *health.Server
+	prom          *metrics.Recorder
 }
 
-func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger) *Server {
+func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger, prom *metrics.Recorder) *Server {
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus(healthCheckServiceLiveness, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(healthCheckServiceReadiness, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
@@ -60,10 +63,11 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier 
 		now:           time.Now,
 		rateLimiter:   NewRateLimiter(10, 20),
 		healthServer:  healthServer,
+		prom:          prom,
 	}
 }
 
-// ServeDual starts both gRPC and HTTP servers concurrently
+// ServeDual starts gRPC, HTTP, and Prometheus servers as needed
 func (s *Server) ServeDual(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -76,6 +80,13 @@ func (s *Server) ServeDual(ctx context.Context) error {
 		g.Go(func() error {
 			s.logger.Info("starting HTTP server", "port", s.config.Server.HTTPPort)
 			return s.serveHTTP(gctx, s.config.Server.HTTPPort)
+		})
+	}
+
+	if s.config.Prometheus.Enabled {
+		g.Go(func() error {
+			s.logger.Info("starting Prometheus metrics server", "port", s.config.Prometheus.Port)
+			return s.serveMetrics(gctx, s.config.Prometheus.Port)
 		})
 	}
 
@@ -94,7 +105,7 @@ func (s *Server) serveGRPC(ctx context.Context, port int) error {
 	}
 
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(s.loggerInterceptor),
+		grpc.ChainUnaryInterceptor(s.loggerInterceptor, s.metricsInterceptor),
 	)
 	auth.RegisterAuthorizationServer(grpcServer, s)
 	grpc_health_v1.RegisterHealthServer(grpcServer, s.healthServer)
@@ -116,11 +127,34 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := s.bouncer.ExtractRealIPFromHTTP(r)
 		if !s.rateLimiter.Allow(ip) {
+			s.prom.IncRateLimitedTotal()
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) serveMetrics(ctx context.Context, port int) error {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
+	}
+
+	go func() {
+		<-ctx.Done()
+		s.logger.Info("shutting down Prometheus metrics server...")
+		srv.Shutdown(context.Background())
+		s.logger.Info("Prometheus metrics server shutdown complete")
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("Prometheus metrics server failed: %v", err)
+	}
+	return nil
 }
 
 func (s *Server) serveHTTP(ctx context.Context, port int) error {
@@ -189,6 +223,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	verificationResult, err := s.captcha.VerifyResponse(r.Context(), clientIP, challengeToken, captchaResponse)
 	if err != nil {
 		s.logger.Error("captcha verification error", "error", err)
+		s.prom.IncCaptchaVerificationsTotal("error")
 		if verificationResult != nil && !verificationResult.Success {
 			http.Error(w, verificationResult.Message, http.StatusForbidden)
 			return
@@ -198,10 +233,12 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !verificationResult.Success {
+		s.prom.IncCaptchaVerificationsTotal("failure")
 		http.Error(w, verificationResult.Message, http.StatusForbidden)
 		return
 	}
 
+	s.prom.IncCaptchaVerificationsTotal("success")
 	cookieName := s.captcha.CookieName()
 	cookie := s.buildSessionCookie(cookieName, verificationResult.Token)
 	http.SetCookie(w, cookie)
@@ -286,6 +323,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	s.prom.IncCaptchaChallengesTotal()
 	w.Header().Set("Content-Type", s.config.Templates.CaptchaTemplateHeaders)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(html))
@@ -319,6 +357,12 @@ func (s *Server) isReady() bool {
 func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	reqLogger := slog.New(s.logger.Handler())
 	return handler(logger.WithContext(ctx, reqLogger), req)
+}
+
+func (s *Server) metricsInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	done := s.prom.ObserveDuration("request")
+	defer done()
+	return handler(ctx, req)
 }
 
 func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event {
@@ -371,7 +415,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		return getAllowedResponse(), nil
 	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
-	case "deny", "ban":
+	case "ban":
 		s.logger.Info("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		body, headers := s.renderDeniedResponse(result)
 		return getDeniedResponse(httpStatusToEnvoyStatus(result.HTTPStatus), body, headers), nil

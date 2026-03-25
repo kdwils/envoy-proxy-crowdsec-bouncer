@@ -15,6 +15,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -114,7 +115,9 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	bouncer, err := bouncer.New(config)
+	recorder := metrics.NewRecorder(nil)
+
+	bouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)
 	go bouncer.Sync(ctx)
 
@@ -123,7 +126,7 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
 
 	go func() {
 		err := server.ServeDual(ctx)
@@ -210,7 +213,9 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	bouncer, err := bouncer.New(config)
+	recorder := metrics.NewRecorder(nil)
+
+	bouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)
 
 	templateStore, err := template.NewStore(template.Config{})
@@ -218,7 +223,7 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
 
 	go func() {
 		err := server.ServeDual(ctx)

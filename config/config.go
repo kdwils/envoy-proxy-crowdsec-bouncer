@@ -9,13 +9,14 @@ import (
 )
 
 type Config struct {
-	Server         Server    `yaml:"server" json:"server"`
-	Bouncer        Bouncer   `yaml:"bouncer" json:"bouncer"`
-	WAF            WAF       `yaml:"waf" json:"waf"`
-	Captcha        Captcha   `yaml:"captcha" json:"captcha"`
-	Webhook        Webhook   `yaml:"webhook" json:"webhook"`
-	TrustedProxies []string  `yaml:"trustedProxies" json:"trustedProxies"`
-	Templates      Templates `yaml:"templates" json:"templates"`
+	Server         Server     `yaml:"server" json:"server"`
+	Bouncer        Bouncer    `yaml:"bouncer" json:"bouncer"`
+	WAF            WAF        `yaml:"waf" json:"waf"`
+	Captcha        Captcha    `yaml:"captcha" json:"captcha"`
+	Webhook        Webhook    `yaml:"webhook" json:"webhook"`
+	Prometheus     Prometheus `yaml:"prometheus" json:"prometheus"`
+	TrustedProxies []string   `yaml:"trustedProxies" json:"trustedProxies"`
+	Templates      Templates  `yaml:"templates" json:"templates"`
 }
 
 type Server struct {
@@ -82,6 +83,11 @@ type Webhook struct {
 	SigningKey    string                 `yaml:"signingKey" json:"signingKey"`
 	Timeout       time.Duration          `yaml:"timeout" json:"timeout"`
 	BufferSize    int                    `yaml:"bufferSize" json:"bufferSize"`
+}
+
+type Prometheus struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	Port    int  `yaml:"port" json:"port"`
 }
 
 type Templates struct {

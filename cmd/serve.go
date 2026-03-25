@@ -11,10 +11,12 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -45,7 +47,16 @@ var ServeCmd = &cobra.Command{
 
 		ctx = logger.WithContext(ctx, slogger)
 
-		bouncer, err := bouncer.New(config)
+		var promMetrics *metrics.Metrics
+		if config.Prometheus.Enabled {
+			promMetrics, err = metrics.New(prometheus.DefaultRegisterer)
+			if err != nil {
+				return err
+			}
+		}
+		recorder := metrics.NewRecorder(promMetrics)
+
+		bouncer, err := bouncer.New(config, recorder)
 		if err != nil {
 			return err
 		}
@@ -72,7 +83,7 @@ var ServeCmd = &cobra.Command{
 		notifier := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
 		go notifier.Start(ctx)
 
-		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger)
+		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger, recorder)
 
 		sigCtx, cancel := context.WithCancel(ctx)
 		defer cancel()

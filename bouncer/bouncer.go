@@ -17,6 +17,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
 
@@ -58,10 +59,11 @@ type Bouncer struct {
 	CaptchaService CaptchaService
 	TrustedProxies []*net.IPNet
 	MetricsService *crowdsec.MetricsService
+	Prom           *metrics.Recorder
 	config         config.Config
 }
 
-func New(cfg config.Config) (*Bouncer, error) {
+func New(cfg config.Config, prom *metrics.Recorder) (*Bouncer, error) {
 	trustedProxies, err := parseProxyAddresses(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
@@ -69,6 +71,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 
 	bouncer := &Bouncer{
 		TrustedProxies: trustedProxies,
+		Prom:           prom,
 		config:         cfg,
 	}
 
@@ -93,7 +96,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService)
+		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService, bouncer.Prom)
 		if err != nil {
 			return nil, err
 		}
@@ -156,15 +159,15 @@ func (b *Bouncer) incRemediationMetric(name, remediationType string) {
 }
 
 func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
+	b.Prom.IncRequestsTotal(result.Action)
+
 	switch result.Action {
 	case "allow":
 		b.incRemediationMetric("processed", "bypass")
-	case "deny":
+	case "ban":
 		b.incRemediationMetric("dropped", "ban")
 	case "captcha":
 		b.incRemediationMetric("dropped", "captcha")
-	default:
-		b.incRemediationMetric("dropped", "ban")
 	}
 }
 
@@ -301,13 +304,14 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
 
 	bouncerResult := b.checkDecisionCache(ctx, parsed)
+
 	switch bouncerResult.Action {
 	case "allow":
 	case "captcha":
 		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
-	case "deny", "ban":
+	case "ban":
 		if bouncerResult.HTTPStatus == 0 {
 			bouncerResult.HTTPStatus = b.getBanStatusCode()
 		}
@@ -318,12 +322,13 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", b.getBanStatusCode(), nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "ban", "unknown decision cache action", b.getBanStatusCode(), nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
 
 	wafResult := b.checkWAF(ctx, parsed)
+
 	switch wafResult.Action {
 	case "allow":
 		finalResult := NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, bouncerResult.Decision, "", parsed, nil)
@@ -333,7 +338,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
-	case "deny", "ban":
+	case "ban":
 		b.recordFinalMetric(wafResult)
 		return wafResult
 	case "error":
@@ -347,6 +352,9 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 }
 
 func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+	done := b.Prom.ObserveDuration("bouncer")
+	defer done()
+
 	logger := logger.FromContext(ctx)
 	if b.DecisionCache == nil {
 		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed, nil)
@@ -356,6 +364,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
 		logger.Error("decision cache error", "error", err)
+		b.Prom.IncExternalCallErrorsTotal("decision_cache")
 		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
@@ -371,6 +380,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 
 	decisionType := strings.ToLower(*decision.Type)
 	logger.Debug("decision found", "type", decisionType)
+	b.Prom.IncDecisionCacheMatchesTotal(decisionType)
 
 	switch decisionType {
 	case "ban":
@@ -404,9 +414,12 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 
 	sessionToken := parsed.Cookies[b.CaptchaService.CookieName()]
 
+	captchaDone := b.Prom.ObserveDuration("captcha")
 	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, sessionToken)
+	captchaDone()
 	if err != nil {
 		logger.Error("error creating session", "error", err)
+		b.Prom.IncExternalCallErrorsTotal("captcha")
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 	if session == nil {
@@ -416,6 +429,9 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 }
 
 func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+	done := b.Prom.ObserveDuration("waf")
+	defer done()
+
 	logger := logger.FromContext(ctx)
 	if b.WAF == nil {
 		return NewCheckedRequest(parsed.RealIP, "allow", "waf disabled", http.StatusOK, nil, "", parsed, nil)
@@ -437,8 +453,12 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
+		b.Prom.IncWAFRequestsTotal("error")
+		b.Prom.IncExternalCallErrorsTotal("waf")
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
+
+	b.Prom.IncWAFRequestsTotal(wafResult.Action)
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)

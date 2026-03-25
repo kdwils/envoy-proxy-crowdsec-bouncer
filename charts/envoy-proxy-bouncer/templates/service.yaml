@@ -17,5 +17,11 @@ spec:
       protocol: TCP
       name: http
     {{- end }}
+    {{- if .Values.config.prometheus.enabled }}
+    - port: {{ .Values.service.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+    {{- end }}
   selector:
     {{- include "envoy-proxy-bouncer.selectorLabels" . | nindent 4 }}

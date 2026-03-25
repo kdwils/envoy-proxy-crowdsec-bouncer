@@ -28,6 +28,7 @@ service:
   type: ClusterIP # @schema default: ClusterIP
   grpcPort: 8080 # @schema default: 8080
   httpPort: 8081 # @schema default: 8081
+  metricsPort: 9090 # @schema default: 9090
 
 resources:
   limits:
@@ -74,6 +75,11 @@ config:
     apiKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
       key: "" # @schema default: ""
+
+  # enable endpoint for prometheus metrics scraping on the configured port
+  prometheus:
+    enabled: false # @schema default: false
+    port: 9090 # @schema default: 9090
 
   captcha:
     enabled: false # @schema default: false
