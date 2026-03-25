@@ -22,6 +22,7 @@ type DecisionCache struct {
 	mu             *sync.RWMutex
 	MetricsService *crowdsec.MetricsService
 	prom           *metrics.Recorder
+	knownOrigins   map[string]struct{}
 	syncComplete   bool
 }
 
@@ -40,6 +41,7 @@ func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsServic
 		mu:             new(sync.RWMutex),
 		MetricsService: metricsService,
 		prom:           prom,
+		knownOrigins:   make(map[string]struct{}),
 	}
 
 	return dc, nil
@@ -132,6 +134,10 @@ func (dc *DecisionCache) IsReady() bool {
 
 func (dc *DecisionCache) GetOriginCounts() map[string]int {
 	originCounts := make(map[string]int)
+	for origin := range dc.knownOrigins {
+		originCounts[origin] = 0
+	}
+
 	if dc.decisions == nil {
 		return originCounts
 	}
@@ -139,7 +145,9 @@ func (dc *DecisionCache) GetOriginCounts() map[string]int {
 	for _, key := range dc.decisions.Keys() {
 		decision, exists := dc.decisions.Get(key)
 		if exists && decision.Origin != nil {
-			originCounts[*decision.Origin]++
+			origin := *decision.Origin
+			dc.knownOrigins[origin] = struct{}{}
+			originCounts[origin]++
 		}
 	}
 
@@ -152,7 +160,6 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 	}
 
 	logger := logger.FromContext(ctx).With(slog.String("component", "bouncer"), slog.String("method", "sync"))
-	dc.prom.SetLAPIStreamConnected(true)
 	go func() {
 		dc.stream.Run(ctx)
 	}()
@@ -172,6 +179,8 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 			if d == nil {
 				continue
 			}
+			
+			dc.prom.SetLAPIStreamConnected(true)
 
 			for _, decision := range d.Deleted {
 				if decision == nil || decision.Value == nil {

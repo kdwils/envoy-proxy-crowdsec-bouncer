@@ -147,17 +147,7 @@ func (s *Server) serveMetrics(ctx context.Context, port int) error {
 		Handler: mux,
 	}
 
-	go func() {
-		<-ctx.Done()
-		s.logger.Info("shutting down Prometheus metrics server...")
-		srv.Shutdown(context.Background())
-		s.logger.Info("Prometheus metrics server shutdown complete")
-	}()
-
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("Prometheus metrics server failed: %w", err)
-	}
-	return nil
+	return s.gracefullyListenAndServe(ctx, srv, "Prometheus metrics server")
 }
 
 func (s *Server) serveHTTP(ctx context.Context, port int) error {
@@ -171,23 +161,27 @@ func (s *Server) serveHTTP(ctx context.Context, port int) error {
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 	)(r)
 
-	rateLimitedHandler := s.rateLimitMiddleware(corsHandler)
-
-	httpServer := &http.Server{
+	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: rateLimitedHandler,
+		Handler: s.rateLimitMiddleware(corsHandler),
 	}
 
+	return s.gracefullyListenAndServe(ctx, srv, "HTTP server")
+}
+
+func (s *Server) gracefullyListenAndServe(ctx context.Context, srv *http.Server, name string) error {
 	go func() {
 		<-ctx.Done()
-		s.logger.Info("shutting down HTTP server...")
-		httpServer.Shutdown(context.Background())
-		s.logger.Info("HTTP server shutdown complete")
+		s.logger.Info("shutting down " + name + "...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shutdownCtx)
+		s.logger.Info(name + " shutdown complete")
 	}()
 
-	s.logger.Info("HTTP server listening", "addr", httpServer.Addr)
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("HTTP server failed: %v", err)
+	s.logger.Info(name+" listening", "addr", srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("%s failed: %w", name, err)
 	}
 	return nil
 }
@@ -363,7 +357,7 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 }
 
 func (s *Server) metricsInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-	done := s.prom.ObserveDuration("request")
+	done := s.prom.ObserveDuration(info.FullMethod)
 	defer done()
 	return handler(ctx, req)
 }

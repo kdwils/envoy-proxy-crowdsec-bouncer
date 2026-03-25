@@ -352,7 +352,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 }
 
 func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
-	done := b.Prom.ObserveDuration("bouncer")
+	done := b.Prom.ObserveDuration("decision_cache")
 	defer done()
 
 	logger := logger.FromContext(ctx)
@@ -455,7 +455,6 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
 		b.Prom.IncWAFRequestsTotal("error")
-		b.Prom.IncExternalCallErrorsTotal("waf")
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
