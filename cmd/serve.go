@@ -47,12 +47,18 @@ var ServeCmd = &cobra.Command{
 
 		ctx = logger.WithContext(ctx, slogger)
 
-		var promMetrics *metrics.Metrics
+		var (
+			promMetrics *metrics.Metrics
+			gatherer    prometheus.Gatherer = prometheus.DefaultGatherer
+		)
+
 		if config.Prometheus.Enabled {
-			promMetrics, err = metrics.New(prometheus.DefaultRegisterer)
+			reg := prometheus.NewRegistry()
+			promMetrics, err = metrics.New(reg)
 			if err != nil {
 				return err
 			}
+			gatherer = reg
 		}
 		recorder := metrics.NewRecorder(promMetrics)
 
@@ -83,7 +89,7 @@ var ServeCmd = &cobra.Command{
 		notifier := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
 		go notifier.Start(ctx)
 
-		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger, recorder)
+		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger, recorder, gatherer)
 
 		sigCtx, cancel := context.WithCancel(ctx)
 		defer cancel()

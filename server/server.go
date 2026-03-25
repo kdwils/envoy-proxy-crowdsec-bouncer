@@ -21,6 +21,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
@@ -46,9 +47,10 @@ type Server struct {
 	rateLimiter   *RateLimiter
 	healthServer  *health.Server
 	prom          *metrics.Recorder
+	gatherer      prometheus.Gatherer
 }
 
-func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger, prom *metrics.Recorder) *Server {
+func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger, prom *metrics.Recorder, gatherer prometheus.Gatherer) *Server {
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus(healthCheckServiceLiveness, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(healthCheckServiceReadiness, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
@@ -64,6 +66,7 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier 
 		rateLimiter:   NewRateLimiter(10, 20),
 		healthServer:  healthServer,
 		prom:          prom,
+		gatherer:      gatherer,
 	}
 }
 
@@ -137,7 +140,7 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) serveMetrics(ctx context.Context, port int) error {
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/metrics", promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{}))
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
@@ -152,7 +155,7 @@ func (s *Server) serveMetrics(ctx context.Context, port int) error {
 	}()
 
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("Prometheus metrics server failed: %v", err)
+		return fmt.Errorf("Prometheus metrics server failed: %w", err)
 	}
 	return nil
 }

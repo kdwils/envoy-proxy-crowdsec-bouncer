@@ -304,7 +304,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -440,7 +440,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -585,7 +585,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -719,7 +719,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -769,7 +769,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})

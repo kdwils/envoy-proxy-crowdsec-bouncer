@@ -298,7 +298,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, reg)
 
 	go func() {
 		err := server.ServeDual(ctx)
@@ -642,7 +642,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+	server := server.NewServer(config, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, reg)
 
 	log.Printf("TestBouncerWithCaptcha: Created context, about to start goroutine")
 	go func() {

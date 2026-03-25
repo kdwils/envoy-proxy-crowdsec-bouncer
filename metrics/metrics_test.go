@@ -45,7 +45,7 @@ func TestRecorder_NilMetrics_NoOp(t *testing.T) {
 	r.IncCaptchaVerificationsTotal("success")
 	r.IncRateLimitedTotal()
 	r.IncExternalCallErrorsTotal("waf")
-	r.SetLAPIStreamConnected(1)
+	r.SetLAPIStreamConnected(true)
 	r.SetLAPILastSyncTimestamp()
 	done := r.ObserveDuration("bouncer")
 	done()
@@ -165,10 +165,10 @@ func TestRecorder_SetLAPIStreamConnected(t *testing.T) {
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
-	r.SetLAPIStreamConnected(1)
+	r.SetLAPIStreamConnected(true)
 	assert.Equal(t, float64(1), testutil.ToFloat64(m.LAPIStreamConnected), "expected stream connected")
 
-	r.SetLAPIStreamConnected(0)
+	r.SetLAPIStreamConnected(false)
 	assert.Equal(t, float64(0), testutil.ToFloat64(m.LAPIStreamConnected), "expected stream disconnected")
 }
 

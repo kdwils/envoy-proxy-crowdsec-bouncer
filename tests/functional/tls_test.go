@@ -158,7 +158,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 	go func() {
 		err := srv.ServeDual(ctx)

@@ -152,7 +152,7 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 	}
 
 	logger := logger.FromContext(ctx).With(slog.String("component", "bouncer"), slog.String("method", "sync"))
-	dc.prom.SetLAPIStreamConnected(1)
+	dc.prom.SetLAPIStreamConnected(true)
 	go func() {
 		dc.stream.Run(ctx)
 	}()
@@ -161,12 +161,12 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			logger.Debug("sync context done")
-			dc.prom.SetLAPIStreamConnected(0)
+			dc.prom.SetLAPIStreamConnected(false)
 			return nil
 		case d, ok := <-dc.stream.Stream:
 			if !ok {
 				logger.Warn("decision stream closed; stopping sync")
-				dc.prom.SetLAPIStreamConnected(0)
+				dc.prom.SetLAPIStreamConnected(false)
 				return nil
 			}
 			if d == nil {

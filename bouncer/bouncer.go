@@ -404,6 +404,9 @@ func (b *Bouncer) getBanStatusCode() int {
 }
 
 func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decision *models.Decision) CheckedRequest {
+	done := b.Prom.ObserveDuration("captcha")
+	defer done()
+
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed, nil)
@@ -414,9 +417,7 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 
 	sessionToken := parsed.Cookies[b.CaptchaService.CookieName()]
 
-	captchaDone := b.Prom.ObserveDuration("captcha")
 	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, sessionToken)
-	captchaDone()
 	if err != nil {
 		logger.Error("error creating session", "error", err)
 		b.Prom.IncExternalCallErrorsTotal("captcha")

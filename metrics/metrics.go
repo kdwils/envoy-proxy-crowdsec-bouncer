@@ -180,9 +180,13 @@ func (r *Recorder) IncExternalCallErrorsTotal(service string) {
 	r.m.ExternalCallErrorsTotal.WithLabelValues(service).Inc()
 }
 
-func (r *Recorder) SetLAPIStreamConnected(v float64) {
+func (r *Recorder) SetLAPIStreamConnected(connected bool) {
 	if r.m == nil {
 		return
+	}
+	v := float64(0)
+	if connected {
+		v = 1
 	}
 	r.m.LAPIStreamConnected.Set(v)
 }

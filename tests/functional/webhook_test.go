@@ -177,7 +177,7 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	templateStore, err := template.NewStore(template.Config{})
 	require.NoError(t, err)
 
-	srv := server.NewServer(cfg, testBouncer, captchaService, notifier, templateStore, slogger, recorder)
+	srv := server.NewServer(cfg, testBouncer, captchaService, notifier, templateStore, slogger, recorder, nil)
 	go func() {
 		if err := srv.ServeDual(ctx); err != nil && err != context.Canceled {
 			t.Logf("server error: %v", err)

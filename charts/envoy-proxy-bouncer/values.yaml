@@ -28,7 +28,6 @@ service:
   type: ClusterIP # @schema default: ClusterIP
   grpcPort: 8080 # @schema default: 8080
   httpPort: 8081 # @schema default: 8081
-  metricsPort: 9090 # @schema default: 9090
 
 resources:
   limits:

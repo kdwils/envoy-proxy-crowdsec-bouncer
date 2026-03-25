@@ -126,7 +126,7 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 	go func() {
 		err := server.ServeDual(ctx)
@@ -223,7 +223,7 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 	go func() {
 		err := server.ServeDual(ctx)

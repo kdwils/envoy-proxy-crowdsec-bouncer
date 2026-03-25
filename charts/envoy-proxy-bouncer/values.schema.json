@@ -501,10 +501,6 @@
                     "default": 8081,
                     "type": "integer"
                 },
-                "metricsPort": {
-                    "default": 9090,
-                    "type": "integer"
-                },
                 "type": {
                     "default": "ClusterIP",
                     "type": "string"
