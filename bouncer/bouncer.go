@@ -352,9 +352,6 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 }
 
 func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
-	done := b.Prom.ObserveDuration("decision_cache")
-	defer done()
-
 	logger := logger.FromContext(ctx)
 	if b.DecisionCache == nil {
 		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed, nil)
@@ -404,9 +401,6 @@ func (b *Bouncer) getBanStatusCode() int {
 }
 
 func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decision *models.Decision) CheckedRequest {
-	done := b.Prom.ObserveDuration("captcha")
-	defer done()
-
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed, nil)
@@ -430,9 +424,6 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 }
 
 func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
-	done := b.Prom.ObserveDuration("waf")
-	defer done()
-
 	logger := logger.FromContext(ctx)
 	if b.WAF == nil {
 		return NewCheckedRequest(parsed.RealIP, "allow", "waf disabled", http.StatusOK, nil, "", parsed, nil)

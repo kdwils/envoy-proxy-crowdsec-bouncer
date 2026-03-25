@@ -22,7 +22,7 @@ type DecisionCache struct {
 	mu             *sync.RWMutex
 	MetricsService *crowdsec.MetricsService
 	prom           *metrics.Recorder
-	knownOrigins   map[string]struct{}
+	knownOrigins   *cache.Cache[struct{}]
 	syncComplete   bool
 }
 
@@ -41,7 +41,7 @@ func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsServic
 		mu:             new(sync.RWMutex),
 		MetricsService: metricsService,
 		prom:           prom,
-		knownOrigins:   make(map[string]struct{}),
+		knownOrigins:   cache.New[struct{}](),
 	}
 
 	return dc, nil
@@ -134,7 +134,7 @@ func (dc *DecisionCache) IsReady() bool {
 
 func (dc *DecisionCache) GetOriginCounts() map[string]int {
 	originCounts := make(map[string]int)
-	for origin := range dc.knownOrigins {
+	for _, origin := range dc.knownOrigins.Keys() {
 		originCounts[origin] = 0
 	}
 
@@ -146,7 +146,7 @@ func (dc *DecisionCache) GetOriginCounts() map[string]int {
 		decision, exists := dc.decisions.Get(key)
 		if exists && decision.Origin != nil {
 			origin := *decision.Origin
-			dc.knownOrigins[origin] = struct{}{}
+			dc.knownOrigins.Set(origin, struct{}{})
 			originCounts[origin]++
 		}
 	}
@@ -179,8 +179,6 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 			if d == nil {
 				continue
 			}
-			
-			dc.prom.SetLAPIStreamConnected(true)
 
 			for _, decision := range d.Deleted {
 				if decision == nil || decision.Value == nil {
@@ -219,6 +217,7 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 			dc.mu.Lock()
 			if !dc.syncComplete {
 				dc.syncComplete = true
+				dc.prom.SetLAPIStreamConnected(true)
 				logger.Info("initial decision sync complete")
 			}
 			dc.mu.Unlock()
