@@ -1,4 +1,4 @@
-package metrics
+package recorder
 
 import (
 	"testing"
@@ -10,33 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew_RegistersAllMetrics(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+func TestRecorder_NilReg_NoOp(t *testing.T) {
+	r, err := New(nil)
 	require.NoError(t, err)
-	require.NotNil(t, m.RequestsTotal)
-	require.NotNil(t, m.RequestDuration)
-	require.NotNil(t, m.DecisionCacheSize)
-	require.NotNil(t, m.DecisionCacheMatchesTotal)
-	require.NotNil(t, m.WAFRequestsTotal)
-	require.NotNil(t, m.CaptchaChallengesTotal)
-	require.NotNil(t, m.CaptchaVerificationsTotal)
-	require.NotNil(t, m.RateLimitedTotal)
-	require.NotNil(t, m.LAPIStreamConnected)
-	require.NotNil(t, m.LAPILastSyncTimestamp)
-	require.NotNil(t, m.ExternalCallErrorsTotal)
-}
-
-func TestNew_DoubleRegisterFails(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	_, err := New(reg)
-	require.NoError(t, err)
-	_, err = New(reg)
-	require.Error(t, err, "expected error when registering duplicate metrics")
-}
-
-func TestRecorder_NilMetrics_NoOp(t *testing.T) {
-	r := NewRecorder(nil)
 	r.IncRequestsTotal("allow")
 	r.IncDecisionCacheMatchesTotal("ban")
 	r.SetDecisionCacheSize("capi", 0)
@@ -53,7 +29,7 @@ func TestRecorder_NilMetrics_NoOp(t *testing.T) {
 
 func TestRecorder_IncRequestsTotal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -67,7 +43,7 @@ func TestRecorder_IncRequestsTotal(t *testing.T) {
 
 func TestRecorder_IncDecisionCacheMatchesTotal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -81,7 +57,7 @@ func TestRecorder_IncDecisionCacheMatchesTotal(t *testing.T) {
 
 func TestRecorder_SetDecisionCacheSize(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -94,7 +70,7 @@ func TestRecorder_SetDecisionCacheSize(t *testing.T) {
 
 func TestRecorder_IncWAFRequestsTotal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -108,7 +84,7 @@ func TestRecorder_IncWAFRequestsTotal(t *testing.T) {
 
 func TestRecorder_IncCaptchaChallengesTotal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -120,7 +96,7 @@ func TestRecorder_IncCaptchaChallengesTotal(t *testing.T) {
 
 func TestRecorder_IncCaptchaVerificationsTotal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -134,7 +110,7 @@ func TestRecorder_IncCaptchaVerificationsTotal(t *testing.T) {
 
 func TestRecorder_IncRateLimitedTotal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -147,7 +123,7 @@ func TestRecorder_IncRateLimitedTotal(t *testing.T) {
 
 func TestRecorder_IncExternalCallErrorsTotal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -161,7 +137,7 @@ func TestRecorder_IncExternalCallErrorsTotal(t *testing.T) {
 
 func TestRecorder_SetLAPIStreamConnected(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
 
@@ -174,7 +150,7 @@ func TestRecorder_SetLAPIStreamConnected(t *testing.T) {
 
 func TestRecorder_SetLAPILastSyncTimestamp(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 
 	fixed := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -187,11 +163,10 @@ func TestRecorder_SetLAPILastSyncTimestamp(t *testing.T) {
 
 func TestRecorder_ObserveDuration(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m, err := New(reg)
+	m, err := newMetrics(reg)
 	require.NoError(t, err)
 
-	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	tick := start
+	tick := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	r := &Recorder{m: m, now: func() time.Time {
 		t := tick
 		tick = tick.Add(time.Second)

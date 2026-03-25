@@ -17,8 +17,8 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -54,25 +54,25 @@ func ptr[T any](v T) *T {
 }
 
 type Bouncer struct {
-	DecisionCache  DecisionCache
-	WAF            WAF
-	CaptchaService CaptchaService
-	TrustedProxies []*net.IPNet
-	MetricsService *crowdsec.MetricsService
-	Prom           *metrics.Recorder
-	config         config.Config
+	DecisionCache      DecisionCache
+	WAF                WAF
+	CaptchaService     CaptchaService
+	TrustedProxies     []*net.IPNet
+	MetricsService     *crowdsec.MetricsService
+	PrometheusRecorder *recorder.Recorder
+	config             config.Config
 }
 
-func New(cfg config.Config, prom *metrics.Recorder) (*Bouncer, error) {
+func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 	trustedProxies, err := parseProxyAddresses(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
 	}
 
 	bouncer := &Bouncer{
-		TrustedProxies: trustedProxies,
-		Prom:           prom,
-		config:         cfg,
+		TrustedProxies:     trustedProxies,
+		PrometheusRecorder: recorder,
+		config:             cfg,
 	}
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
@@ -96,7 +96,7 @@ func New(cfg config.Config, prom *metrics.Recorder) (*Bouncer, error) {
 
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService, bouncer.Prom)
+		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService, bouncer.PrometheusRecorder)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +159,7 @@ func (b *Bouncer) incRemediationMetric(name, remediationType string) {
 }
 
 func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
-	b.Prom.IncRequestsTotal(result.Action)
+	b.PrometheusRecorder.IncRequestsTotal(result.Action)
 
 	switch result.Action {
 	case "allow":
@@ -361,7 +361,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
 		logger.Error("decision cache error", "error", err)
-		b.Prom.IncExternalCallErrorsTotal("decision_cache")
+		b.PrometheusRecorder.IncExternalCallErrorsTotal("decision_cache")
 		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
@@ -377,7 +377,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 
 	decisionType := strings.ToLower(*decision.Type)
 	logger.Debug("decision found", "type", decisionType)
-	b.Prom.IncDecisionCacheMatchesTotal(decisionType)
+	b.PrometheusRecorder.IncDecisionCacheMatchesTotal(decisionType)
 
 	switch decisionType {
 	case "ban":
@@ -414,7 +414,7 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, sessionToken)
 	if err != nil {
 		logger.Error("error creating session", "error", err)
-		b.Prom.IncExternalCallErrorsTotal("captcha")
+		b.PrometheusRecorder.IncExternalCallErrorsTotal("captcha")
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 	if session == nil {
@@ -445,11 +445,11 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
-		b.Prom.IncWAFRequestsTotal("error")
+		b.PrometheusRecorder.IncWAFRequestsTotal("error")
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
-	b.Prom.IncWAFRequestsTotal(wafResult.Action)
+	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)

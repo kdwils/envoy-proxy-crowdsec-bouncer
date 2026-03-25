@@ -1,4 +1,4 @@
-package metrics
+package recorder
 
 import (
 	"time"
@@ -8,7 +8,7 @@ import (
 
 const namespace = "bouncer"
 
-type Metrics struct {
+type metrics struct {
 	RequestsTotal             *prometheus.CounterVec
 	RequestDuration           *prometheus.HistogramVec
 	DecisionCacheSize         *prometheus.GaugeVec
@@ -22,8 +22,17 @@ type Metrics struct {
 	ExternalCallErrorsTotal   *prometheus.CounterVec
 }
 
-func New(reg prometheus.Registerer) (*Metrics, error) {
-	m := &Metrics{
+type Recorder struct {
+	m   *metrics
+	now func() time.Time
+}
+
+func (r *Recorder) GetMetrics() *metrics {
+	return r.m
+}
+
+func newMetrics(reg prometheus.Registerer) (*metrics, error) {
+	m := &metrics{
 		RequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "requests_total",
@@ -105,13 +114,17 @@ func New(reg prometheus.Registerer) (*Metrics, error) {
 	return m, nil
 }
 
-type Recorder struct {
-	m   *Metrics
-	now func() time.Time
-}
+func New(reg prometheus.Registerer) (*Recorder, error) {
+	if reg == nil {
+		return &Recorder{now: time.Now}, nil
+	}
 
-func NewRecorder(m *Metrics) *Recorder {
-	return &Recorder{m: m, now: time.Now}
+	m, err := newMetrics(reg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Recorder{m: m, now: time.Now}, nil
 }
 
 func (r *Recorder) ObserveDuration(component string) func() {

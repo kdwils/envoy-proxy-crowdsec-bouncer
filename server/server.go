@@ -18,7 +18,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,36 +37,36 @@ const (
 
 type Server struct {
 	auth.UnimplementedAuthorizationServer
-	bouncer       Bouncer
-	captcha       Captcha
-	notifier      Notifier
-	config        config.Config
-	logger        *slog.Logger
-	templateStore TemplateStore
-	now           func() time.Time
-	rateLimiter   *RateLimiter
-	healthServer  *health.Server
-	prom          *metrics.Recorder
-	gatherer      prometheus.Gatherer
+	bouncer            Bouncer
+	captcha            Captcha
+	notifier           Notifier
+	config             config.Config
+	logger             *slog.Logger
+	templateStore      TemplateStore
+	now                func() time.Time
+	rateLimiter        *RateLimiter
+	healthServer       *health.Server
+	prometheusRecorder *recorder.Recorder
+	gatherer           prometheus.Gatherer
 }
 
-func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger, prom *metrics.Recorder, gatherer prometheus.Gatherer) *Server {
+func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger, prom *recorder.Recorder, gatherer prometheus.Gatherer) *Server {
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus(healthCheckServiceLiveness, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(healthCheckServiceReadiness, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 
 	return &Server{
-		config:        config,
-		bouncer:       bouncer,
-		logger:        logger,
-		captcha:       captcha,
-		notifier:      notifier,
-		templateStore: templateStore,
-		now:           time.Now,
-		rateLimiter:   NewRateLimiter(10, 20),
-		healthServer:  healthServer,
-		prom:          prom,
-		gatherer:      gatherer,
+		config:             config,
+		bouncer:            bouncer,
+		logger:             logger,
+		captcha:            captcha,
+		notifier:           notifier,
+		templateStore:      templateStore,
+		now:                time.Now,
+		rateLimiter:        NewRateLimiter(10, 20),
+		healthServer:       healthServer,
+		prometheusRecorder: prom,
+		gatherer:           gatherer,
 	}
 }
 
@@ -130,7 +130,7 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := s.bouncer.ExtractRealIPFromHTTP(r)
 		if !s.rateLimiter.Allow(ip) {
-			s.prom.IncRateLimitedTotal()
+			s.prometheusRecorder.IncRateLimitedTotal()
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -220,7 +220,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	verificationResult, err := s.captcha.VerifyResponse(r.Context(), clientIP, challengeToken, captchaResponse)
 	if err != nil {
 		s.logger.Error("captcha verification error", "error", err)
-		s.prom.IncCaptchaVerificationsTotal("error")
+		s.prometheusRecorder.IncCaptchaVerificationsTotal("error")
 		if verificationResult != nil && !verificationResult.Success {
 			http.Error(w, verificationResult.Message, http.StatusForbidden)
 			return
@@ -230,12 +230,12 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !verificationResult.Success {
-		s.prom.IncCaptchaVerificationsTotal("failure")
+		s.prometheusRecorder.IncCaptchaVerificationsTotal("failure")
 		http.Error(w, verificationResult.Message, http.StatusForbidden)
 		return
 	}
 
-	s.prom.IncCaptchaVerificationsTotal("success")
+	s.prometheusRecorder.IncCaptchaVerificationsTotal("success")
 	cookieName := s.captcha.CookieName()
 	cookie := s.buildSessionCookie(cookieName, verificationResult.Token)
 	http.SetCookie(w, cookie)
@@ -320,7 +320,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	s.prom.IncCaptchaChallengesTotal()
+	s.prometheusRecorder.IncCaptchaChallengesTotal()
 	w.Header().Set("Content-Type", s.config.Templates.CaptchaTemplateHeaders)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(html))
@@ -357,7 +357,7 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 }
 
 func (s *Server) metricsInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-	done := s.prom.ObserveDuration(info.FullMethod)
+	done := s.prometheusRecorder.ObserveDuration(info.FullMethod)
 	defer done()
 	return handler(ctx, req)
 }

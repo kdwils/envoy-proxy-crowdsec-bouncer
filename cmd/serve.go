@@ -11,7 +11,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
@@ -48,21 +48,25 @@ var ServeCmd = &cobra.Command{
 		ctx = logger.WithContext(ctx, slogger)
 
 		var (
-			promMetrics *metrics.Metrics
-			gatherer    prometheus.Gatherer = prometheus.DefaultGatherer
+			rec      *recorder.Recorder
+			gatherer prometheus.Gatherer = prometheus.DefaultGatherer
 		)
+
+		rec, err = recorder.New(nil)
+		if err != nil {
+			return err
+		}
 
 		if config.Prometheus.Enabled {
 			reg := prometheus.NewRegistry()
-			promMetrics, err = metrics.New(reg)
+			rec, err = recorder.New(reg)
 			if err != nil {
 				return err
 			}
 			gatherer = reg
 		}
-		recorder := metrics.NewRecorder(promMetrics)
 
-		bouncer, err := bouncer.New(config, recorder)
+		bouncer, err := bouncer.New(config, rec)
 		if err != nil {
 			return err
 		}
@@ -89,7 +93,7 @@ var ServeCmd = &cobra.Command{
 		notifier := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
 		go notifier.Start(ctx)
 
-		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger, recorder, gatherer)
+		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger, rec, gatherer)
 
 		sigCtx, cancel := context.WithCancel(ctx)
 		defer cancel()

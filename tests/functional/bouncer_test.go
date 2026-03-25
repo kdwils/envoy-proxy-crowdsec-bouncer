@@ -22,7 +22,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -277,9 +277,8 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	ctx := logger.WithContext(t.Context(), slogger)
 
 	reg := prometheus.NewRegistry()
-	promMetrics, err := metrics.New(reg)
+	recorder, err := recorder.New(reg)
 	require.NoError(t, err)
-	recorder := metrics.NewRecorder(promMetrics)
 
 	bouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)
@@ -406,11 +405,12 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
 		require.Empty(t, originCounts, "should have no active decisions after deletion in previous test")
 
-		assert.Equal(t, float64(3), testutil.ToFloat64(promMetrics.RequestsTotal.WithLabelValues("allow")), "expected 3 allowed requests")
-		assert.Equal(t, float64(3), testutil.ToFloat64(promMetrics.RequestsTotal.WithLabelValues("ban")), "expected 3 banned requests")
-		assert.Equal(t, float64(3), testutil.ToFloat64(promMetrics.WAFRequestsTotal.WithLabelValues("allow")), "expected 3 WAF allows")
-		assert.Equal(t, float64(1), testutil.ToFloat64(promMetrics.WAFRequestsTotal.WithLabelValues("ban")), "expected 1 WAF ban")
-		assert.Equal(t, float64(2), testutil.ToFloat64(promMetrics.DecisionCacheMatchesTotal.WithLabelValues("ban")), "expected 2 decision cache ban matches")
+		metrics := recorder.GetMetrics()
+		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 3 allowed requests")
+		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 3 banned requests")
+		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "expected 3 WAF allows")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("ban")), "expected 1 WAF ban")
+		assert.Equal(t, float64(2), testutil.ToFloat64(metrics.DecisionCacheMatchesTotal.WithLabelValues("ban")), "expected 2 decision cache ban matches")
 	})
 }
 
@@ -621,9 +621,8 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	ctx := logger.WithContext(t.Context(), slogger)
 
 	reg := prometheus.NewRegistry()
-	promMetrics, err := metrics.New(reg)
+	recorder, err := recorder.New(reg)
 	require.NoError(t, err)
-	recorder := metrics.NewRecorder(promMetrics)
 
 	testBouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)
@@ -654,7 +653,6 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	}()
 
 	time.Sleep(5 * time.Second)
-
 
 	conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -879,13 +877,14 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		}
 		require.True(t, activeDecisionsFound, "should have active_decisions metrics from decision cache")
 
-		assert.Equal(t, float64(4), testutil.ToFloat64(promMetrics.RequestsTotal.WithLabelValues("captcha")), "expected 4 captcha requests")
-		assert.Equal(t, float64(1), testutil.ToFloat64(promMetrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
-		assert.Equal(t, float64(1), testutil.ToFloat64(promMetrics.WAFRequestsTotal.WithLabelValues("captcha")), "expected 1 WAF captcha trigger")
-		assert.Equal(t, float64(1), testutil.ToFloat64(promMetrics.WAFRequestsTotal.WithLabelValues("allow")), "expected 1 WAF allow")
-		assert.Equal(t, float64(3), testutil.ToFloat64(promMetrics.DecisionCacheMatchesTotal.WithLabelValues("captcha")), "expected 3 captcha decision cache matches")
-		assert.Equal(t, float64(1), testutil.ToFloat64(promMetrics.CaptchaVerificationsTotal.WithLabelValues("error")), "expected 1 captcha verification error")
-		assert.Equal(t, float64(5), testutil.ToFloat64(promMetrics.RateLimitedTotal), "expected 5 rate limited requests (25 requests - 20 burst)")
+		metrics := recorder.GetMetrics()
+		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 4 captcha requests")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("captcha")), "expected 1 WAF captcha trigger")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "expected 1 WAF allow")
+		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.DecisionCacheMatchesTotal.WithLabelValues("captcha")), "expected 3 captcha decision cache matches")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("error")), "expected 1 captcha verification error")
+		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RateLimitedTotal), "expected 5 rate limited requests (25 requests - 20 burst)")
 	})
 }
 

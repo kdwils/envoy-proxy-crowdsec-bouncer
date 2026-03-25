@@ -24,7 +24,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -138,7 +138,8 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder := metrics.NewRecorder(nil)
+	recorder, err := recorder.New(nil)
+	require.NoError(t, err)
 
 	b, err := bouncer.New(cfg, recorder)
 	require.NoError(t, err)

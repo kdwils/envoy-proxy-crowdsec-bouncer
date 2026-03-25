@@ -10,9 +10,9 @@ import (
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 )
 
@@ -21,12 +21,12 @@ type DecisionCache struct {
 	decisions      *cache.Cache[models.Decision]
 	mu             *sync.RWMutex
 	MetricsService *crowdsec.MetricsService
-	prom           *metrics.Recorder
+	prom           *recorder.Recorder
 	knownOrigins   *cache.Cache[struct{}]
 	syncComplete   bool
 }
 
-func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom *metrics.Recorder) (*DecisionCache, error) {
+func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom *recorder.Recorder) (*DecisionCache, error) {
 	if err := cfg.ValidateAuth(); err != nil {
 		return nil, err
 	}

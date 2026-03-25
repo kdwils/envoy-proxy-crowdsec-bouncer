@@ -21,7 +21,7 @@ import (
 	componentmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -148,7 +148,8 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	require.NoError(t, err)
 	captchaService.Provider = mockProvider
 
-	recorder := metrics.NewRecorder(nil)
+	recorder, err := recorder.New(nil)
+	require.NoError(t, err)
 
 	testBouncer, err := bouncer.New(cfg, recorder)
 	require.NoError(t, err)

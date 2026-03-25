@@ -20,7 +20,7 @@ import (
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -47,7 +47,9 @@ func TestServer_Check(t *testing.T) {
 
 		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
 		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Return("rendered template content", nil)
-		s := NewServer(getDefaultConfig(), nil, nil, webhook.NewNoopNotifier(), mockTemplateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), nil, nil, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
@@ -85,7 +87,9 @@ func TestServer_Check(t *testing.T) {
 
 		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
 		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Return("mocked template content", nil)
-		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mockTemplateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -132,7 +136,9 @@ func TestServer_Check(t *testing.T) {
 
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
@@ -161,7 +167,9 @@ func TestServer_Check(t *testing.T) {
 		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
 		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Return("Access Blocked", nil)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -202,7 +210,9 @@ func TestServer_Check(t *testing.T) {
 
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
 				Source: &auth.AttributeContext_Peer{
@@ -259,7 +269,9 @@ func TestServer_Check(t *testing.T) {
 			t.Fatalf("failed to create template store: %v", err)
 		}
 
-		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), templateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), templateStore, log, rec, nil)
 		fixedTime := time.Date(2023, 12, 25, 10, 30, 0, 0, time.UTC)
 		s.now = func() time.Time { return fixedTime }
 		req := &auth.CheckRequest{
@@ -319,7 +331,9 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(500), resp.Status.Code)
@@ -348,7 +362,9 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
 		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Return("Access Blocked", nil)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
@@ -375,7 +391,9 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(0), resp.Status.Code)
@@ -406,7 +424,9 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(envoy_type.StatusCode_Found), resp.Status.Code)
@@ -432,7 +452,9 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
 		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Return("Access Blocked", nil)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
@@ -453,7 +475,9 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(envoy_type.StatusCode_InternalServerError), resp.Status.Code)
@@ -478,7 +502,9 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		cfg := getDefaultConfig()
 		cfg.Templates.ShowDeniedPage = false
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
@@ -502,7 +528,9 @@ func TestServer_NewServer(t *testing.T) {
 			},
 		}
 
-		server := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		server := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		assert.NotNil(t, server)
 		assert.Equal(t, cfg, server.config)
@@ -528,7 +556,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		req := httptest.NewRequest("POST", "/captcha/verify", nil)
 		w := httptest.NewRecorder()
@@ -552,7 +582,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		// Create a request with an invalid content-type that will cause ParseForm to fail
 		req := httptest.NewRequest("POST", "/captcha/verify", strings.NewReader("invalid=data&more=data"))
@@ -578,7 +610,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("captchaResponse", "test-response")
@@ -606,7 +640,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("challengeToken", "test-challenge-token")
@@ -635,7 +671,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		mockCaptcha.EXPECT().GetSession("invalid-challenge-token").Return(nil, false)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("challengeToken", "invalid-challenge-token")
@@ -673,7 +711,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(nil, assert.AnError)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("challengeToken", "test-challenge-token")
@@ -716,7 +756,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(verificationResult, nil)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("challengeToken", "test-challenge-token")
@@ -760,7 +802,9 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(verificationResult, nil)
 		mockCaptcha.EXPECT().CookieName().Return("session")
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("challengeToken", "test-challenge-token")
@@ -797,7 +841,9 @@ func TestServer_handleCaptchaChallenge(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		req := httptest.NewRequest("GET", "/captcha/challenge", nil)
 		w := httptest.NewRecorder()
@@ -821,7 +867,9 @@ func TestServer_handleCaptchaChallenge(t *testing.T) {
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, metrics.NewRecorder(nil), nil)
+		rec, err := recorder.New(nil)
+		require.NoError(t, err)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		req := httptest.NewRequest("GET", "/captcha/challenge", nil)
 		w := httptest.NewRecorder()

@@ -22,7 +22,7 @@ import (
 	componentmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
-	"github.com/kdwils/envoy-proxy-bouncer/metrics"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -274,7 +274,10 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, metrics.NewRecorder(nil))
+	recorder, err := recorder.New(nil)
+	require.NoError(t, err)
+
+	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, recorder)
 	require.NoError(t, err)
 
 	waf := components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
@@ -293,12 +296,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
-		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
-			DecisionCache:  decisionCache,
-			WAF:            waf,
-			CaptchaService: captchaService,
-			Prom:           recorder,
+			DecisionCache:      decisionCache,
+			WAF:                waf,
+			CaptchaService:     captchaService,
+			PrometheusRecorder: recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -429,12 +431,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
-		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
-			DecisionCache:  decisionCache,
-			WAF:            waf,
-			CaptchaService: captchaService,
-			Prom:           recorder,
+			DecisionCache:      decisionCache,
+			WAF:                waf,
+			CaptchaService:     captchaService,
+			PrometheusRecorder: recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -574,12 +575,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
-		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
-			DecisionCache:  decisionCache,
-			WAF:            waf,
-			CaptchaService: captchaServiceShort,
-			Prom:           recorder,
+			DecisionCache:      decisionCache,
+			WAF:                waf,
+			CaptchaService:     captchaServiceShort,
+			PrometheusRecorder: recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -708,12 +708,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
-		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
-			DecisionCache:  decisionCache,
-			WAF:            waf,
-			CaptchaService: captchaServiceShort,
-			Prom:           recorder,
+			DecisionCache:      decisionCache,
+			WAF:                waf,
+			CaptchaService:     captchaServiceShort,
+			PrometheusRecorder: recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -758,12 +757,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
-		recorder := metrics.NewRecorder(nil)
 		testBouncer := &bouncer.Bouncer{
-			DecisionCache:  decisionCache,
-			WAF:            waf,
-			CaptchaService: captchaService,
-			Prom:           recorder,
+			DecisionCache:      decisionCache,
+			WAF:                waf,
+			CaptchaService:     captchaService,
+			PrometheusRecorder: recorder,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
