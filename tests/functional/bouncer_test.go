@@ -351,7 +351,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		}))
 
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
-		require.NotEmpty(t, originCounts, "should have active decisions before removal")
+		require.NotEmpty(t, originCounts, "should have active decisions")
 		require.Contains(t, originCounts, "cscli", "should have cscli origin")
 		require.Equal(t, 1, originCounts["cscli"], "should have 1 decision from cscli origin")
 
@@ -403,7 +403,9 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		require.Equal(t, int64(3), banMetric.Value)
 
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
-		require.Empty(t, originCounts, "should have no active decisions after deletion in previous test")
+		require.NotEmpty(t, originCounts, "should have active decisions")
+		require.Contains(t, originCounts, "cscli", "should have cscli origin")
+		require.Equal(t, 1, originCounts["cscli"], "should have 1 decision from cscli origin")
 
 		metrics := recorder.GetMetrics()
 		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 3 allowed requests")
