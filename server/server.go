@@ -11,8 +11,6 @@ import (
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
@@ -20,9 +18,11 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
+	"github.com/kdwils/envoy-proxy-bouncer/version"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -75,20 +75,17 @@ func (s *Server) ServeDual(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		s.logger.Info("starting gRPC server", "port", s.config.Server.GRPCPort)
 		return s.serveGRPC(gctx, s.config.Server.GRPCPort)
 	})
 
 	if s.config.Captcha.Enabled {
 		g.Go(func() error {
-			s.logger.Info("starting HTTP server", "port", s.config.Server.HTTPPort)
 			return s.serveHTTP(gctx, s.config.Server.HTTPPort)
 		})
 	}
 
 	if s.config.Prometheus.Enabled {
 		g.Go(func() error {
-			s.logger.Info("starting Prometheus metrics server", "port", s.config.Prometheus.Port)
 			return s.serveMetrics(gctx, s.config.Prometheus.Port)
 		})
 	}
@@ -123,6 +120,7 @@ func (s *Server) serveGRPC(ctx context.Context, port int) error {
 		s.logger.Info("gRPC server shutdown complete")
 	}()
 
+	s.logger.Info("server listening", "name", "bouncer", "addr", s.config.Server.GRPCPort, "version", version.Version)
 	return grpcServer.Serve(lis)
 }
 
@@ -147,7 +145,7 @@ func (s *Server) serveMetrics(ctx context.Context, port int) error {
 		Handler: mux,
 	}
 
-	return s.gracefullyListenAndServe(ctx, srv, "Prometheus metrics server")
+	return s.gracefullyListenAndServe(ctx, srv, "prometheus")
 }
 
 func (s *Server) serveHTTP(ctx context.Context, port int) error {
@@ -182,7 +180,7 @@ func (s *Server) gracefullyListenAndServe(ctx context.Context, srv *http.Server,
 		s.logger.Info("shutdown complete", "name", name)
 	}()
 
-	s.logger.Info(name+" listening", "addr", srv.Addr)
+	s.logger.Info("server listening", "name", name, "addr", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("%s failed: %w", name, err)
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
-	"github.com/kdwils/envoy-proxy-bouncer/version"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -38,7 +37,6 @@ var ServeCmd = &cobra.Command{
 
 		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		slogger := slog.New(handler)
-		slogger.Info("starting envoy-proxy-bouncer", "version", version.Version, "logLevel", level)
 
 		ctx := cmd.Context()
 		if ctx == nil {
