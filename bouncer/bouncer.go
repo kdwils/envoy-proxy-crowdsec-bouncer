@@ -376,7 +376,6 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 
 	decisionType := strings.ToLower(*decision.Type)
 	logger.Debug("decision found", "type", decisionType)
-	b.PrometheusRecorder.IncDecisionCacheMatchesTotal(decisionType)
 
 	switch decisionType {
 	case "ban":
@@ -443,11 +442,8 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
-		b.PrometheusRecorder.IncWAFRequestsTotal("error")
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
-
-	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)

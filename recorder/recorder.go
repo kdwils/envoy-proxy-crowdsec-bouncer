@@ -12,8 +12,6 @@ type Metrics struct {
 	RequestsTotal             *prometheus.CounterVec
 	RequestDuration           prometheus.Histogram
 	DecisionCacheSize         *prometheus.GaugeVec
-	DecisionCacheMatchesTotal *prometheus.CounterVec
-	WAFRequestsTotal          *prometheus.CounterVec
 	CaptchaChallengesTotal    prometheus.Counter
 	CaptchaVerificationsTotal *prometheus.CounterVec
 	RateLimitedTotal          prometheus.Counter
@@ -48,16 +46,6 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Name:      "decision_cache_size",
 			Help:      "Number of decisions in the cache by origin.",
 		}, []string{"origin"}),
-		DecisionCacheMatchesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: namespace,
-			Name:      "decision_cache_matches_total",
-			Help:      "Total number of IPs that matched an active decision in the cache by decision type.",
-		}, []string{"type"}),
-		WAFRequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: namespace,
-			Name:      "waf_requests_total",
-			Help:      "Total number of WAF inspection requests by action.",
-		}, []string{"action"}),
 		CaptchaChallengesTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "captcha_challenges_total",
@@ -89,8 +77,6 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		m.RequestsTotal,
 		m.RequestDuration,
 		m.DecisionCacheSize,
-		m.DecisionCacheMatchesTotal,
-		m.WAFRequestsTotal,
 		m.CaptchaChallengesTotal,
 		m.CaptchaVerificationsTotal,
 		m.RateLimitedTotal,
@@ -137,25 +123,11 @@ func (r *Recorder) IncRequestsTotal(action string) {
 	r.m.RequestsTotal.WithLabelValues(action).Inc()
 }
 
-func (r *Recorder) IncDecisionCacheMatchesTotal(decisionType string) {
-	if r.m == nil {
-		return
-	}
-	r.m.DecisionCacheMatchesTotal.WithLabelValues(decisionType).Inc()
-}
-
 func (r *Recorder) SetDecisionCacheSize(origin string, val float64) {
 	if r.m == nil {
 		return
 	}
 	r.m.DecisionCacheSize.WithLabelValues(origin).Set(val)
-}
-
-func (r *Recorder) IncWAFRequestsTotal(action string) {
-	if r.m == nil {
-		return
-	}
-	r.m.WAFRequestsTotal.WithLabelValues(action).Inc()
 }
 
 func (r *Recorder) IncCaptchaChallengesTotal() {

@@ -14,9 +14,7 @@ func TestRecorder_NilReg_NoOp(t *testing.T) {
 	r, err := New(nil)
 	require.NoError(t, err)
 	r.IncRequestsTotal("allow")
-	r.IncDecisionCacheMatchesTotal("ban")
 	r.SetDecisionCacheSize("capi", 0)
-	r.IncWAFRequestsTotal("ban")
 	r.IncCaptchaChallengesTotal()
 	r.IncCaptchaVerificationsTotal("success")
 	r.IncRateLimitedTotal()
@@ -40,20 +38,6 @@ func TestRecorder_IncRequestsTotal(t *testing.T) {
 	assert.Equal(t, float64(1), testutil.ToFloat64(m.RequestsTotal.WithLabelValues("ban")), "expected 1 ban request")
 }
 
-func TestRecorder_IncDecisionCacheMatchesTotal(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	m, err := newMetrics(reg)
-	require.NoError(t, err)
-	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
-
-	r.IncDecisionCacheMatchesTotal("ban")
-	r.IncDecisionCacheMatchesTotal("captcha")
-	r.IncDecisionCacheMatchesTotal("ban")
-
-	assert.Equal(t, float64(2), testutil.ToFloat64(m.DecisionCacheMatchesTotal.WithLabelValues("ban")), "expected 2 ban cache matches")
-	assert.Equal(t, float64(1), testutil.ToFloat64(m.DecisionCacheMatchesTotal.WithLabelValues("captcha")), "expected 1 captcha cache match")
-}
-
 func TestRecorder_SetDecisionCacheSize(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m, err := newMetrics(reg)
@@ -65,20 +49,6 @@ func TestRecorder_SetDecisionCacheSize(t *testing.T) {
 
 	r.SetDecisionCacheSize("capi", 10)
 	assert.Equal(t, float64(10), testutil.ToFloat64(m.DecisionCacheSize.WithLabelValues("capi")), "expected cache size of 10 after update")
-}
-
-func TestRecorder_IncWAFRequestsTotal(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	m, err := newMetrics(reg)
-	require.NoError(t, err)
-	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
-
-	r.IncWAFRequestsTotal("allow")
-	r.IncWAFRequestsTotal("ban")
-	r.IncWAFRequestsTotal("ban")
-
-	assert.Equal(t, float64(1), testutil.ToFloat64(m.WAFRequestsTotal.WithLabelValues("allow")), "expected 1 WAF allow")
-	assert.Equal(t, float64(2), testutil.ToFloat64(m.WAFRequestsTotal.WithLabelValues("ban")), "expected 2 WAF bans")
 }
 
 func TestRecorder_IncCaptchaChallengesTotal(t *testing.T) {

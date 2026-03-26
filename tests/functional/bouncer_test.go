@@ -410,9 +410,6 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		metrics := recorder.GetMetrics()
 		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 3 allowed requests")
 		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 3 banned requests")
-		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "expected 3 WAF allows")
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("ban")), "expected 1 WAF ban")
-		assert.Equal(t, float64(2), testutil.ToFloat64(metrics.DecisionCacheMatchesTotal.WithLabelValues("ban")), "expected 2 decision cache ban matches")
 	})
 }
 
@@ -882,9 +879,6 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		metrics := recorder.GetMetrics()
 		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 4 captcha requests")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("captcha")), "expected 1 WAF captcha trigger")
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "expected 1 WAF allow")
-		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.DecisionCacheMatchesTotal.WithLabelValues("captcha")), "expected 3 captcha decision cache matches")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("error")), "expected 1 captcha verification error")
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RateLimitedTotal), "expected 5 rate limited requests (25 requests - 20 burst)")
 	})
