@@ -405,7 +405,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
 		require.NotEmpty(t, originCounts, "should have active decisions")
 		require.Contains(t, originCounts, "cscli", "should have cscli origin")
-		require.Equal(t, 1, originCounts["cscli"], "should have 1 decision from cscli origin")
+		require.Equal(t, 0, originCounts["cscli"], "should have 0 decision from cscli origin after deletion")
 
 		metrics := recorder.GetMetrics()
 		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 3 allowed requests")
