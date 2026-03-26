@@ -10,7 +10,7 @@ const namespace = "bouncer"
 
 type Metrics struct {
 	RequestsTotal             *prometheus.CounterVec
-	RequestDuration           *prometheus.HistogramVec
+	RequestDuration           prometheus.Histogram
 	DecisionCacheSize         *prometheus.GaugeVec
 	DecisionCacheMatchesTotal *prometheus.CounterVec
 	WAFRequestsTotal          *prometheus.CounterVec
@@ -19,7 +19,6 @@ type Metrics struct {
 	RateLimitedTotal          prometheus.Counter
 	LAPIStreamConnected       prometheus.Gauge
 	LAPILastSyncTimestamp     prometheus.Gauge
-	ExternalCallErrorsTotal   *prometheus.CounterVec
 }
 
 type Recorder struct {
@@ -38,12 +37,12 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Name:      "requests_total",
 			Help:      "Total number of requests processed by action outcome.",
 		}, []string{"action"}),
-		RequestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		RequestDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Name:      "request_duration_seconds",
-			Help:      "Duration of request processing by component.",
+			Help:      "Duration of request processing.",
 			Buckets:   prometheus.DefBuckets,
-		}, []string{"component"}),
+		}),
 		DecisionCacheSize: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "decision_cache_size",
@@ -84,11 +83,6 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Name:      "lapi_last_sync_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful LAPI decision sync.",
 		}),
-		ExternalCallErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Namespace: namespace,
-			Name:      "external_call_errors_total",
-			Help:      "Total number of errors from external service calls.",
-		}, []string{"service"}),
 	}
 
 	collectors := []prometheus.Collector{
@@ -102,7 +96,6 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		m.RateLimitedTotal,
 		m.LAPIStreamConnected,
 		m.LAPILastSyncTimestamp,
-		m.ExternalCallErrorsTotal,
 	}
 
 	for _, c := range collectors {
@@ -127,13 +120,13 @@ func New(reg prometheus.Registerer) (*Recorder, error) {
 	return &Recorder{m: m, now: time.Now}, nil
 }
 
-func (r *Recorder) ObserveDuration(component string) func() {
+func (r *Recorder) ObserveDuration() func() {
 	if r.m == nil {
 		return func() {}
 	}
 	start := r.now()
 	return func() {
-		r.m.RequestDuration.WithLabelValues(component).Observe(r.now().Sub(start).Seconds())
+		r.m.RequestDuration.Observe(r.now().Sub(start).Seconds())
 	}
 }
 
@@ -184,13 +177,6 @@ func (r *Recorder) IncRateLimitedTotal() {
 		return
 	}
 	r.m.RateLimitedTotal.Inc()
-}
-
-func (r *Recorder) IncExternalCallErrorsTotal(service string) {
-	if r.m == nil {
-		return
-	}
-	r.m.ExternalCallErrorsTotal.WithLabelValues(service).Inc()
 }
 
 func (r *Recorder) SetLAPIStreamConnected(connected bool) {

@@ -145,9 +145,7 @@ func (dc *DecisionCache) GetOriginCounts() map[string]int {
 	for _, key := range dc.decisions.Keys() {
 		decision, exists := dc.decisions.Get(key)
 		if exists && decision.Origin != nil {
-			origin := *decision.Origin
-			dc.knownOrigins.Set(origin, struct{}{})
-			originCounts[origin]++
+			originCounts[*decision.Origin]++
 		}
 	}
 
@@ -195,6 +193,9 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				}
 				logger.Debug("received new decision", "decision", decision)
 				dc.decisions.Set(*decision.Value, *decision)
+				if decision.Origin != nil {
+					dc.knownOrigins.Set(*decision.Origin, struct{}{})
+				}
 			}
 
 			originCounts := dc.GetOriginCounts()

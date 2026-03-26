@@ -20,10 +20,9 @@ func TestRecorder_NilReg_NoOp(t *testing.T) {
 	r.IncCaptchaChallengesTotal()
 	r.IncCaptchaVerificationsTotal("success")
 	r.IncRateLimitedTotal()
-	r.IncExternalCallErrorsTotal("waf")
 	r.SetLAPIStreamConnected(true)
 	r.SetLAPILastSyncTimestamp()
-	done := r.ObserveDuration("bouncer")
+	done := r.ObserveDuration()
 	done()
 }
 
@@ -121,20 +120,6 @@ func TestRecorder_IncRateLimitedTotal(t *testing.T) {
 	assert.Equal(t, float64(3), testutil.ToFloat64(m.RateLimitedTotal), "expected 3 rate limited requests")
 }
 
-func TestRecorder_IncExternalCallErrorsTotal(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	m, err := newMetrics(reg)
-	require.NoError(t, err)
-	r := &Recorder{m: m, now: func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }}
-
-	r.IncExternalCallErrorsTotal("waf")
-	r.IncExternalCallErrorsTotal("decision_cache")
-	r.IncExternalCallErrorsTotal("waf")
-
-	assert.Equal(t, float64(2), testutil.ToFloat64(m.ExternalCallErrorsTotal.WithLabelValues("waf")), "expected 2 WAF errors")
-	assert.Equal(t, float64(1), testutil.ToFloat64(m.ExternalCallErrorsTotal.WithLabelValues("decision_cache")), "expected 1 decision cache error")
-}
-
 func TestRecorder_SetLAPIStreamConnected(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m, err := newMetrics(reg)
@@ -161,6 +146,20 @@ func TestRecorder_SetLAPILastSyncTimestamp(t *testing.T) {
 	assert.Equal(t, float64(fixed.Unix()), testutil.ToFloat64(m.LAPILastSyncTimestamp), "expected timestamp to match fixed time")
 }
 
+func TestDecisionCacheGauge_SetZeroRetainsLabel(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m, err := newMetrics(reg)
+	require.NoError(t, err)
+	r := &Recorder{m: m, now: time.Now}
+
+	r.SetDecisionCacheSize("capi", 5)
+	r.SetDecisionCacheSize("capi", 0)
+
+	count := testutil.CollectAndCount(m.DecisionCacheSize)
+	assert.Equal(t, 1, count, "expected label to persist in scrape after Set(0) — only DeleteLabelValues removes a label")
+	assert.Equal(t, float64(0), testutil.ToFloat64(m.DecisionCacheSize.WithLabelValues("capi")), "expected value 0")
+}
+
 func TestRecorder_ObserveDuration(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m, err := newMetrics(reg)
@@ -173,7 +172,7 @@ func TestRecorder_ObserveDuration(t *testing.T) {
 		return t
 	}}
 
-	done := r.ObserveDuration("bouncer")
+	done := r.ObserveDuration()
 	done()
 
 	assert.Equal(t, 1, testutil.CollectAndCount(m.RequestDuration), "expected 1 observation")

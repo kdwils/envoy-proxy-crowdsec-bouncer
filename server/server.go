@@ -393,7 +393,7 @@ func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event 
 }
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
-	defer s.prometheusRecorder.ObserveDuration("grpc")()
+	defer s.prometheusRecorder.ObserveDuration()()
 
 	if s.bouncer == nil {
 		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil, nil))
