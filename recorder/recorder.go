@@ -1,0 +1,170 @@
+package recorder
+
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+const namespace = "bouncer"
+
+type Metrics struct {
+	RequestsTotal             *prometheus.CounterVec
+	RequestDuration           prometheus.Histogram
+	DecisionCacheSize         *prometheus.GaugeVec
+	CaptchaChallengesTotal    prometheus.Counter
+	CaptchaVerificationsTotal *prometheus.CounterVec
+	RateLimitedTotal          prometheus.Counter
+	LAPIStreamConnected       prometheus.Gauge
+	LAPILastSyncTimestamp     prometheus.Gauge
+}
+
+type Recorder struct {
+	m   *Metrics
+	now func() time.Time
+}
+
+func (r *Recorder) GetMetrics() *Metrics {
+	return r.m
+}
+
+func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
+	m := &Metrics{
+		RequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "requests_total",
+			Help:      "Total number of requests processed by action outcome.",
+		}, []string{"action"}),
+		RequestDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "request_duration_seconds",
+			Help:      "Duration of request processing.",
+			Buckets:   prometheus.DefBuckets,
+		}),
+		DecisionCacheSize: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "decision_cache_size",
+			Help:      "Number of decisions in the cache by origin.",
+		}, []string{"origin"}),
+		CaptchaChallengesTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "captcha_challenges_total",
+			Help:      "Total number of CAPTCHA challenges served.",
+		}),
+		CaptchaVerificationsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "captcha_verifications_total",
+			Help:      "Total number of CAPTCHA verifications by result.",
+		}, []string{"result"}),
+		RateLimitedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "rate_limited_total",
+			Help:      "Total number of rate limited requests.",
+		}),
+		LAPIStreamConnected: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "lapi_stream_connected",
+			Help:      "Whether the LAPI decision stream is connected (1) or not (0).",
+		}),
+		LAPILastSyncTimestamp: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "lapi_last_sync_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful LAPI decision sync.",
+		}),
+	}
+
+	collectors := []prometheus.Collector{
+		m.RequestsTotal,
+		m.RequestDuration,
+		m.DecisionCacheSize,
+		m.CaptchaChallengesTotal,
+		m.CaptchaVerificationsTotal,
+		m.RateLimitedTotal,
+		m.LAPIStreamConnected,
+		m.LAPILastSyncTimestamp,
+	}
+
+	for _, c := range collectors {
+		if err := reg.Register(c); err != nil {
+			return nil, err
+		}
+	}
+
+	return m, nil
+}
+
+func New(reg prometheus.Registerer) (*Recorder, error) {
+	if reg == nil {
+		return &Recorder{now: time.Now}, nil
+	}
+
+	m, err := newMetrics(reg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Recorder{m: m, now: time.Now}, nil
+}
+
+func (r *Recorder) ObserveDuration() func() {
+	if r.m == nil {
+		return func() {}
+	}
+	start := r.now()
+	return func() {
+		r.m.RequestDuration.Observe(r.now().Sub(start).Seconds())
+	}
+}
+
+func (r *Recorder) IncRequestsTotal(action string) {
+	if r.m == nil {
+		return
+	}
+	r.m.RequestsTotal.WithLabelValues(action).Inc()
+}
+
+func (r *Recorder) SetDecisionCacheSize(origin string, val float64) {
+	if r.m == nil {
+		return
+	}
+	r.m.DecisionCacheSize.WithLabelValues(origin).Set(val)
+}
+
+func (r *Recorder) IncCaptchaChallengesTotal() {
+	if r.m == nil {
+		return
+	}
+	r.m.CaptchaChallengesTotal.Inc()
+}
+
+func (r *Recorder) IncCaptchaVerificationsTotal(result string) {
+	if r.m == nil {
+		return
+	}
+	r.m.CaptchaVerificationsTotal.WithLabelValues(result).Inc()
+}
+
+func (r *Recorder) IncRateLimitedTotal() {
+	if r.m == nil {
+		return
+	}
+	r.m.RateLimitedTotal.Inc()
+}
+
+func (r *Recorder) SetLAPIStreamConnected(connected bool) {
+	if r.m == nil {
+		return
+	}
+	v := float64(0)
+	if connected {
+		v = 1
+	}
+	r.m.LAPIStreamConnected.Set(v)
+}
+
+func (r *Recorder) SetLAPILastSyncTimestamp() {
+	if r.m == nil {
+		return
+	}
+	r.m.LAPILastSyncTimestamp.Set(float64(r.now().Unix()))
+}

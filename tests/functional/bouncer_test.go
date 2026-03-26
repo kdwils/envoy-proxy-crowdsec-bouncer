@@ -22,10 +22,14 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
@@ -272,7 +276,11 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	bouncer, err := bouncer.New(config)
+	reg := prometheus.NewRegistry()
+	recorder, err := recorder.New(reg)
+	require.NoError(t, err)
+
+	bouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)
 	go bouncer.Sync(ctx)
 
@@ -289,7 +297,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, reg)
 
 	go func() {
 		err := server.ServeDual(ctx)
@@ -343,7 +351,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		}))
 
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
-		require.NotEmpty(t, originCounts, "should have active decisions before removal")
+		require.NotEmpty(t, originCounts, "should have active decisions")
 		require.Contains(t, originCounts, "cscli", "should have cscli origin")
 		require.Equal(t, 1, originCounts["cscli"], "should have 1 decision from cscli origin")
 
@@ -395,7 +403,13 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		require.Equal(t, int64(3), banMetric.Value)
 
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
-		require.Empty(t, originCounts, "should have no active decisions after deletion in previous test")
+		require.NotEmpty(t, originCounts, "should have active decisions")
+		require.Contains(t, originCounts, "cscli", "should have cscli origin")
+		require.Equal(t, 0, originCounts["cscli"], "should have 0 decision from cscli origin after deletion")
+
+		metrics := recorder.GetMetrics()
+		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 3 allowed requests")
+		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 3 banned requests")
 	})
 }
 
@@ -605,7 +619,11 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	testBouncer, err := bouncer.New(config)
+	reg := prometheus.NewRegistry()
+	recorder, err := recorder.New(reg)
+	require.NoError(t, err)
+
+	testBouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
 
@@ -622,7 +640,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	server := server.NewServer(config, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+	server := server.NewServer(config, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, reg)
 
 	log.Printf("TestBouncerWithCaptcha: Created context, about to start goroutine")
 	go func() {
@@ -857,6 +875,12 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 			}
 		}
 		require.True(t, activeDecisionsFound, "should have active_decisions metrics from decision cache")
+
+		metrics := recorder.GetMetrics()
+		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 4 captcha requests")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("error")), "expected 1 captcha verification error")
+		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RateLimitedTotal), "expected 5 rate limited requests (25 requests - 20 burst)")
 	})
 }
 

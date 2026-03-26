@@ -11,15 +11,18 @@ import (
 	envoy_core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
+	"github.com/kdwils/envoy-proxy-bouncer/version"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -34,48 +37,56 @@ const (
 
 type Server struct {
 	auth.UnimplementedAuthorizationServer
-	bouncer       Bouncer
-	captcha       Captcha
-	notifier      Notifier
-	config        config.Config
-	logger        *slog.Logger
-	templateStore TemplateStore
-	now           func() time.Time
-	rateLimiter   *RateLimiter
-	healthServer  *health.Server
+	bouncer            Bouncer
+	captcha            Captcha
+	notifier           Notifier
+	config             config.Config
+	logger             *slog.Logger
+	templateStore      TemplateStore
+	now                func() time.Time
+	rateLimiter        *RateLimiter
+	healthServer       *health.Server
+	prometheusRecorder *recorder.Recorder
+	gatherer           prometheus.Gatherer
 }
 
-func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger) *Server {
+func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier Notifier, templateStore TemplateStore, logger *slog.Logger, prom *recorder.Recorder, gatherer prometheus.Gatherer) *Server {
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus(healthCheckServiceLiveness, grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(healthCheckServiceReadiness, grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 
 	return &Server{
-		config:        config,
-		bouncer:       bouncer,
-		logger:        logger,
-		captcha:       captcha,
-		notifier:      notifier,
-		templateStore: templateStore,
-		now:           time.Now,
-		rateLimiter:   NewRateLimiter(10, 20),
-		healthServer:  healthServer,
+		config:             config,
+		bouncer:            bouncer,
+		logger:             logger,
+		captcha:            captcha,
+		notifier:           notifier,
+		templateStore:      templateStore,
+		now:                time.Now,
+		rateLimiter:        NewRateLimiter(10, 20),
+		healthServer:       healthServer,
+		prometheusRecorder: prom,
+		gatherer:           gatherer,
 	}
 }
 
-// ServeDual starts both gRPC and HTTP servers concurrently
+// ServeDual starts gRPC, HTTP, and Prometheus servers as needed
 func (s *Server) ServeDual(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		s.logger.Info("starting gRPC server", "port", s.config.Server.GRPCPort)
 		return s.serveGRPC(gctx, s.config.Server.GRPCPort)
 	})
 
 	if s.config.Captcha.Enabled {
 		g.Go(func() error {
-			s.logger.Info("starting HTTP server", "port", s.config.Server.HTTPPort)
 			return s.serveHTTP(gctx, s.config.Server.HTTPPort)
+		})
+	}
+
+	if s.config.Prometheus.Enabled {
+		g.Go(func() error {
+			return s.serveMetrics(gctx, s.config.Prometheus.Port)
 		})
 	}
 
@@ -109,6 +120,7 @@ func (s *Server) serveGRPC(ctx context.Context, port int) error {
 		s.logger.Info("gRPC server shutdown complete")
 	}()
 
+	s.logger.Info("server listening", "name", "bouncer", "addr", s.config.Server.GRPCPort, "version", version.Version)
 	return grpcServer.Serve(lis)
 }
 
@@ -116,11 +128,24 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := s.bouncer.ExtractRealIPFromHTTP(r)
 		if !s.rateLimiter.Allow(ip) {
+			s.prometheusRecorder.IncRateLimitedTotal()
 			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) serveMetrics(ctx context.Context, port int) error {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{}))
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
+	}
+
+	return s.gracefullyListenAndServe(ctx, srv, "prometheus")
 }
 
 func (s *Server) serveHTTP(ctx context.Context, port int) error {
@@ -134,23 +159,30 @@ func (s *Server) serveHTTP(ctx context.Context, port int) error {
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 	)(r)
 
-	rateLimitedHandler := s.rateLimitMiddleware(corsHandler)
-
-	httpServer := &http.Server{
+	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: rateLimitedHandler,
+		Handler: s.rateLimitMiddleware(corsHandler),
 	}
 
+	return s.gracefullyListenAndServe(ctx, srv, "HTTP server")
+}
+
+func (s *Server) gracefullyListenAndServe(ctx context.Context, srv *http.Server, name string) error {
 	go func() {
 		<-ctx.Done()
-		s.logger.Info("shutting down HTTP server...")
-		httpServer.Shutdown(context.Background())
-		s.logger.Info("HTTP server shutdown complete")
+		s.logger.Info("shutting down", "name", name)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("error shutting down", "name", name, "error", err)
+			return
+		}
+		s.logger.Info("shutdown complete", "name", name)
 	}()
 
-	s.logger.Info("HTTP server listening", "addr", httpServer.Addr)
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("HTTP server failed: %v", err)
+	s.logger.Info("server listening", "name", name, "addr", srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("%s failed: %w", name, err)
 	}
 	return nil
 }
@@ -189,6 +221,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	verificationResult, err := s.captcha.VerifyResponse(r.Context(), clientIP, challengeToken, captchaResponse)
 	if err != nil {
 		s.logger.Error("captcha verification error", "error", err)
+		s.prometheusRecorder.IncCaptchaVerificationsTotal("error")
 		if verificationResult != nil && !verificationResult.Success {
 			http.Error(w, verificationResult.Message, http.StatusForbidden)
 			return
@@ -198,10 +231,12 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !verificationResult.Success {
+		s.prometheusRecorder.IncCaptchaVerificationsTotal("failure")
 		http.Error(w, verificationResult.Message, http.StatusForbidden)
 		return
 	}
 
+	s.prometheusRecorder.IncCaptchaVerificationsTotal("success")
 	cookieName := s.captcha.CookieName()
 	cookie := s.buildSessionCookie(cookieName, verificationResult.Token)
 	http.SetCookie(w, cookie)
@@ -286,6 +321,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	s.prometheusRecorder.IncCaptchaChallengesTotal()
 	w.Header().Set("Content-Type", s.config.Templates.CaptchaTemplateHeaders)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(html))
@@ -355,6 +391,8 @@ func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event 
 }
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
+	defer s.prometheusRecorder.ObserveDuration()()
+
 	if s.bouncer == nil {
 		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil, nil))
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, body, headers), nil
@@ -371,7 +409,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		return getAllowedResponse(), nil
 	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
-	case "deny", "ban":
+	case "ban":
 		s.logger.Info("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		body, headers := s.renderDeniedResponse(result)
 		return getDeniedResponse(httpStatusToEnvoyStatus(result.HTTPStatus), body, headers), nil

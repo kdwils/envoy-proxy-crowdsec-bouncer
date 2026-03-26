@@ -18,6 +18,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
@@ -53,23 +54,25 @@ func ptr[T any](v T) *T {
 }
 
 type Bouncer struct {
-	DecisionCache  DecisionCache
-	WAF            WAF
-	CaptchaService CaptchaService
-	TrustedProxies []*net.IPNet
-	MetricsService *crowdsec.MetricsService
-	config         config.Config
+	DecisionCache      DecisionCache
+	WAF                WAF
+	CaptchaService     CaptchaService
+	TrustedProxies     []*net.IPNet
+	MetricsService     *crowdsec.MetricsService
+	PrometheusRecorder *recorder.Recorder
+	config             config.Config
 }
 
-func New(cfg config.Config) (*Bouncer, error) {
+func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 	trustedProxies, err := parseProxyAddresses(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
 	}
 
 	bouncer := &Bouncer{
-		TrustedProxies: trustedProxies,
-		config:         cfg,
+		TrustedProxies:     trustedProxies,
+		PrometheusRecorder: recorder,
+		config:             cfg,
 	}
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
@@ -93,7 +96,7 @@ func New(cfg config.Config) (*Bouncer, error) {
 
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService)
+		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService, bouncer.PrometheusRecorder)
 		if err != nil {
 			return nil, err
 		}
@@ -156,15 +159,15 @@ func (b *Bouncer) incRemediationMetric(name, remediationType string) {
 }
 
 func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
+	b.PrometheusRecorder.IncRequestsTotal(result.Action)
+
 	switch result.Action {
 	case "allow":
 		b.incRemediationMetric("processed", "bypass")
-	case "deny":
+	case "ban":
 		b.incRemediationMetric("dropped", "ban")
 	case "captcha":
 		b.incRemediationMetric("dropped", "captcha")
-	default:
-		b.incRemediationMetric("dropped", "ban")
 	}
 }
 
@@ -301,13 +304,14 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
 
 	bouncerResult := b.checkDecisionCache(ctx, parsed)
+
 	switch bouncerResult.Action {
 	case "allow":
 	case "captcha":
 		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
-	case "deny", "ban":
+	case "ban":
 		if bouncerResult.HTTPStatus == 0 {
 			bouncerResult.HTTPStatus = b.getBanStatusCode()
 		}
@@ -318,12 +322,13 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, "deny", "unknown decision cache action", b.getBanStatusCode(), nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "ban", "unknown decision cache action", b.getBanStatusCode(), nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
 
 	wafResult := b.checkWAF(ctx, parsed)
+
 	switch wafResult.Action {
 	case "allow":
 		finalResult := NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, bouncerResult.Decision, "", parsed, nil)
@@ -333,7 +338,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
-	case "deny", "ban":
+	case "ban":
 		b.recordFinalMetric(wafResult)
 		return wafResult
 	case "error":

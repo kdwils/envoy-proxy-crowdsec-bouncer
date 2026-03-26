@@ -24,6 +24,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -137,7 +138,10 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	b, err := bouncer.New(cfg)
+	recorder, err := recorder.New(nil)
+	require.NoError(t, err)
+
+	b, err := bouncer.New(cfg, recorder)
 	require.NoError(t, err)
 
 	go b.Sync(ctx)
@@ -155,7 +159,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 		log.Fatalf("failed to create template store: %v", err)
 	}
 
-	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger)
+	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
 
 	go func() {
 		err := srv.ServeDual(ctx)

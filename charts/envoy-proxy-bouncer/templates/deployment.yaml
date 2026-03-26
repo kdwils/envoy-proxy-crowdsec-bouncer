@@ -46,6 +46,11 @@ spec:
               containerPort: {{ .Values.config.server.httpPort }}
               protocol: TCP
             {{- end }}
+            {{- if .Values.config.prometheus.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.config.prometheus.port }}
+              protocol: TCP
+            {{- end }}
           {{- if .Values.probes.liveness.enabled }}
           livenessProbe:
             grpc:

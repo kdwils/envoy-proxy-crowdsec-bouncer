@@ -21,6 +21,7 @@ import (
 	componentmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
@@ -147,7 +148,10 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	require.NoError(t, err)
 	captchaService.Provider = mockProvider
 
-	testBouncer, err := bouncer.New(cfg)
+	recorder, err := recorder.New(nil)
+	require.NoError(t, err)
+
+	testBouncer, err := bouncer.New(cfg, recorder)
 	require.NoError(t, err)
 	testBouncer.CaptchaService = captchaService
 	go testBouncer.Sync(ctx)
@@ -174,7 +178,7 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	templateStore, err := template.NewStore(template.Config{})
 	require.NoError(t, err)
 
-	srv := server.NewServer(cfg, testBouncer, captchaService, notifier, templateStore, slogger)
+	srv := server.NewServer(cfg, testBouncer, captchaService, notifier, templateStore, slogger, recorder, nil)
 	go func() {
 		if err := srv.ServeDual(ctx); err != nil && err != context.Canceled {
 			t.Logf("server error: %v", err)
