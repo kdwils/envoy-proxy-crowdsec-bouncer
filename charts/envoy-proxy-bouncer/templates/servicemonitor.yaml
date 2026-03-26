@@ -1,0 +1,20 @@
+{{- if and .Values.config.prometheus.enabled .Values.config.prometheus.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "envoy-proxy-bouncer.fullname" . }}
+  labels:
+    {{- include "envoy-proxy-bouncer.labels" . | nindent 4 }}
+    {{- with .Values.config.prometheus.serviceMonitor.prometheusMatchLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "envoy-proxy-bouncer.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.config.prometheus.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.config.prometheus.serviceMonitor.scrapeTimeout }}
+{{- end }}

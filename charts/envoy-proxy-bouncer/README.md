@@ -48,6 +48,10 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.captcha.timeout | string | `"10s"` |  |
 | config.prometheus.enabled | bool | `false` |  |
 | config.prometheus.port | int | `9090` |  |
+| config.prometheus.serviceMonitor.enabled | bool | `false` |  |
+| config.prometheus.serviceMonitor.interval | string | `"30s"` |  |
+| config.prometheus.serviceMonitor.prometheusMatchLabels | object | `{}` |  |
+| config.prometheus.serviceMonitor.scrapeTimeout | string | `"10s"` |  |
 | config.server.grpcPort | int | `8080` |  |
 | config.server.httpPort | int | `8081` |  |
 | config.server.logLevel | string | `"info"` |  |
