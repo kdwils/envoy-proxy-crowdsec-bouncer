@@ -108,7 +108,7 @@ func (s *Server) serveGRPC(ctx context.Context, port int) error {
 	}
 
 	grpcServer := grpc.NewServer(
-		grpc.ChainUnaryInterceptor(s.loggerInterceptor, s.metricsInterceptor),
+		grpc.UnaryInterceptor(s.loggerInterceptor),
 	)
 	auth.RegisterAuthorizationServer(grpcServer, s)
 	grpc_health_v1.RegisterHealthServer(grpcServer, s.healthServer)
@@ -172,11 +172,14 @@ func (s *Server) serveHTTP(ctx context.Context, port int) error {
 func (s *Server) gracefullyListenAndServe(ctx context.Context, srv *http.Server, name string) error {
 	go func() {
 		<-ctx.Done()
-		s.logger.Info("shutting down " + name + "...")
+		s.logger.Info("shutting down", "name", name)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		srv.Shutdown(shutdownCtx)
-		s.logger.Info(name + " shutdown complete")
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("error shutting down", "name", name, "error", err)
+			return
+		}
+		s.logger.Info("shutdown complete", "name", name)
 	}()
 
 	s.logger.Info(name+" listening", "addr", srv.Addr)
@@ -356,12 +359,6 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 	return handler(logger.WithContext(ctx, reqLogger), req)
 }
 
-func (s *Server) metricsInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-	done := s.prometheusRecorder.ObserveDuration(info.FullMethod)
-	defer done()
-	return handler(ctx, req)
-}
-
 func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event {
 	eventType := webhook.EventRequestAllowed
 	switch result.Action {
@@ -396,6 +393,8 @@ func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event 
 }
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
+	defer s.prometheusRecorder.ObserveDuration("grpc")()
+
 	if s.bouncer == nil {
 		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil, nil))
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, body, headers), nil

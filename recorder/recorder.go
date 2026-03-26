@@ -8,7 +8,7 @@ import (
 
 const namespace = "bouncer"
 
-type metrics struct {
+type Metrics struct {
 	RequestsTotal             *prometheus.CounterVec
 	RequestDuration           *prometheus.HistogramVec
 	DecisionCacheSize         *prometheus.GaugeVec
@@ -23,16 +23,16 @@ type metrics struct {
 }
 
 type Recorder struct {
-	m   *metrics
+	m   *Metrics
 	now func() time.Time
 }
 
-func (r *Recorder) GetMetrics() *metrics {
+func (r *Recorder) GetMetrics() *Metrics {
 	return r.m
 }
 
-func newMetrics(reg prometheus.Registerer) (*metrics, error) {
-	m := &metrics{
+func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
+	m := &Metrics{
 		RequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "requests_total",
@@ -81,7 +81,7 @@ func newMetrics(reg prometheus.Registerer) (*metrics, error) {
 		}),
 		LAPILastSyncTimestamp: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
-			Name:      "lapi_last_sync_timestamp",
+			Name:      "lapi_last_sync_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful LAPI decision sync.",
 		}),
 		ExternalCallErrorsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
