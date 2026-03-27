@@ -280,10 +280,8 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken,
 		}, ErrFailedChallenge
 	}
 
-	if !s.Config.DisableChallengeReplayProtection {
-		s.challengeCache.Delete(claims.ID)
-		s.prom.DecCaptchaPendingChallenges()
-	}
+	s.challengeCache.Delete(claims.ID)
+	s.prom.DecCaptchaPendingChallenges()
 
 	now := s.nowFunc()
 	sessionID := uuid.NewString()
@@ -363,10 +361,8 @@ func (s *CaptchaService) CreateSession(ip, originalURL, sessionToken string) (*C
 		return nil, fmt.Errorf("failed to create challenge token: %w", err)
 	}
 
-	if !s.Config.DisableChallengeReplayProtection {
-		s.challengeCache.Set(claims.ID, *claims)
-		s.prom.IncCaptchaPendingChallenges()
-	}
+	s.challengeCache.Set(claims.ID, *claims)
+	s.prom.IncCaptchaPendingChallenges()
 
 	redirectParams := make(url.Values)
 	redirectParams.Set("challengeToken", challengeToken)
