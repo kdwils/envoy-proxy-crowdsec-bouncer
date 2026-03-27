@@ -9,22 +9,22 @@ import (
 const namespace = "bouncer"
 
 type Metrics struct {
-	RequestsTotal               *prometheus.CounterVec
-	RequestDuration             prometheus.Histogram
-	DecisionCacheSize           *prometheus.GaugeVec
-	CaptchaChallengesTotal      prometheus.Counter
-	CaptchaVerificationsTotal   *prometheus.CounterVec
-	RateLimitedTotal            prometheus.Counter
-	LAPIStreamConnected         prometheus.Gauge
-	LAPILastSyncTimestamp       prometheus.Gauge
-	WAFRequestsTotal            *prometheus.CounterVec
-	WAFErrorsTotal              prometheus.Counter
-	ComponentDuration           *prometheus.HistogramVec
-	LAPIDecisionsAddedTotal     *prometheus.CounterVec
-	LAPIDecisionsDeletedTotal   *prometheus.CounterVec
-	CaptchaPendingChallenges       prometheus.Gauge
-	CaptchaExpiredChallengesTotal  prometheus.Counter
-	CaptchaErrorsTotal          prometheus.Counter
+	RequestsTotal                 *prometheus.CounterVec
+	RequestDuration               prometheus.Histogram
+	DecisionCacheSize             *prometheus.GaugeVec
+	CaptchaChallengesTotal        prometheus.Counter
+	CaptchaVerificationsTotal     *prometheus.CounterVec
+	RateLimitedTotal              prometheus.Counter
+	LAPIStreamConnected           prometheus.Gauge
+	LAPILastSyncTimestamp         prometheus.Gauge
+	WAFRequestsTotal              *prometheus.CounterVec
+	WAFErrorsTotal                prometheus.Counter
+	ComponentDuration             *prometheus.HistogramVec
+	LAPIDecisionsAddedTotal       *prometheus.CounterVec
+	LAPIDecisionsDeletedTotal     *prometheus.CounterVec
+	CaptchaPendingChallenges      prometheus.Gauge
+	CaptchaExpiredChallengesTotal prometheus.Counter
+	CaptchaErrorsTotal            prometheus.Counter
 }
 
 type Recorder struct {
