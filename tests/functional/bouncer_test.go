@@ -750,7 +750,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	})
 
 	t.Run("Test invalid redirect URL is rejected", func(t *testing.T) {
-		captchaService, err := components.NewCaptchaService(config.Captcha, &http.Client{})
+		captchaService, err := components.NewCaptchaService(config.Captcha, &http.Client{}, recorder)
 		require.NoError(t, err)
 
 		session, err := captchaService.CreateSession("192.168.1.100", "javascript:alert('xss')", "")

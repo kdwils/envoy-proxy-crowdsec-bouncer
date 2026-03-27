@@ -9,14 +9,21 @@ import (
 const namespace = "bouncer"
 
 type Metrics struct {
-	RequestsTotal             *prometheus.CounterVec
-	RequestDuration           prometheus.Histogram
-	DecisionCacheSize         *prometheus.GaugeVec
-	CaptchaChallengesTotal    prometheus.Counter
-	CaptchaVerificationsTotal *prometheus.CounterVec
-	RateLimitedTotal          prometheus.Counter
-	LAPIStreamConnected       prometheus.Gauge
-	LAPILastSyncTimestamp     prometheus.Gauge
+	RequestsTotal               *prometheus.CounterVec
+	RequestDuration             prometheus.Histogram
+	DecisionCacheSize           *prometheus.GaugeVec
+	CaptchaChallengesTotal      prometheus.Counter
+	CaptchaVerificationsTotal   *prometheus.CounterVec
+	RateLimitedTotal            prometheus.Counter
+	LAPIStreamConnected         prometheus.Gauge
+	LAPILastSyncTimestamp       prometheus.Gauge
+	WAFRequestsTotal            *prometheus.CounterVec
+	WAFErrorsTotal              prometheus.Counter
+	ComponentDuration           *prometheus.HistogramVec
+	LAPIDecisionsAddedTotal     *prometheus.CounterVec
+	LAPIDecisionsDeletedTotal   *prometheus.CounterVec
+	CaptchaActiveSessions       prometheus.Gauge
+	CaptchaExpiredSessionsTotal prometheus.Counter
 }
 
 type Recorder struct {
@@ -71,6 +78,42 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Name:      "lapi_last_sync_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful LAPI decision sync.",
 		}),
+		WAFRequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "waf_requests_total",
+			Help:      "Total number of requests inspected by the WAF by action outcome.",
+		}, []string{"action"}),
+		WAFErrorsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "waf_errors_total",
+			Help:      "Total number of WAF inspection errors.",
+		}),
+		ComponentDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "component_duration_seconds",
+			Help:      "Duration of individual component processing.",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"component"}),
+		LAPIDecisionsAddedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "lapi_decisions_added_total",
+			Help:      "Total number of decisions added to the cache by origin.",
+		}, []string{"origin"}),
+		LAPIDecisionsDeletedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "lapi_decisions_deleted_total",
+			Help:      "Total number of decisions deleted from the cache by origin.",
+		}, []string{"origin"}),
+		CaptchaActiveSessions: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "captcha_active_sessions",
+			Help:      "Number of active CAPTCHA challenge sessions.",
+		}),
+		CaptchaExpiredSessionsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "captcha_expired_sessions_total",
+			Help:      "Total number of CAPTCHA challenge sessions that expired without verification.",
+		}),
 	}
 
 	collectors := []prometheus.Collector{
@@ -82,6 +125,13 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		m.RateLimitedTotal,
 		m.LAPIStreamConnected,
 		m.LAPILastSyncTimestamp,
+		m.WAFRequestsTotal,
+		m.WAFErrorsTotal,
+		m.ComponentDuration,
+		m.LAPIDecisionsAddedTotal,
+		m.LAPIDecisionsDeletedTotal,
+		m.CaptchaActiveSessions,
+		m.CaptchaExpiredSessionsTotal,
 	}
 
 	for _, c := range collectors {
@@ -167,4 +217,63 @@ func (r *Recorder) SetLAPILastSyncTimestamp() {
 		return
 	}
 	r.m.LAPILastSyncTimestamp.Set(float64(r.now().Unix()))
+}
+
+func (r *Recorder) IncWAFRequestsTotal(action string) {
+	if r.m == nil {
+		return
+	}
+	r.m.WAFRequestsTotal.WithLabelValues(action).Inc()
+}
+
+func (r *Recorder) IncWAFErrorsTotal() {
+	if r.m == nil {
+		return
+	}
+	r.m.WAFErrorsTotal.Inc()
+}
+
+func (r *Recorder) ObserveComponentDuration(component string) func() {
+	if r.m == nil {
+		return func() {}
+	}
+	start := r.now()
+	return func() {
+		r.m.ComponentDuration.WithLabelValues(component).Observe(r.now().Sub(start).Seconds())
+	}
+}
+
+func (r *Recorder) IncLAPIDecisionsAddedTotal(origin string) {
+	if r.m == nil {
+		return
+	}
+	r.m.LAPIDecisionsAddedTotal.WithLabelValues(origin).Inc()
+}
+
+func (r *Recorder) IncLAPIDecisionsDeletedTotal(origin string) {
+	if r.m == nil {
+		return
+	}
+	r.m.LAPIDecisionsDeletedTotal.WithLabelValues(origin).Inc()
+}
+
+func (r *Recorder) IncCaptchaActiveSessions() {
+	if r.m == nil {
+		return
+	}
+	r.m.CaptchaActiveSessions.Inc()
+}
+
+func (r *Recorder) DecCaptchaActiveSessions() {
+	if r.m == nil {
+		return
+	}
+	r.m.CaptchaActiveSessions.Dec()
+}
+
+func (r *Recorder) IncCaptchaExpiredSessionsTotal() {
+	if r.m == nil {
+		return
+	}
+	r.m.CaptchaExpiredSessionsTotal.Inc()
 }

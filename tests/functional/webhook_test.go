@@ -144,12 +144,12 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	mockProvider.EXPECT().Verify(gomock.Any(), "success", gomock.Any()).Return(true, nil).AnyTimes()
 	mockProvider.EXPECT().Verify(gomock.Any(), gomock.Not("success"), gomock.Any()).Return(false, nil).AnyTimes()
 
-	captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
-	require.NoError(t, err)
-	captchaService.Provider = mockProvider
-
 	recorder, err := recorder.New(nil)
 	require.NoError(t, err)
+
+	captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, recorder)
+	require.NoError(t, err)
+	captchaService.Provider = mockProvider
 
 	testBouncer, err := bouncer.New(cfg, recorder)
 	require.NoError(t, err)
