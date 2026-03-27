@@ -220,18 +220,21 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 
 	verificationResult, err := s.captcha.VerifyResponse(r.Context(), clientIP, challengeToken, captchaResponse)
 	if err != nil {
-		s.logger.Error("captcha verification error", "error", err)
-		s.prometheusRecorder.IncCaptchaVerificationsTotal("error")
 		if verificationResult != nil && !verificationResult.Success {
+			s.logger.Info("captcha verification failed", "error", err)
+			s.prometheusRecorder.IncCaptchaVerificationsTotal("failure")
 			http.Error(w, verificationResult.Message, http.StatusForbidden)
 			return
 		}
-		s.prometheusRecorder.IncCaptchaErrorsTotal()
+
+		s.logger.Error("failed to verify captcha", "error", err)
+		s.prometheusRecorder.IncCaptchaVerificationsTotal("error")
 		http.Error(w, "Verification failed", http.StatusInternalServerError)
 		return
 	}
 
 	if !verificationResult.Success {
+		s.logger.Info("captcha verification result failed")
 		s.prometheusRecorder.IncCaptchaVerificationsTotal("failure")
 		http.Error(w, verificationResult.Message, http.StatusForbidden)
 		return

@@ -879,7 +879,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		metrics := recorder.GetMetrics()
 		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 4 captcha requests")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("error")), "expected 1 captcha verification error")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("failure")), "expected 1 captcha verification failure")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RateLimitedTotal), "expected 5 rate limited requests (25 requests - 20 burst)")
 	})
