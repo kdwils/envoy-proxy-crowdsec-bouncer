@@ -226,6 +226,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, verificationResult.Message, http.StatusForbidden)
 			return
 		}
+		s.prometheusRecorder.IncCaptchaErrorsTotal()
 		http.Error(w, "Verification failed", http.StatusInternalServerError)
 		return
 	}
