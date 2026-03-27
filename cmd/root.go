@@ -76,6 +76,7 @@ func initConfig() {
 	viper.SetDefault("captcha.timeout", "10s")
 	viper.SetDefault("captcha.challengeDuration", "5m")
 	viper.SetDefault("captcha.sessionDuration", "15m")
+	viper.SetDefault("captcha.disableChallengeReplayProtection", false)
 
 	viper.SetDefault("prometheus.enabled", false)
 	viper.SetDefault("prometheus.port", 9090)

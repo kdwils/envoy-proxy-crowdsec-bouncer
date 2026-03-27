@@ -137,6 +137,10 @@
                             "default": "",
                             "type": "string"
                         },
+                        "disableChallengeReplayProtection": {
+                            "default": false,
+                            "type": "boolean"
+                        },
                         "enabled": {
                             "default": false,
                             "type": "boolean"
@@ -521,6 +525,24 @@
                 "httpPort": {
                     "default": 8081,
                     "type": "integer"
+                },
+                "sessionAffinity": {
+                    "default": "None",
+                    "type": "string"
+                },
+                "sessionAffinityConfig": {
+                    "type": "object",
+                    "properties": {
+                        "clientIP": {
+                            "type": "object",
+                            "properties": {
+                                "timeoutSeconds": {
+                                    "default": 0,
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
                 },
                 "type": {
                     "default": "ClusterIP",

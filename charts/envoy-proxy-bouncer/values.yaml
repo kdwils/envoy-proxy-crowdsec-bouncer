@@ -28,6 +28,17 @@ service:
   type: ClusterIP # @schema default: ClusterIP
   grpcPort: 8080 # @schema default: 8080
   httpPort: 8081 # @schema default: 8081
+  # sessionAffinity enables client IP-based session affinity on the Service, ensuring that requests from the same
+  # client IP are routed to the same pod. This is useful in multi-pod deployments to ensure that captcha challenge
+  # tokens stored in the pod's in-memory cache are reachable for both challenge creation (gRPC) and verification
+  # (HTTP) without requiring an external shared cache. Set to ClientIP to enable, and optionally configure
+  # sessionAffinityConfig.clientIP.timeoutSeconds (Kubernetes default is 10800). The timeout should be at least
+  # the value of config.captcha.challengeDuration. Does not protect against pod restarts; see
+  # config.captcha.disableChallengeReplayProtection for that case.
+  sessionAffinity: None # @schema default: None
+  sessionAffinityConfig: # @schema type: object
+    clientIP: # @schema type: object
+      timeoutSeconds: 0 # @schema default: 0
 
 resources:
   limits:
@@ -107,6 +118,14 @@ config:
     cookieDomain: "" # @schema default: ""
     cookieName: "" # @schema default: ""
     secureCookie: true # @schema default: true
+
+    # disableChallengeReplayProtection disables the in-memory check that prevents a challenge token from being used
+    # more than once. By default, challenge tokens are single-use: the bouncer stores each issued challenge token in
+    # memory and deletes it on first use. This works correctly for single-pod deployments but breaks under load
+    # balancing or after a pod restart, because the in-memory store is not shared across pods. Enabling this option
+    # removes the single-use check, relying solely on the challenge token's JWT signature, IP binding, and expiry
+    # for protection. Set challengeDuration to the shortest acceptable value when this is enabled.
+    disableChallengeReplayProtection: false # @schema default: false
 
   webhook:
     subscriptions: [] # @schema default: []

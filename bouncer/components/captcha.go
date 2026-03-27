@@ -197,8 +197,8 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient, prom *recorder
 		cache.WithCleanup(time.Minute, func(key string, value ChallengeClaims) bool {
 			expired := value.ExpiresAt.Time.Before(time.Now())
 			if expired {
-				service.prom.IncCaptchaExpiredSessionsTotal()
-				service.prom.DecCaptchaActiveSessions()
+				service.prom.IncCaptchaExpiredChallengesTotal()
+				service.prom.DecCaptchaPendingChallenges()
 			}
 			return expired
 		}),
@@ -253,11 +253,13 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken,
 		}, fmt.Errorf("challenge IP mismatch")
 	}
 
-	if _, ok := s.challengeCache.Get(claims.ID); !ok {
-		return &VerificationResult{
-			Success: false,
-			Message: "Challenge already used or expired",
-		}, fmt.Errorf("challenge already used or expired")
+	if !s.Config.DisableChallengeReplayProtection {
+		if _, ok := s.challengeCache.Get(claims.ID); !ok {
+			return &VerificationResult{
+				Success: false,
+				Message: "Challenge already used or expired",
+			}, fmt.Errorf("challenge already used or expired")
+		}
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, s.RequestTimeout)
@@ -278,8 +280,10 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken,
 		}, ErrFailedChallenge
 	}
 
-	s.challengeCache.Delete(claims.ID)
-	s.prom.DecCaptchaActiveSessions()
+	if !s.Config.DisableChallengeReplayProtection {
+		s.challengeCache.Delete(claims.ID)
+		s.prom.DecCaptchaPendingChallenges()
+	}
 
 	now := s.nowFunc()
 	sessionID := uuid.NewString()
@@ -359,8 +363,10 @@ func (s *CaptchaService) CreateSession(ip, originalURL, sessionToken string) (*C
 		return nil, fmt.Errorf("failed to create challenge token: %w", err)
 	}
 
-	s.challengeCache.Set(claims.ID, *claims)
-	s.prom.IncCaptchaActiveSessions()
+	if !s.Config.DisableChallengeReplayProtection {
+		s.challengeCache.Set(claims.ID, *claims)
+		s.prom.IncCaptchaPendingChallenges()
+	}
 
 	redirectParams := make(url.Values)
 	redirectParams.Set("challengeToken", challengeToken)
