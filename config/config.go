@@ -42,8 +42,8 @@ type Captcha struct {
 	// token from being used more than once. By default, challenge tokens are single-use:
 	// the bouncer stores each issued challenge token in memory and deletes it on first use.
 	//
-	// This works correctly for single-pod deployments but breaks under load balancing
-	// or after a pod restart, because the in-memory store is not shared across pods.
+	// This works correctly for single-pod deployments but can break under multi
+	// pod environment or restarts because it is stored in-memory.
 	// Enabling this option removes the single-use check, relying solely on the challenge
 	// token's JWT signature, IP binding, and expiry for protection. Set ChallengeDuration
 	// to the shortest acceptable value when this is enabled.
