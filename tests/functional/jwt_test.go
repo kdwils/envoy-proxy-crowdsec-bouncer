@@ -436,6 +436,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 0 active captcha sessions after successful verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("Multiple requests with same verification cookie bypass captcha", func(t *testing.T) {
@@ -574,6 +575,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 5 allowed requests")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 0 active captcha sessions after successful verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("Expired verification token requires new captcha", func(t *testing.T) {
@@ -730,6 +732,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request (valid session cookie)")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session from re-challenge after expiry")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("Expired challenge token rejected", func(t *testing.T) {
@@ -789,6 +792,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session (created but not verified before challenge expired)")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("IP binding enforced on challenge token verification", func(t *testing.T) {
@@ -904,6 +908,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("error")), "expected 1 captcha verification error from IP mismatch")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session (IP mismatch does not decrement session count)")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 }
 

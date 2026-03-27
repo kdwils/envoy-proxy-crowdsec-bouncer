@@ -24,6 +24,7 @@ type Metrics struct {
 	LAPIDecisionsDeletedTotal   *prometheus.CounterVec
 	CaptchaActiveSessions       prometheus.Gauge
 	CaptchaExpiredSessionsTotal prometheus.Counter
+	CaptchaErrorsTotal          prometheus.Counter
 }
 
 type Recorder struct {
@@ -114,6 +115,11 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Name:      "captcha_expired_sessions_total",
 			Help:      "Total number of CAPTCHA challenge sessions that expired without verification.",
 		}),
+		CaptchaErrorsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "captcha_errors_total",
+			Help:      "Total number of captcha service errors.",
+		}),
 	}
 
 	collectors := []prometheus.Collector{
@@ -132,6 +138,7 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		m.LAPIDecisionsDeletedTotal,
 		m.CaptchaActiveSessions,
 		m.CaptchaExpiredSessionsTotal,
+		m.CaptchaErrorsTotal,
 	}
 
 	for _, c := range collectors {
@@ -276,4 +283,11 @@ func (r *Recorder) IncCaptchaExpiredSessionsTotal() {
 		return
 	}
 	r.m.CaptchaExpiredSessionsTotal.Inc()
+}
+
+func (r *Recorder) IncCaptchaErrorsTotal() {
+	if r.m == nil {
+		return
+	}
+	r.m.CaptchaErrorsTotal.Inc()
 }
