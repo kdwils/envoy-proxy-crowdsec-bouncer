@@ -9,22 +9,22 @@ import (
 const namespace = "bouncer"
 
 type Metrics struct {
-	RequestsTotal               *prometheus.CounterVec
-	RequestDuration             prometheus.Histogram
-	DecisionCacheSize           *prometheus.GaugeVec
-	CaptchaChallengesTotal      prometheus.Counter
-	CaptchaVerificationsTotal   *prometheus.CounterVec
-	RateLimitedTotal            prometheus.Counter
-	LAPIStreamConnected         prometheus.Gauge
-	LAPILastSyncTimestamp       prometheus.Gauge
-	WAFRequestsTotal            *prometheus.CounterVec
-	WAFErrorsTotal              prometheus.Counter
-	ComponentDuration           *prometheus.HistogramVec
-	LAPIDecisionsAddedTotal     *prometheus.CounterVec
-	LAPIDecisionsDeletedTotal   *prometheus.CounterVec
-	CaptchaActiveSessions       prometheus.Gauge
-	CaptchaExpiredSessionsTotal prometheus.Counter
-	CaptchaErrorsTotal          prometheus.Counter
+	RequestsTotal                 *prometheus.CounterVec
+	RequestDuration               prometheus.Histogram
+	DecisionCacheSize             *prometheus.GaugeVec
+	CaptchaChallengesTotal        prometheus.Counter
+	CaptchaVerificationsTotal     *prometheus.CounterVec
+	RateLimitedTotal              prometheus.Counter
+	LAPIStreamConnected           prometheus.Gauge
+	LAPILastSyncTimestamp         prometheus.Gauge
+	WAFRequestsTotal              *prometheus.CounterVec
+	WAFErrorsTotal                prometheus.Counter
+	ComponentDuration             *prometheus.HistogramVec
+	LAPIDecisionsAddedTotal       *prometheus.CounterVec
+	LAPIDecisionsDeletedTotal     *prometheus.CounterVec
+	CaptchaPendingChallenges      prometheus.Gauge
+	CaptchaExpiredChallengesTotal prometheus.Counter
+	CaptchaErrorsTotal            prometheus.Counter
 }
 
 type Recorder struct {
@@ -105,15 +105,15 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 			Name:      "lapi_decisions_deleted_total",
 			Help:      "Total number of decisions deleted from the cache by origin.",
 		}, []string{"origin"}),
-		CaptchaActiveSessions: prometheus.NewGauge(prometheus.GaugeOpts{
+		CaptchaPendingChallenges: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
-			Name:      "captcha_active_sessions",
-			Help:      "Number of active CAPTCHA challenge sessions.",
+			Name:      "captcha_pending_challenges",
+			Help:      "Number of issued CAPTCHA challenge JWTs awaiting verification.",
 		}),
-		CaptchaExpiredSessionsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+		CaptchaExpiredChallengesTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
-			Name:      "captcha_expired_sessions_total",
-			Help:      "Total number of CAPTCHA challenge sessions that expired without verification.",
+			Name:      "captcha_expired_challenges_total",
+			Help:      "Total number of CAPTCHA challenge JWTs that expired without verification.",
 		}),
 		CaptchaErrorsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: namespace,
@@ -136,8 +136,8 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		m.ComponentDuration,
 		m.LAPIDecisionsAddedTotal,
 		m.LAPIDecisionsDeletedTotal,
-		m.CaptchaActiveSessions,
-		m.CaptchaExpiredSessionsTotal,
+		m.CaptchaPendingChallenges,
+		m.CaptchaExpiredChallengesTotal,
 		m.CaptchaErrorsTotal,
 	}
 
@@ -268,25 +268,25 @@ func (r *Recorder) IncLAPIDecisionsDeletedTotal(origin string) {
 	r.m.LAPIDecisionsDeletedTotal.WithLabelValues(origin).Inc()
 }
 
-func (r *Recorder) IncCaptchaActiveSessions() {
+func (r *Recorder) IncCaptchaPendingChallenges() {
 	if r.m == nil {
 		return
 	}
-	r.m.CaptchaActiveSessions.Inc()
+	r.m.CaptchaPendingChallenges.Inc()
 }
 
-func (r *Recorder) DecCaptchaActiveSessions() {
+func (r *Recorder) DecCaptchaPendingChallenges() {
 	if r.m == nil {
 		return
 	}
-	r.m.CaptchaActiveSessions.Dec()
+	r.m.CaptchaPendingChallenges.Dec()
 }
 
-func (r *Recorder) IncCaptchaExpiredSessionsTotal() {
+func (r *Recorder) IncCaptchaExpiredChallengesTotal() {
 	if r.m == nil {
 		return
 	}
-	r.m.CaptchaExpiredSessionsTotal.Inc()
+	r.m.CaptchaExpiredChallengesTotal.Inc()
 }
 
 func (r *Recorder) IncCaptchaErrorsTotal() {

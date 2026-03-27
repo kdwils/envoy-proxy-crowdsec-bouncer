@@ -197,8 +197,8 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient, prom *recorder
 		cache.WithCleanup(time.Minute, func(key string, value ChallengeClaims) bool {
 			expired := value.ExpiresAt.Time.Before(time.Now())
 			if expired {
-				service.prom.IncCaptchaExpiredSessionsTotal()
-				service.prom.DecCaptchaActiveSessions()
+				service.prom.IncCaptchaExpiredChallengesTotal()
+				service.prom.DecCaptchaPendingChallenges()
 			}
 			return expired
 		}),
@@ -279,7 +279,7 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken,
 	}
 
 	s.challengeCache.Delete(claims.ID)
-	s.prom.DecCaptchaActiveSessions()
+	s.prom.DecCaptchaPendingChallenges()
 
 	now := s.nowFunc()
 	sessionID := uuid.NewString()
@@ -360,7 +360,7 @@ func (s *CaptchaService) CreateSession(ip, originalURL, sessionToken string) (*C
 	}
 
 	s.challengeCache.Set(claims.ID, *claims)
-	s.prom.IncCaptchaActiveSessions()
+	s.prom.IncCaptchaPendingChallenges()
 
 	redirectParams := make(url.Values)
 	redirectParams.Set("challengeToken", challengeToken)

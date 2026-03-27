@@ -434,7 +434,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
-		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 0 active captcha sessions after successful verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 0 pending captcha challenges after successful verification")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
@@ -573,7 +573,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 5 allowed requests")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
-		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 0 active captcha sessions after successful verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 0 pending captcha challenges after successful verification")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
@@ -730,7 +730,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(2), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 2 captcha requests (initial + re-challenge after session expiry)")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request (valid session cookie)")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session from re-challenge after expiry")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 1 pending captcha challenge from re-challenge after expiry")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
@@ -790,8 +790,8 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Nil(t, expiredSession)
 
 		metrics := rec.GetMetrics()
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 pending-cleanup session: challenge JWT expired but cleanup goroutine (1 min interval) has not yet run")
-		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaExpiredSessionsTotal), "expected 0 expired sessions collected: cleanup has not run yet")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 1 pending-cleanup session: challenge JWT expired but cleanup goroutine (1 min interval) has not yet run")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaExpiredChallengesTotal), "expected 0 expired challenges collected: cleanup has not run yet")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
@@ -907,7 +907,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("failure")), "expected 1 captcha verification error from IP mismatch")
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session (IP mismatch does not decrement session count)")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 1 pending captcha challenge (IP mismatch does not decrement pending count)")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 }
