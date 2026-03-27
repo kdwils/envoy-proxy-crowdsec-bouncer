@@ -106,8 +106,6 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | securityContext.runAsUser | int | `1000` |  |
 | service.grpcPort | int | `8080` |  |
 | service.httpPort | int | `8081` |  |
-| service.sessionAffinity | string | `"None"` |  |
-| service.sessionAffinityConfig.clientIP.timeoutSeconds | int | `0` |  |
 | service.type | string | `"ClusterIP"` |  |
 | serviceAccount.create | bool | `true` |  |
 | serviceAccount.name | string | `""` |  |

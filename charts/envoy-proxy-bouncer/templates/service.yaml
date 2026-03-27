@@ -23,13 +23,5 @@ spec:
       protocol: TCP
       name: metrics
     {{- end }}
-  sessionAffinity: {{ .Values.service.sessionAffinity }}
-  {{- if eq .Values.service.sessionAffinity "ClientIP" }}
-  {{- if gt (.Values.service.sessionAffinityConfig.clientIP.timeoutSeconds | int) 0 }}
-  sessionAffinityConfig:
-    clientIP:
-      timeoutSeconds: {{ .Values.service.sessionAffinityConfig.clientIP.timeoutSeconds }}
-  {{- end }}
-  {{- end }}
   selector:
     {{- include "envoy-proxy-bouncer.selectorLabels" . | nindent 4 }}

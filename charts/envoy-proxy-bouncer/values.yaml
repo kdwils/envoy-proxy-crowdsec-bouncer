@@ -28,16 +28,6 @@ service:
   type: ClusterIP # @schema default: ClusterIP
   grpcPort: 8080 # @schema default: 8080
   httpPort: 8081 # @schema default: 8081
-  # sessionAffinity enables client IP-based session affinity on the Service, ensuring that requests from the same
-  # client IP are routed to the same pod. This is useful in multi-pod deployments to ensure that captcha challenge
-  # tokens stored in the pod's in-memory cache are reachable for both challenge creation and verification
-  # without requiring an external shared cache.
-  sessionAffinity: None # @schema default: None
-  sessionAffinityConfig: # @schema type: object
-    clientIP: # @schema type: object
-      # a value of zero will use the kubernetes default value
-      timeoutSeconds: 0 # @schema default: 0
-
 resources:
   limits:
     cpu: 100m
