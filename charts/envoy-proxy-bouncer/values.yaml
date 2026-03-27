@@ -30,14 +30,12 @@ service:
   httpPort: 8081 # @schema default: 8081
   # sessionAffinity enables client IP-based session affinity on the Service, ensuring that requests from the same
   # client IP are routed to the same pod. This is useful in multi-pod deployments to ensure that captcha challenge
-  # tokens stored in the pod's in-memory cache are reachable for both challenge creation (gRPC) and verification
-  # (HTTP) without requiring an external shared cache. Set to ClientIP to enable, and optionally configure
-  # sessionAffinityConfig.clientIP.timeoutSeconds (Kubernetes default is 10800). The timeout should be at least
-  # the value of config.captcha.challengeDuration. Does not protect against pod restarts; see
-  # config.captcha.disableChallengeReplayProtection for that case.
+  # tokens stored in the pod's in-memory cache are reachable for both challenge creation and verification
+  # without requiring an external shared cache.
   sessionAffinity: None # @schema default: None
   sessionAffinityConfig: # @schema type: object
     clientIP: # @schema type: object
+      # a value of zero will use the kubernetes default value
       timeoutSeconds: 0 # @schema default: 0
 
 resources:
