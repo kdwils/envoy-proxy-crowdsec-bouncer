@@ -185,6 +185,9 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 
 				logger.Debug("deleting decision", "decision", decision)
 				dc.decisions.Delete(*decision.Value)
+				if decision.Origin != nil {
+					dc.prom.IncLAPIDecisionsDeletedTotal(*decision.Origin)
+				}
 			}
 
 			for _, decision := range d.New {
@@ -195,6 +198,7 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				dc.decisions.Set(*decision.Value, *decision)
 				if decision.Origin != nil {
 					dc.knownOrigins.Set(*decision.Origin, struct{}{})
+					dc.prom.IncLAPIDecisionsAddedTotal(*decision.Origin)
 				}
 			}
 

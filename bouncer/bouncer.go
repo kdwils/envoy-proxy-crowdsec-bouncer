@@ -109,7 +109,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	var c *components.CaptchaService
 	if cfg.Captcha.Enabled {
-		c, err = components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
+		c, err = components.NewCaptchaService(cfg.Captcha, http.DefaultClient, recorder)
 		if err != nil {
 			return nil, err
 		}
@@ -356,6 +356,8 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	if b.DecisionCache == nil {
 		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed, nil)
 	}
+	stop := b.PrometheusRecorder.ObserveComponentDuration("decision_cache")
+	defer stop()
 
 	logger.Debug("running decision cache")
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
@@ -403,6 +405,8 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed, nil)
 	}
+	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
+	defer stop()
 
 	logger.Debug("running captcha")
 	originalURL := parsed.URL.String()
@@ -412,6 +416,7 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, sessionToken)
 	if err != nil {
 		logger.Error("error creating session", "error", err)
+		b.PrometheusRecorder.IncCaptchaErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 	if session == nil {
@@ -425,6 +430,8 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	if b.WAF == nil {
 		return NewCheckedRequest(parsed.RealIP, "allow", "waf disabled", http.StatusOK, nil, "", parsed, nil)
 	}
+	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
+	defer stop()
 
 	logger.Debug("running WAF")
 	logger.Debug("headers", "headers", parsed.Headers)
@@ -442,8 +449,11 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Error("waf error", "error", wafErr)
+		b.PrometheusRecorder.IncWAFErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
+
+	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)

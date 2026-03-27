@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
+	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 )
 
 //go:generate mockgen -destination=mocks/mock_captcha_provider.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer/components CaptchaProvider
@@ -155,6 +156,7 @@ type CaptchaService struct {
 	nowFunc        func() time.Time
 	jwt            *JWTManager
 	challengeCache *cache.Cache[ChallengeClaims]
+	prom           *recorder.Recorder
 }
 
 type VerificationRequest struct {
@@ -169,7 +171,7 @@ type VerificationResult struct {
 	Token   string `json:"token,omitempty"`
 }
 
-func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaService, error) {
+func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient, prom *recorder.Recorder) (*CaptchaService, error) {
 	if cfg.Enabled && cfg.SigningKey == "" {
 		return nil, fmt.Errorf("signing key is required when captcha is enabled")
 	}
@@ -183,19 +185,24 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient) (*CaptchaServi
 		timeout = 10 * time.Second
 	}
 
-	challengeCache := cache.New[ChallengeClaims](
-		cache.WithCleanup(time.Minute, func(key string, value ChallengeClaims) bool {
-			return value.ExpiresAt.Time.Before(time.Now())
-		}),
-	)
-
 	service := &CaptchaService{
 		Config:         cfg,
 		RequestTimeout: timeout,
 		nowFunc:        time.Now,
 		jwt:            NewJWTManager(cfg.SigningKey),
-		challengeCache: challengeCache,
+		prom:           prom,
 	}
+
+	service.challengeCache = cache.New[ChallengeClaims](
+		cache.WithCleanup(time.Minute, func(key string, value ChallengeClaims) bool {
+			expired := value.ExpiresAt.Time.Before(time.Now())
+			if expired {
+				service.prom.IncCaptchaExpiredSessionsTotal()
+				service.prom.DecCaptchaActiveSessions()
+			}
+			return expired
+		}),
+	)
 
 	if !cfg.Enabled {
 		return service, nil
@@ -272,6 +279,7 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken,
 	}
 
 	s.challengeCache.Delete(claims.ID)
+	s.prom.DecCaptchaActiveSessions()
 
 	now := s.nowFunc()
 	sessionID := uuid.NewString()
@@ -352,6 +360,7 @@ func (s *CaptchaService) CreateSession(ip, originalURL, sessionToken string) (*C
 	}
 
 	s.challengeCache.Set(claims.ID, *claims)
+	s.prom.IncCaptchaActiveSessions()
 
 	redirectParams := make(url.Values)
 	redirectParams.Set("challengeToken", challengeToken)

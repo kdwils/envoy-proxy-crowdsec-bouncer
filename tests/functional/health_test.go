@@ -115,8 +115,7 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder, err := recorder.New(nil)
-	require.NoError(t, err)
+	recorder := recorder.NewNoOp()
 
 	bouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)
@@ -214,8 +213,7 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder, err := recorder.New(nil)
-	require.NoError(t, err)
+	recorder := recorder.NewNoOp()
 
 	bouncer, err := bouncer.New(config, recorder)
 	require.NoError(t, err)

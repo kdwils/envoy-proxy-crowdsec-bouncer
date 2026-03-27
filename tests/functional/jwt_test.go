@@ -26,6 +26,8 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -274,10 +276,9 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder, err := recorder.New(nil)
-	require.NoError(t, err)
+	dcRec := recorder.NewNoOp()
 
-	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, recorder)
+	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, dcRec)
 	require.NoError(t, err)
 
 	waf := components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
@@ -292,7 +293,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	waitForDecisionCache(t, decisionCache, 10*time.Second)
 
 	t.Run("Complete JWT verification flow with cookie bypass", func(t *testing.T) {
-		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
@@ -300,13 +305,13 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			DecisionCache:      decisionCache,
 			WAF:                waf,
 			CaptchaService:     captchaService,
-			PrometheusRecorder: recorder,
+			PrometheusRecorder: rec,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -424,10 +429,21 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		require.NotNil(t, check2.HttpResponse)
 		assert.Equal(t, int32(0), check2.Status.Code)
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 0 active captcha sessions after successful verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("Multiple requests with same verification cookie bypass captcha", func(t *testing.T) {
-		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
@@ -435,13 +451,13 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			DecisionCache:      decisionCache,
 			WAF:                waf,
 			CaptchaService:     captchaService,
-			PrometheusRecorder: recorder,
+			PrometheusRecorder: rec,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -552,6 +568,13 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			require.NoError(t, err)
 			assert.Equal(t, int32(0), checkResult.Status.Code, "Request %d should bypass captcha with valid cookie", i+1)
 		}
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
+		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 5 allowed requests")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 0 active captcha sessions after successful verification")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("Expired verification token requires new captcha", func(t *testing.T) {
@@ -571,7 +594,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		cfgShortExpiry := cfg
 		cfgShortExpiry.Captcha.SessionDuration = 2 * time.Second
 
-		captchaServiceShort, err := components.NewCaptchaService(cfgShortExpiry.Captcha, http.DefaultClient)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		captchaServiceShort, err := components.NewCaptchaService(cfgShortExpiry.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
@@ -579,13 +606,13 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			DecisionCache:      decisionCache,
 			WAF:                waf,
 			CaptchaService:     captchaServiceShort,
-			PrometheusRecorder: recorder,
+			PrometheusRecorder: rec,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
+		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -698,13 +725,24 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		checkExpired, err := client.Check(context.TODO(), reqWithCookie)
 		require.NoError(t, err)
 		assert.Equal(t, int32(302), checkExpired.Status.Code)
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(2), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 2 captcha requests (initial + re-challenge after session expiry)")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request (valid session cookie)")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("success")), "expected 1 successful captcha verification")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session from re-challenge after expiry")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("Expired challenge token rejected", func(t *testing.T) {
 		cfgShortChallenge := cfg
 		cfgShortChallenge.Captcha.ChallengeDuration = 1 * time.Second
 
-		captchaServiceShort, err := components.NewCaptchaService(cfgShortChallenge.Captcha, http.DefaultClient)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		captchaServiceShort, err := components.NewCaptchaService(cfgShortChallenge.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
@@ -712,13 +750,13 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			DecisionCache:      decisionCache,
 			WAF:                waf,
 			CaptchaService:     captchaServiceShort,
-			PrometheusRecorder: recorder,
+			PrometheusRecorder: rec,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
+		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -750,10 +788,19 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		expiredSession, exists := captchaServiceShort.GetSession(session.ID)
 		assert.False(t, exists)
 		assert.Nil(t, expiredSession)
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 pending-cleanup session: challenge JWT expired but cleanup goroutine (1 min interval) has not yet run")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaExpiredSessionsTotal), "expected 0 expired sessions collected: cleanup has not run yet")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 
 	t.Run("IP binding enforced on challenge token verification", func(t *testing.T) {
-		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
@@ -761,13 +808,13 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 			DecisionCache:      decisionCache,
 			WAF:                waf,
 			CaptchaService:     captchaService,
-			PrometheusRecorder: recorder,
+			PrometheusRecorder: rec,
 		}
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
-		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
+		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
 
 		testCtx, cancel := context.WithCancel(ctx)
 		serverDone := make(chan struct{})
@@ -856,6 +903,12 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		defer resp.Body.Close()
 
 		assert.Equal(t, http.StatusForbidden, resp.StatusCode, "verification should fail when IP doesn't match challenge token")
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("failure")), "expected 1 captcha verification error from IP mismatch")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session (IP mismatch does not decrement session count)")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 }
 
