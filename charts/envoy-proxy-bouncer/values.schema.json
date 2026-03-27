@@ -197,6 +197,40 @@
                         }
                     }
                 },
+                "prometheus": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        "port": {
+                            "default": 9090,
+                            "type": "integer"
+                        },
+                        "serviceMonitor": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "default": false,
+                                    "type": "boolean"
+                                },
+                                "interval": {
+                                    "default": "30s",
+                                    "type": "string"
+                                },
+                                "prometheusMatchLabels": {
+                                    "default": {},
+                                    "type": "object"
+                                },
+                                "scrapeTimeout": {
+                                    "default": "10s",
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
                 "server": {
                     "type": "object",
                     "properties": {

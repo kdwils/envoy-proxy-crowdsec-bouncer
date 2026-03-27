@@ -75,6 +75,19 @@ config:
       name: "" # @schema default: ""
       key: "" # @schema default: ""
 
+  # enable endpoint for prometheus metrics scraping on the configured port
+  prometheus:
+    enabled: false # @schema default: false
+    port: 9090 # @schema default: 9090
+    serviceMonitor:
+      enabled: false # @schema default: false
+      interval: "30s" # @schema default: "30s"
+      scrapeTimeout: "10s" # @schema default: "10s"
+      # labels that match your Prometheus instance's serviceMonitorSelector
+      # e.g. if your Prometheus has serviceMonitorSelector: matchLabels: release: prometheus
+      # set prometheusMatchLabels: {release: prometheus}
+      prometheusMatchLabels: {} # @schema default: {}
+
   captcha:
     enabled: false # @schema default: false
     provider: "" # @schema default: ""

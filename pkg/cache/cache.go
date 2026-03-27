@@ -69,13 +69,12 @@ func (c *Cache[T]) Size() int {
 }
 
 func (c *Cache[T]) Keys() []string {
-	keys := make([]string, len(c.entries))
-	i := 0
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	keys := make([]string, 0, len(c.entries))
 	for k := range c.entries {
-		keys[i] = k
-		i++
+		keys = append(keys, k)
 	}
-
 	return keys
 }
 
