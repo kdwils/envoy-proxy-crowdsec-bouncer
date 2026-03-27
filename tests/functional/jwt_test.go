@@ -276,8 +276,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	dcRec, err := recorder.New(nil)
-	require.NoError(t, err)
+	dcRec := recorder.NewNoOp()
 
 	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, dcRec)
 	require.NoError(t, err)
@@ -791,7 +790,8 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Nil(t, expiredSession)
 
 		metrics := rec.GetMetrics()
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session (created but not verified before challenge expired)")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 pending-cleanup session: challenge JWT expired but cleanup goroutine (1 min interval) has not yet run")
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaExpiredSessionsTotal), "expected 0 expired sessions collected: cleanup has not run yet")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
 

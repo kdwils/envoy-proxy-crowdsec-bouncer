@@ -150,6 +150,10 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 	return m, nil
 }
 
+func NewNoOp() *Recorder {
+	return &Recorder{now: time.Now}
+}
+
 func New(reg prometheus.Registerer) (*Recorder, error) {
 	if reg == nil {
 		return &Recorder{now: time.Now}, nil

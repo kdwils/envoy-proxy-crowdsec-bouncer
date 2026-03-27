@@ -138,8 +138,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder, err := recorder.New(nil)
-	require.NoError(t, err)
+	recorder := recorder.NewNoOp()
 
 	b, err := bouncer.New(cfg, recorder)
 	require.NoError(t, err)

@@ -581,8 +581,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{
 			DecisionCache:      mb,
 			WAF:                mw,
@@ -652,8 +651,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{
 			DecisionCache:      mb,
 			WAF:                mw,
@@ -710,8 +708,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("5.6.7.8", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
@@ -767,8 +764,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{
 			DecisionCache:      mb,
 			WAF:                mw,
@@ -838,8 +834,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("10.0.0.1", "http", "h", "/p", "GET", "HTTP/1.0", "")
@@ -883,8 +878,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("7.7.7.7", "https", "ex", "/ok", "GET", "HTTP/2", "")
@@ -942,8 +936,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("8.8.8.8", "https", "host", "/bar", "POST", "HTTP/2", "abc")
@@ -987,8 +980,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("11.11.11.11", "http", "h", "/p", "GET", "HTTP/1.0", "")
@@ -1032,8 +1024,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("12.12.12.12", "http", "h", "/p", "GET", "HTTP/1.0", "")
@@ -1076,8 +1067,7 @@ func TestBouncer_Check(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: nil, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("13.13.13.13", "https", "ex", "/ok", "GET", "HTTP/2", "")
@@ -1140,8 +1130,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1196,8 +1185,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("2.2.2.2", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -1242,8 +1230,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{
 			DecisionCache:      mb,
 			WAF:                mw,
@@ -1306,8 +1293,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("4.4.4.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -1352,8 +1338,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("5.5.5.5", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -1398,8 +1383,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("6.6.6.6", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -1444,8 +1428,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("7.7.7.7", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -1474,8 +1457,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("8.8.8.8", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -1503,8 +1485,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("9.9.9.9", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1531,8 +1512,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 
 		req := mkReq("10.10.10.10", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -1576,8 +1556,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: nil, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("11.11.11.11", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1604,8 +1583,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("12.12.12.12", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1635,8 +1613,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("13.13.13.13", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1666,8 +1643,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1713,8 +1689,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
@@ -1812,8 +1787,7 @@ func TestBouncer_CaptchaRedirectURL(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		rec, err := recorder.New(nil)
-		require.NoError(t, err)
+		rec := recorder.NewNoOp()
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("1.2.3.4", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 

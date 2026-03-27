@@ -352,12 +352,12 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 }
 
 func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
-	stop := b.PrometheusRecorder.ObserveComponentDuration("decision_cache")
-	defer stop()
 	logger := logger.FromContext(ctx)
 	if b.DecisionCache == nil {
 		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed, nil)
 	}
+	stop := b.PrometheusRecorder.ObserveComponentDuration("decision_cache")
+	defer stop()
 
 	logger.Debug("running decision cache")
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
@@ -401,12 +401,12 @@ func (b *Bouncer) getBanStatusCode() int {
 }
 
 func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decision *models.Decision) CheckedRequest {
-	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
-	defer stop()
 	logger := logger.FromContext(ctx)
 	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
 		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed, nil)
 	}
+	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
+	defer stop()
 
 	logger.Debug("running captcha")
 	originalURL := parsed.URL.String()

@@ -126,8 +126,7 @@ func TestJWTManager_SessionToken(t *testing.T) {
 
 func TestNewCaptchaService(t *testing.T) {
 	t.Run("disabled captcha", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{Enabled: false}
 
 		got, err := NewCaptchaService(cfg, http.DefaultClient, prom)
@@ -143,8 +142,7 @@ func TestNewCaptchaService(t *testing.T) {
 	})
 
 	t.Run("recaptcha provider", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:    true,
 			Provider:   "recaptcha",
@@ -162,8 +160,7 @@ func TestNewCaptchaService(t *testing.T) {
 	})
 
 	t.Run("turnstile provider", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:    true,
 			Provider:   "turnstile",
@@ -181,8 +178,7 @@ func TestNewCaptchaService(t *testing.T) {
 	})
 
 	t.Run("unsupported provider", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:    true,
 			Provider:   "unsupported",
@@ -196,8 +192,7 @@ func TestNewCaptchaService(t *testing.T) {
 	})
 
 	t.Run("missing signing key when enabled", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:  true,
 			Provider: "recaptcha",
@@ -212,8 +207,7 @@ func TestNewCaptchaService(t *testing.T) {
 
 func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	t.Run("no session token", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
 		require.NoError(t, err)
@@ -224,8 +218,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("expired session token", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
 		require.NoError(t, err)
@@ -240,8 +233,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("valid session token", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
 		require.NoError(t, err)
@@ -256,8 +248,7 @@ func TestCaptchaService_RequiresCaptcha(t *testing.T) {
 	})
 
 	t.Run("invalid session token format", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
 		require.NoError(t, err)
@@ -274,8 +265,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:           true,
 			Provider:          "recaptcha",
@@ -316,8 +306,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:           true,
 			Provider:          "recaptcha",
@@ -345,8 +334,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 	})
 
 	t.Run("invalid challenge token", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}
 		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
 		require.NoError(t, err)
@@ -364,8 +352,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:           true,
 			Provider:          "recaptcha",
@@ -393,8 +380,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		defer ctrl.Finish()
 		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:           true,
 			Provider:          "recaptcha",
@@ -426,8 +412,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 func TestCaptchaService_GetSession(t *testing.T) {
 	t.Run("invalid JWT token", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:     true,
 			Provider:    "recaptcha",
@@ -448,8 +433,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:           true,
 			Provider:          "recaptcha",
@@ -483,8 +467,7 @@ func TestCaptchaService_GetSession(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:           true,
 			Provider:          "recaptcha",
@@ -521,8 +504,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:           true,
 			Provider:          "turnstile",
@@ -562,8 +544,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:    true,
 			Provider:   "recaptcha",
@@ -588,8 +569,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 	})
 
 	t.Run("rejects javascript URL", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:     true,
 			Provider:    "turnstile",
@@ -609,8 +589,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 	})
 
 	t.Run("rejects URL without host", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:     true,
 			Provider:    "turnstile",
@@ -632,8 +611,7 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 func TestCaptchaService_CookieName(t *testing.T) {
 	t.Run("returns configured cookie name", func(t *testing.T) {
-		prom, err := recorder.New(nil)
-		require.NoError(t, err)
+		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
 			Enabled:    false,
 			CookieName: "my-custom-cookie",
