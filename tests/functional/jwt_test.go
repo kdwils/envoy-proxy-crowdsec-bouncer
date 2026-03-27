@@ -906,7 +906,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("error")), "expected 1 captcha verification error from IP mismatch")
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("failure")), "expected 1 captcha verification error from IP mismatch")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaActiveSessions), "expected 1 active captcha session (IP mismatch does not decrement session count)")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
