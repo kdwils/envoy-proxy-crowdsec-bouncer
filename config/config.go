@@ -38,6 +38,16 @@ type Captcha struct {
 	Timeout           time.Duration `yaml:"timeout" json:"timeout"`
 	ChallengeDuration time.Duration `yaml:"challengeDuration" json:"challengeDuration"`
 	SessionDuration   time.Duration `yaml:"sessionDuration" json:"sessionDuration"`
+	// DisableChallengeReplayProtection disables the in-memory check that prevents a challenge
+	// token from being used more than once. By default, challenge tokens are single-use:
+	// the bouncer stores each issued challenge token in memory and deletes it on first use.
+	//
+	// This works correctly for single-pod deployments but can break under multi
+	// pod environment or restarts because it is stored in-memory.
+	// Enabling this option removes the single-use check, relying solely on the challenge
+	// token's JWT signature, IP binding, and expiry for protection. Set ChallengeDuration
+	// to the shortest acceptable value when this is enabled.
+	DisableChallengeReplayProtection bool `yaml:"disableChallengeReplayProtection" json:"disableChallengeReplayProtection"`
 }
 
 type BouncerTLS struct {

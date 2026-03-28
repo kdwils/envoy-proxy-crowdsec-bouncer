@@ -137,6 +137,10 @@
                             "default": "",
                             "type": "string"
                         },
+                        "disableChallengeReplayProtection": {
+                            "default": false,
+                            "type": "boolean"
+                        },
                         "enabled": {
                             "default": false,
                             "type": "boolean"

@@ -408,6 +408,40 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		assert.False(t, got2.Success)
 		assert.Equal(t, "Challenge already used or expired", got2.Message)
 	})
+
+	t.Run("challenge token replay allowed when DisableChallengeReplayProtection is true", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
+
+		prom := recorder.NewNoOp()
+		cfg := config.Captcha{
+			Enabled:                 true,
+			Provider:                "recaptcha",
+			SecretKey:               "test",
+			SigningKey:              "test-signing-key-that-is-at-least-32-bytes-long",
+			SessionDuration:         1 * time.Hour,
+			ChallengeDuration:       5 * time.Minute,
+			DisableChallengeReplayProtection: true,
+		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
+		require.NoError(t, err)
+		service.Provider = mockProvider
+		mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
+
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
+		require.NoError(t, err)
+
+		mockProvider.EXPECT().Verify(gomock.Any(), "test-response", "192.168.1.1").Return(true, nil).Times(2)
+
+		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		require.NoError(t, err)
+		assert.True(t, got.Success, "expected first verification to succeed")
+
+		got2, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		require.NoError(t, err)
+		assert.True(t, got2.Success, "expected second verification to succeed when replay protection is disabled")
+	})
 }
 
 func TestCaptchaService_GetSession(t *testing.T) {

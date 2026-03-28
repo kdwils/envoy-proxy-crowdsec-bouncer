@@ -253,11 +253,13 @@ func (s *CaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken,
 		}, fmt.Errorf("challenge IP mismatch")
 	}
 
-	if _, ok := s.challengeCache.Get(claims.ID); !ok {
-		return &VerificationResult{
-			Success: false,
-			Message: "Challenge already used or expired",
-		}, fmt.Errorf("challenge already used or expired")
+	if !s.Config.DisableChallengeReplayProtection {
+		if _, ok := s.challengeCache.Get(claims.ID); !ok {
+			return &VerificationResult{
+				Success: false,
+				Message: "Challenge already used or expired",
+			}, fmt.Errorf("challenge already used or expired")
+		}
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, s.RequestTimeout)

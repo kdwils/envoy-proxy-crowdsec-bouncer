@@ -34,6 +34,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.captcha.challengeDuration | string | `"5m"` |  |
 | config.captcha.cookieDomain | string | `""` |  |
 | config.captcha.cookieName | string | `""` |  |
+| config.captcha.disableChallengeReplayProtection | bool | `false` |  |
 | config.captcha.enabled | bool | `false` |  |
 | config.captcha.provider | string | `""` |  |
 | config.captcha.secretKey | string | `""` |  |
