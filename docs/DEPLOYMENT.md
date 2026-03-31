@@ -86,7 +86,7 @@ networks:
 
 ### Manifest File
 
-See [examples/deploy/README.md](../examples/deploy/README.md) for a flat YAML deployment example.
+See [examples/deploy/README.md](examples/deploy/README.md) for a flat YAML deployment example.
 
 You can also reference this [homelab manifest](https://github.com/kdwils/homelab/blob/main/monitoring/envoy-proxy-bouncer/bouncer.yaml) for a complete example.
 
