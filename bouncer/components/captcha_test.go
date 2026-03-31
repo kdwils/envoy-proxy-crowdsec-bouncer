@@ -9,6 +9,8 @@ import (
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -409,6 +411,46 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		assert.Equal(t, "Challenge already used or expired", got2.Message)
 	})
 
+	t.Run("does not decrement metrics or delete from cache when replay protection is disabled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockProvider := mocks.NewMockCaptchaProvider(ctrl)
+
+		reg := prometheus.NewRegistry()
+		prom, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		cfg := config.Captcha{
+			Enabled:                          true,
+			Provider:                         "recaptcha",
+			SecretKey:                        "test",
+			SigningKey:                       "test-signing-key-that-is-at-least-32-bytes-long",
+			SessionDuration:                  1 * time.Hour,
+			ChallengeDuration:                5 * time.Minute,
+			DisableChallengeReplayProtection: true,
+		}
+		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
+		require.NoError(t, err)
+		service.Provider = mockProvider
+		mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
+
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
+		require.NoError(t, err)
+		require.NotNil(t, session)
+
+		pendingBefore := testutil.ToFloat64(prom.GetMetrics().CaptchaPendingChallenges)
+		assert.Equal(t, float64(0), pendingBefore, "expected pending challenges metric to be 0 before verification when replay protection is disabled")
+
+		mockProvider.EXPECT().Verify(gomock.Any(), "test-response", "192.168.1.1").Return(true, nil).Times(1)
+
+		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		require.NoError(t, err)
+		assert.True(t, got.Success, "expected verification to succeed")
+
+		pendingAfter := testutil.ToFloat64(prom.GetMetrics().CaptchaPendingChallenges)
+		assert.Equal(t, float64(0), pendingAfter, "expected pending challenges metric to remain 0 after verification when replay protection is disabled")
+	})
+
 	t.Run("challenge token replay allowed when DisableChallengeReplayProtection is true", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -620,6 +662,46 @@ func TestCaptchaService_CreateSession(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
+	})
+
+	t.Run("does not store challenge in cache or increment metrics when replay protection is disabled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		reg := prometheus.NewRegistry()
+		prom, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		cfg := config.Captcha{
+			Enabled:                          true,
+			Provider:                         "turnstile",
+			SiteKey:                          "test-site-key",
+			SecretKey:                        "test-secret",
+			SigningKey:                       "test-signing-key-that-is-at-least-32-bytes-long",
+			CallbackURL:                      "http://localhost:8081",
+			ChallengeDuration:                5 * time.Minute,
+			DisableChallengeReplayProtection: true,
+		}
+
+		provider := mocks.NewMockCaptchaProvider(ctrl)
+		provider.EXPECT().GetProviderName().Return("turnstile").AnyTimes()
+
+		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
+		require.NoError(t, err)
+		service.Provider = provider
+
+		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
+		require.NoError(t, err)
+		require.NotNil(t, session)
+
+		claims, err := service.jwt.CheckChallengeToken(session.ID)
+		require.NoError(t, err)
+
+		_, inCache := service.challengeCache.Get(claims.ID)
+		assert.False(t, inCache, "expected challenge to not be stored in cache when replay protection is disabled")
+
+		pendingChallenges := testutil.ToFloat64(prom.GetMetrics().CaptchaPendingChallenges)
+		assert.Equal(t, float64(0), pendingChallenges, "expected pending challenges metric to remain 0 when replay protection is disabled")
 	})
 
 	t.Run("rejects URL without host", func(t *testing.T) {

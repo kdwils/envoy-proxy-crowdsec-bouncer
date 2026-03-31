@@ -910,6 +910,131 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 1 pending captcha challenge (IP mismatch does not decrement pending count)")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
+	t.Run("DisableChallengeReplayProtection skips cache and metrics, allows replay", func(t *testing.T) {
+		testIP := "127.0.0.1"
+
+		_, _, err = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "delete", "--ip", testIP,
+		})
+
+		_, _, err = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "add", "--type", "captcha", "--value", testIP,
+		})
+		require.NoError(t, err)
+
+		time.Sleep(2 * time.Second)
+
+		cfgNoReplay := cfg
+		cfgNoReplay.Captcha.DisableChallengeReplayProtection = true
+
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		captchaService, err := components.NewCaptchaService(cfgNoReplay.Captcha, http.DefaultClient, rec)
+		require.NoError(t, err)
+		captchaService.Provider = mockProvider
+
+		testBouncer := &bouncer.Bouncer{
+			DecisionCache:      decisionCache,
+			WAF:                waf,
+			CaptchaService:     captchaService,
+			PrometheusRecorder: rec,
+		}
+
+		templateStore, err := template.NewStore(template.Config{})
+		require.NoError(t, err)
+
+		srv := server.NewServer(cfgNoReplay, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
+
+		testCtx, cancel := context.WithCancel(ctx)
+		serverDone := make(chan struct{})
+		defer func() {
+			cancel()
+			<-serverDone
+		}()
+
+		go func() {
+			err := srv.ServeDual(testCtx)
+			if err != nil && err != context.Canceled {
+				t.Logf("server error: %v", err)
+			}
+			close(serverDone)
+		}()
+
+		waitForServer(t, "localhost:8080", 10*time.Second)
+
+		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		require.NoError(t, err)
+		defer conn.Close()
+
+		client := auth.NewAuthorizationClient(conn)
+
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &corev3.Address{
+						Address: &corev3.Address_SocketAddress{
+							SocketAddress: &corev3.SocketAddress{Address: testIP},
+						},
+					},
+				},
+				Request: &auth.AttributeContext_Request{
+					Http: &auth.AttributeContext_HttpRequest{
+						Headers: map[string]string{
+							":method":    "GET",
+							":path":      "/protected",
+							":authority": "my-host.com",
+							":scheme":    "http",
+						},
+					},
+				},
+			},
+		}
+
+		check, err := client.Check(context.TODO(), req)
+		require.NoError(t, err)
+		require.Equal(t, int32(302), check.Status.Code)
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 0 pending challenges after CreateSession: cache should not be written when replay protection is disabled")
+
+		deniedResponse := check.GetDeniedResponse()
+		require.NotNil(t, deniedResponse)
+		require.Len(t, deniedResponse.Headers, 1)
+
+		locationURL, err := url.Parse(deniedResponse.Headers[0].Header.Value)
+		require.NoError(t, err)
+
+		challengeToken := locationURL.Query().Get("challengeToken")
+		require.NotEmpty(t, challengeToken)
+
+		httpClient := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		verifyURL := "http://localhost:8081/captcha/verify"
+
+		for i := range 2 {
+			form := url.Values{}
+			form.Add("challengeToken", challengeToken)
+			form.Add("captchaResponse", "success")
+
+			httpReq, err := http.NewRequest("POST", verifyURL, strings.NewReader(form.Encode()))
+			require.NoError(t, err)
+			httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			httpReq.Header.Set("X-Forwarded-For", testIP)
+
+			resp, err := httpClient.Do(httpReq)
+			require.NoError(t, err)
+			resp.Body.Close()
+
+			assert.Equal(t, http.StatusFound, resp.StatusCode, "expected verification %d to succeed when replay protection is disabled", i+1)
+			assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 0 pending challenges after verification %d: metric must not be touched when replay protection is disabled", i+1)
+		}
+	})
 }
 
 func getCookie(resp *http.Response, name string) *http.Cookie {
