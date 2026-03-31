@@ -497,7 +497,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		assert.Equal(t, int32(403), resp.Status.Code)
 		deny := resp.GetDeniedResponse()
 		require.NotNil(t, deny, "expected denied response")
-		assert.Equal(t, "crowdsecurity/http-bad", deny.Body)
+		assert.Equal(t, "", deny.Body)
 	})
 }
 
