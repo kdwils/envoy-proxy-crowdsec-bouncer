@@ -433,8 +433,12 @@ func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest) (string, ma
 		reason = "access denied"
 	}
 
-	if !s.config.Templates.ShowDeniedPage || s.templateStore == nil {
-		return reason, headers
+	if !s.config.Templates.ShowDeniedPage {
+		return "", headers
+	}
+
+	if s.templateStore == nil {
+		return "", headers
 	}
 
 	data := s.buildDeniedTemplateData(result)
