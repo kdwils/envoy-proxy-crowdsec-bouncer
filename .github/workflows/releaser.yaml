@@ -28,5 +28,6 @@ jobs:
 
   goreleaser:
     needs: [tag]
+    if: "!contains(github.ref, '-rc')"
     uses: kdwils/homelab-workflow/.github/workflows/go-releaser.yml@main
     secrets: inherit
