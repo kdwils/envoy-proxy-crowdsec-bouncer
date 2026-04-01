@@ -13,7 +13,7 @@
 ### Install from Go
 
 ```bash
-go install github.com/kdwils/envoy-proxy-bouncer@v0.4.0
+go install github.com/kdwils/envoy-proxy-bouncer@v<tag>
 ```
 
 ### Download Pre-built Binary

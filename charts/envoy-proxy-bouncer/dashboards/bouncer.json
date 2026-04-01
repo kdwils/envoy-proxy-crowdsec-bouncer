@@ -684,7 +684,7 @@
           "refId": "B"
         }
       ],
-      "title": "Component Duration p95 / p99",
+      "title": "Component Latency",
       "type": "timeseries"
     },
     {
