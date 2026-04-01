@@ -56,9 +56,9 @@ Integrates with Envoy as an external authorization service. Each request is eval
 
 ## Examples
 
-- [Kubernetes Deployment](examples/deploy/README.md)
+- [Kubernetes Deployment](docs/examples/deploy/README.md)
 - [Real Example](https://github.com/kdwils/homelab/blob/main/monitoring/envoy-proxy-bouncer/environments/homelab/homelab.yaml)
-- [Custom Templates](examples/deploy/custom-templates.yaml)
+- [Custom Templates](docs/examples/deploy/custom-templates.yaml)
 
 ## Acknowledgments
 

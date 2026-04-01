@@ -168,3 +168,11 @@ referenceGrant:
 templates:
   deniedTemplateContent: "" # @schema default: ""
   captchaTemplateContent: "" # @schema default: ""
+
+grafana:
+  dashboard:
+    enabled: false # @schema default: false
+    labels:
+      grafana_dashboard: "1"
+    annotations: {} # @schema default: {}
+    folder: "" # @schema default: ""

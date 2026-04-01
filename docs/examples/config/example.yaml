@@ -40,6 +40,11 @@ captcha:
   timeout: "10s"
   challengeDuration: "5m"
   sessionDuration: "15m"
+  disableChallengeReplayProtection: false
+
+prometheus:
+  enabled: false
+  port: 9090
 
 webhook:
   subscriptions:
@@ -56,5 +61,6 @@ webhook:
 templates:
   deniedTemplatePath: ""
   deniedTemplateHeaders: "text/html; charset=utf-8"
+  showDeniedPage: true
   captchaTemplatePath: ""
   captchaTemplateHeaders: "text/html; charset=utf-8"

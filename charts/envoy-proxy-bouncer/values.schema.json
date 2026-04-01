@@ -351,6 +351,36 @@
             "default": "",
             "type": "string"
         },
+        "grafana": {
+            "type": "object",
+            "properties": {
+                "dashboard": {
+                    "type": "object",
+                    "properties": {
+                        "annotations": {
+                            "default": {},
+                            "type": "object"
+                        },
+                        "enabled": {
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        "folder": {
+                            "default": "",
+                            "type": "string"
+                        },
+                        "labels": {
+                            "type": "object",
+                            "properties": {
+                                "grafana_dashboard": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "httproute": {
             "type": "object",
             "properties": {

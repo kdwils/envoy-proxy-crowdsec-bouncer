@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.5.6](https://img.shields.io/badge/Version-0.5.6-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.5.5](https://img.shields.io/badge/AppVersion-v0.5.5-informational?style=flat-square)
+![Version: 0.6.0](https://img.shields.io/badge/Version-0.6.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.6.0](https://img.shields.io/badge/AppVersion-v0.6.0-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -74,6 +74,10 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.webhook.subscriptions | list | `[]` |  |
 | config.webhook.timeout | string | `"5s"` |  |
 | fullnameOverride | string | `""` |  |
+| grafana.dashboard.annotations | object | `{}` |  |
+| grafana.dashboard.enabled | bool | `false` |  |
+| grafana.dashboard.folder | string | `""` |  |
+| grafana.dashboard.labels.grafana_dashboard | string | `"1"` |  |
 | httproute.annotations | object | `{}` |  |
 | httproute.enabled | bool | `false` |  |
 | httproute.hostnames | list | `[]` |  |

@@ -10,7 +10,7 @@ Configuration methods with the following precedence (last wins):
 envoy-proxy-bouncer serve --config config.yaml
 ```
 
-See [example.yaml](./example.yaml) for a complete configuration example.
+See [example.yaml](./examples/config/example.yaml) for a complete configuration example.
 
 ## Server
 
@@ -135,6 +135,7 @@ export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
 | `timeout` | duration | `"10s"` | No | Timeout for CAPTCHA provider verification requests |
 | `sessionDuration` | duration | `"15m"` | No | How long CAPTCHA verification remains valid |
 | `challengeDuration` | duration | `"5m"` | No | How long a challenge token remains valid |
+| `disableChallengeReplayProtection` | bool | `false` | No | Disable single-use enforcement for challenge tokens. By default, each token is consumed on first use. Disable only in multi-pod environments where in-memory state is not shared — set a short `challengeDuration` when disabled |
 
 ```yaml
 captcha:
@@ -150,6 +151,7 @@ captcha:
   timeout: "10s"
   challengeDuration: "5m"
   sessionDuration: "15m"
+  disableChallengeReplayProtection: false
 ```
 
 ```bash
@@ -165,6 +167,25 @@ export ENVOY_BOUNCER_CAPTCHA_COOKIENAME=session
 export ENVOY_BOUNCER_CAPTCHA_SESSIONDURATION=15m
 export ENVOY_BOUNCER_CAPTCHA_CHALLENGEDURATION=5m
 export ENVOY_BOUNCER_CAPTCHA_TIMEOUT=10s
+export ENVOY_BOUNCER_CAPTCHA_DISABLECHALLENGEREPLAYPROTECTION=false
+```
+
+## Prometheus
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable the Prometheus metrics endpoint |
+| `port` | int | `9090` | Port for the `/metrics` HTTP endpoint |
+
+```yaml
+prometheus:
+  enabled: true
+  port: 9090
+```
+
+```bash
+export ENVOY_BOUNCER_PROMETHEUS_ENABLED=true
+export ENVOY_BOUNCER_PROMETHEUS_PORT=9090
 ```
 
 ## Webhooks
@@ -206,6 +227,7 @@ export ENVOY_BOUNCER_WEBHOOK_BUFFERSIZE=100
 |--------|------|---------|-------------|
 | `deniedTemplatePath` | string | `""` | Path to custom ban page template |
 | `deniedTemplateHeaders` | string | `"text/html; charset=utf-8"` | Content-Type header for ban page |
+| `showDeniedPage` | bool | `true` | Render the denied page template on ban. When false, an empty body is returned |
 | `captchaTemplatePath` | string | `""` | Path to custom CAPTCHA page template |
 | `captchaTemplateHeaders` | string | `"text/html; charset=utf-8"` | Content-Type header for CAPTCHA page |
 
@@ -213,6 +235,7 @@ export ENVOY_BOUNCER_WEBHOOK_BUFFERSIZE=100
 templates:
   deniedTemplatePath: "/path/to/custom-ban.html"
   deniedTemplateHeaders: "text/html; charset=utf-8"
+  showDeniedPage: true
   captchaTemplatePath: "/path/to/custom-captcha.html"
   captchaTemplateHeaders: "text/html; charset=utf-8"
 ```
@@ -220,15 +243,17 @@ templates:
 ```bash
 export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEPATH=/path/to/ban.html
 export ENVOY_BOUNCER_TEMPLATES_DENIEDTEMPLATEHEADERS="text/html; charset=utf-8"
+export ENVOY_BOUNCER_TEMPLATES_SHOWDENIEDPAGE=true
 export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEPATH=/path/to/captcha.html
 export ENVOY_BOUNCER_TEMPLATES_CAPTCHATEMPLATEHEADERS="text/html; charset=utf-8"
 ```
 
 ## See Also
 
-- [example.yaml](./example.yaml) - Complete configuration example
+- [example.yaml](./examples/config/example.yaml) - Complete configuration example
 - [Deployment Guide](DEPLOYMENT.md) - Deployment instructions
 - [CrowdSec Guide](CROWDSEC.md) - CrowdSec bouncer and WAF setup
 - [CAPTCHA Guide](CAPTCHA.md) - CAPTCHA challenge setup
 - [Webhook Guide](WEBHOOKS.md) - Webhook event notifications
 - [Custom Templates](CUSTOM_TEMPLATES.md) - Template customization
+- [Metrics](METRICS.md) - Prometheus metrics reference
