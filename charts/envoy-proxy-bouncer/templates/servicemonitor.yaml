@@ -3,6 +3,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "envoy-proxy-bouncer.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "envoy-proxy-bouncer.labels" . | nindent 4 }}
     {{- with .Values.config.prometheus.serviceMonitor.prometheusMatchLabels }}
