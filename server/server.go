@@ -425,20 +425,20 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 }
 
 func (s *Server) renderDeniedResponse(result bouncer.CheckedRequest) (string, map[string]string) {
+	if !s.config.Templates.ShowDeniedPage {
+		return "", nil
+	}
+
+	if s.templateStore == nil {
+		return "", nil
+	}
+
 	contentType := s.config.Templates.DeniedTemplateHeaders
 	headers := map[string]string{"Content-Type": contentType}
 
 	reason := result.Reason
 	if reason == "" {
 		reason = "access denied"
-	}
-
-	if !s.config.Templates.ShowDeniedPage {
-		return "", headers
-	}
-
-	if s.templateStore == nil {
-		return "", headers
 	}
 
 	data := s.buildDeniedTemplateData(result)
