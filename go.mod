@@ -3,7 +3,7 @@ module github.com/kdwils/envoy-proxy-bouncer
 go 1.26.0
 
 require (
-	github.com/crowdsecurity/crowdsec v1.7.6
+	github.com/crowdsecurity/crowdsec v1.7.7
 	github.com/crowdsecurity/go-cs-bouncer v0.0.21
 	github.com/crowdsecurity/go-cs-lib v0.0.25
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
