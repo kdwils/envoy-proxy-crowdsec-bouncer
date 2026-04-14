@@ -69,59 +69,7 @@ release:
   header: |
     # New Features
 
-    ### Disable in-memory captcha challenge replay protection
-
-    By default, the bouncer stores issued challenge tokens in memory and deletes them on first use. This can break in multi-pod environments or after restarts.
-
-    When disabled, the bouncer relies solely on JWT signature, IP binding, and expiry for protection. Challenge tokens can be reused if this is disabled — lower `challengeDuration` to reduce the window for abuse.
-
-    See [CONFIGURATION.md — CAPTCHA](docs/CONFIGURATION.md#captcha) for configuration options.
-
-    Helm chart values: [`config.captcha.disableChallengeReplayProtection`](charts/envoy-proxy-bouncer/values.yaml#L119)
-
-    ---
-
-    ### Disable the denied HTML page
-
-    When disabled, the bouncer returns the response status code with an empty body instead of a rendered HTML ban page.
-
-    See [CONFIGURATION.md — Templates](docs/CONFIGURATION.md#templates) for configuration options.
-
-    Helm chart values: [`config.templates.showDeniedPage`](charts/envoy-proxy-bouncer/values.yaml#L133)
-
-    ---
-
-    ### Prometheus metrics scraping endpoint
-
-    When enabled, an HTTP server is started on the configured port exposing a `/metrics` endpoint in Prometheus text format, compatible with both Prometheus and VictoriaMetrics.
-
-    See [METRICS.md](docs/METRICS.md) for available metrics and scrape configuration examples.
-
-    See [CONFIGURATION.md — Prometheus](docs/CONFIGURATION.md#prometheus) for configuration options.
-
-    Helm chart values: [`config.prometheus`](charts/envoy-proxy-bouncer/values.yaml#L78) — includes `serviceMonitor` support for automatic Prometheus Operator discovery.
-
-    ---
-
-    ### Grafana dashboard
-
-    A Grafana dashboard is included in the Helm chart and can be provisioned automatically via a ConfigMap sidecar.
-
-    Helm chart values: [`grafana.dashboard`](charts/envoy-proxy-bouncer/values.yaml#L172)
-
-    # Changed Behavior
-
-    ### INFO level logging no longer logs allowed requests
-
-    This behavior was changed due to the verbosity of the previous INFO level logger. Using DEBUG level will now result in similar output to the previous INFO level. Denied requests are still logged at INFO.
-
-    Example denied log:
-    ```json
-    {"time":"2026-03-31T21:43:37.908735094Z","level":"INFO","msg":"request denied","ip":"1.1.1.1","action":"ban","reason":"http:scan"}
-    ```
-
-    # Bug Fixes
-
-    - Fixed an issue where the number of active decisions displayed in the bouncer metrics view on the CrowdSec dashboard was inaccurate
+    ### New CrowdSec version supported
+    This version bumps go packages and images used for testing to CrowdSec version v1.7.7.
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
