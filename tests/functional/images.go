@@ -9,4 +9,5 @@ var CrowdsecImages = []string{
 	"crowdsecurity/crowdsec:v1.7.4",
 	"crowdsecurity/crowdsec:v1.7.6",
 	"crowdsecurity/crowdsec:v1.7.7",
+	"crowdsecurity/crowdsec:v1.7.8",
 }
