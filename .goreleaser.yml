@@ -70,6 +70,6 @@ release:
     # New Features
 
     ### New CrowdSec version supported
-    This version bumps go packages and images used for testing to CrowdSec version v1.7.7.
+    This version bumps go packages and images used for testing to CrowdSec version v1.7.8.
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
