@@ -15,7 +15,7 @@ func ptr[T any](v T) *T {
 }
 
 func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
-	testCache := cache.New[models.Decision]()
+	testCache := cache.New[string, models.Decision]()
 	decision := models.Decision{
 		Value: ptr("192.168.1.100"),
 		Type:  ptr("ban"),
@@ -24,7 +24,7 @@ func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
 
 	type fields struct {
 		stream    *csbouncer.StreamBouncer
-		decisions *cache.Cache[models.Decision]
+		decisions *cache.Cache[string, models.Decision]
 		mu        *sync.RWMutex
 	}
 	type args struct {

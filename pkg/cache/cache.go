@@ -6,21 +6,21 @@ import (
 	"time"
 )
 
-type CleanupFunc[T any] func(key string, value T) bool
+type CleanupFunc[K comparable, T any] func(key K, value T) bool
 
-type Cache[T any] struct {
-	entries         map[string]T
+type Cache[K comparable, T any] struct {
+	entries         map[K]T
 	mu              sync.RWMutex
 	cleanupInterval time.Duration
-	cleanupFunc     CleanupFunc[T]
+	cleanupFunc     CleanupFunc[K, T]
 }
 
-type Option[T any] func(*Cache[T])
+type Option[K comparable, T any] func(*Cache[K, T])
 
-func New[T any](opts ...Option[T]) *Cache[T] {
-	c := &Cache[T]{
+func New[K comparable, T any](opts ...Option[K, T]) *Cache[K, T] {
+	c := &Cache[K, T]{
 		mu:      sync.RWMutex{},
-		entries: make(map[string]T),
+		entries: make(map[K]T),
 	}
 
 	for _, opt := range opts {
@@ -30,55 +30,55 @@ func New[T any](opts ...Option[T]) *Cache[T] {
 	return c
 }
 
-func WithCleanup[T any](interval time.Duration, cleanupFunc CleanupFunc[T]) Option[T] {
-	return func(c *Cache[T]) {
+func WithCleanup[K comparable, T any](interval time.Duration, cleanupFunc CleanupFunc[K, T]) Option[K, T] {
+	return func(c *Cache[K, T]) {
 		c.cleanupInterval = interval
 		c.cleanupFunc = cleanupFunc
 	}
 }
 
-func WithCleanupInterval[T any](interval time.Duration) Option[T] {
-	return func(c *Cache[T]) {
+func WithCleanupInterval[K comparable, T any](interval time.Duration) Option[K, T] {
+	return func(c *Cache[K, T]) {
 		c.cleanupInterval = interval
 	}
 }
 
-func (c *Cache[T]) Set(key string, value T) {
+func (c *Cache[K, T]) Set(key K, value T) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[key] = value
 }
 
-func (c *Cache[T]) Delete(key string) {
+func (c *Cache[K, T]) Delete(key K) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.entries, key)
 }
 
-func (c *Cache[T]) Get(key string) (T, bool) {
+func (c *Cache[K, T]) Get(key K) (T, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	entry, ok := c.entries[key]
 	return entry, ok
 }
 
-func (c *Cache[T]) Size() int {
+func (c *Cache[K, T]) Size() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return len(c.entries)
 }
 
-func (c *Cache[T]) Keys() []string {
+func (c *Cache[K, T]) Keys() []K {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	keys := make([]string, 0, len(c.entries))
+	keys := make([]K, 0, len(c.entries))
 	for k := range c.entries {
 		keys = append(keys, k)
 	}
 	return keys
 }
 
-func (c *Cache[T]) StartCleanup(ctx context.Context) {
+func (c *Cache[K, T]) StartCleanup(ctx context.Context) {
 	if c.cleanupInterval == 0 || c.cleanupFunc == nil {
 		return
 	}
@@ -105,7 +105,7 @@ func (c *Cache[T]) StartCleanup(ctx context.Context) {
 	}()
 }
 
-func (c *Cache[T]) Cleanup(ctx context.Context, shouldDelete func(key string, value T) bool) {
+func (c *Cache[K, T]) Cleanup(ctx context.Context, shouldDelete func(key K, value T) bool) {
 	if c.cleanupInterval == 0 {
 		return
 	}
@@ -116,7 +116,7 @@ func (c *Cache[T]) Cleanup(ctx context.Context, shouldDelete func(key string, va
 	for {
 		select {
 		case <-ticker.C:
-			var keysToDelete []string
+			var keysToDelete []K
 
 			c.mu.RLock()
 			for key, value := range c.entries {

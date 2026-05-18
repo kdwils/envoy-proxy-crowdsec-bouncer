@@ -18,11 +18,11 @@ import (
 
 type DecisionCache struct {
 	stream         *csbouncer.StreamBouncer
-	decisions      *cache.Cache[models.Decision]
+	decisions      *cache.Cache[string, models.Decision]
 	mu             *sync.RWMutex
 	MetricsService *crowdsec.MetricsService
 	prom           *recorder.Recorder
-	knownOrigins   *cache.Cache[struct{}]
+	knownOrigins   *cache.Cache[string, struct{}]
 	syncComplete   bool
 }
 
@@ -37,11 +37,11 @@ func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsServic
 	}
 	dc := &DecisionCache{
 		stream:         stream,
-		decisions:      cache.New[models.Decision](),
+		decisions:      cache.New[string, models.Decision](),
 		mu:             new(sync.RWMutex),
 		MetricsService: metricsService,
 		prom:           prom,
-		knownOrigins:   cache.New[struct{}](),
+		knownOrigins:   cache.New[string, struct{}](),
 	}
 
 	return dc, nil

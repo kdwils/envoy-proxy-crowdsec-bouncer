@@ -59,7 +59,7 @@ func (c *crowdSecClient) SendMetrics(ctx context.Context, metrics *models.AllMet
 // When using Run to start automatic metric reporting, users should only call Inc, Dec, and Set
 // to update metrics. The Run method handles all Calculate, Send, and Reset operations automatically.
 type MetricsService struct {
-	cache       *cache.Cache[Metric]
+	cache       *cache.Cache[string, Metric]
 	apiClient   CrowdsecClient
 	bouncerType string
 	version     string
@@ -86,7 +86,7 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 	}
 
 	return &MetricsService{
-		cache:       cache.New[Metric](),
+		cache:       cache.New[string, Metric](),
 		apiClient:   &crowdSecClient{client: cfg.APIClient},
 		bouncerType: cfg.BouncerType,
 		version:     cfg.Version,

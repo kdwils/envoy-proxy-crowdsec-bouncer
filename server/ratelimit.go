@@ -6,14 +6,14 @@ import (
 )
 
 type RateLimiter struct {
-	limiters *cache.Cache[*rate.Limiter]
+	limiters *cache.Cache[string, *rate.Limiter]
 	rate     rate.Limit
 	burst    int
 }
 
 func NewRateLimiter(requestsPerSecond float64, burst int) *RateLimiter {
 	return &RateLimiter{
-		limiters: cache.New[*rate.Limiter](),
+		limiters: cache.New[string, *rate.Limiter](),
 		rate:     rate.Limit(requestsPerSecond),
 		burst:    burst,
 	}

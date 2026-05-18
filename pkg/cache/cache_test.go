@@ -16,7 +16,7 @@ func ptr[T any](v T) *T {
 }
 
 func TestDecisionCache(t *testing.T) {
-	c := New[models.Decision]()
+	c := New[string, models.Decision]()
 	assert.Equal(t, 0, c.Size(), "expected empty cache")
 
 	ip := "192.168.1.1"
@@ -43,7 +43,7 @@ func TestDecisionCache(t *testing.T) {
 }
 
 func TestCaptchaCache(t *testing.T) {
-	c := New[time.Time]()
+	c := New[string, time.Time]()
 	assert.Equal(t, 0, c.Size(), "expected empty cache")
 
 	ip := "192.168.1.1"
@@ -63,7 +63,7 @@ func TestCaptchaCache(t *testing.T) {
 }
 
 func TestCacheKeys(t *testing.T) {
-	c := New[string]()
+	c := New[string, string]()
 	assert.Empty(t, c.Keys(), "expected no keys in empty cache")
 
 	c.Set("key1", "value1")
@@ -86,27 +86,27 @@ func TestCacheKeys(t *testing.T) {
 
 func TestWithCleanupInterval(t *testing.T) {
 	interval := 10 * time.Minute
-	c := New(WithCleanupInterval[string](interval))
+	c := New(WithCleanupInterval[string, string](interval))
 
 	assert.Equal(t, interval, c.cleanupInterval, "expected cleanup interval to be set")
 }
 
 func TestNewWithNoCleanupInterval(t *testing.T) {
-	c := New[string]()
+	c := New[string, string]()
 
 	assert.Equal(t, time.Duration(0), c.cleanupInterval, "expected no cleanup interval by default")
 }
 
 func TestNewWithMultipleOptions(t *testing.T) {
 	interval := 2 * time.Minute
-	c := New(WithCleanupInterval[string](interval))
+	c := New(WithCleanupInterval[string, string](interval))
 
 	assert.Equal(t, interval, c.cleanupInterval, "expected cleanup interval to be set")
 	assert.NotNil(t, c.entries, "expected entries map to be initialized")
 }
 
 func TestCleanup(t *testing.T) {
-	c := New(WithCleanupInterval[time.Time](100 * time.Millisecond))
+	c := New(WithCleanupInterval[string, time.Time](100 * time.Millisecond))
 
 	now := time.Now()
 	pastTime := now.Add(-time.Hour)
@@ -136,7 +136,7 @@ func TestCleanup(t *testing.T) {
 }
 
 func TestCleanupContextCancellation(t *testing.T) {
-	c := New(WithCleanupInterval[string](50 * time.Millisecond))
+	c := New(WithCleanupInterval[string, string](50 * time.Millisecond))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -215,7 +215,7 @@ func TestStartCleanup(t *testing.T) {
 }
 
 func TestStartCleanupWithNoCleanupFunc(t *testing.T) {
-	c := New(WithCleanupInterval[string](100 * time.Millisecond))
+	c := New(WithCleanupInterval[string, string](100 * time.Millisecond))
 
 	c.Set("key1", "value1")
 	c.Set("key2", "value2")

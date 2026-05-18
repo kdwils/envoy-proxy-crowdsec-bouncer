@@ -443,7 +443,7 @@ func TestMetricsService_Calculate(t *testing.T) {
 	t.Run("calculates metrics with correct structure", func(t *testing.T) {
 		staticStartupTS := int64(1234567890)
 		collector := &MetricsService{
-			cache:       cache.New[Metric](),
+			cache:       cache.New[string, Metric](),
 			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
 			bouncerType: "envoy-proxy",
 			version:     "v1.0.0",
@@ -478,7 +478,7 @@ func TestMetricsService_Calculate(t *testing.T) {
 	t.Run("includes all metric details", func(t *testing.T) {
 		staticStartupTS := int64(1234567890)
 		collector := &MetricsService{
-			cache:       cache.New[Metric](),
+			cache:       cache.New[string, Metric](),
 			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
 			bouncerType: "envoy-proxy",
 			version:     "v1.0.0",
@@ -510,7 +510,7 @@ func TestMetricsService_Calculate(t *testing.T) {
 	t.Run("handles empty metrics", func(t *testing.T) {
 		staticStartupTS := int64(1234567890)
 		collector := &MetricsService{
-			cache:       cache.New[Metric](),
+			cache:       cache.New[string, Metric](),
 			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
 			bouncerType: "envoy-proxy",
 			version:     "v1.0.0",
@@ -533,7 +533,7 @@ func TestMetricsService_Calculate(t *testing.T) {
 	t.Run("startup timestamp remains constant across multiple Calculate calls", func(t *testing.T) {
 		staticStartupTS := int64(1234567890)
 		collector := &MetricsService{
-			cache:       cache.New[Metric](),
+			cache:       cache.New[string, Metric](),
 			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
 			bouncerType: "envoy-proxy",
 			version:     "v1.0.0",
