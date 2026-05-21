@@ -271,11 +271,6 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				}
 			}
 
-			var cidrs *bart.Table[models.Decision]
-			if cidrChanged {
-				cidrs = dc.buildIndex(ctx)
-			}
-
 			originCounts := dc.GetOriginCounts()
 
 			for origin, count := range originCounts {
@@ -295,8 +290,9 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 
 			dc.mu.Lock()
 			if cidrChanged {
-				dc.cidrs = cidrs
+				dc.cidrs = dc.buildIndex(ctx)
 			}
+
 			if !dc.syncComplete {
 				dc.syncComplete = true
 				dc.prom.SetLAPIStreamConnected(true)
