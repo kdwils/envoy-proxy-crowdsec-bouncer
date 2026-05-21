@@ -163,7 +163,7 @@ spec:
 
 ### Request Body Forwarding
 
-By default, Envoy does not forward the request body to the external authorization service. To enable WAF inspection of POST payloads (e.g., SQL injection, XSS in JSON bodies), you must configure `bodyToExtAuth`:
+By default, Envoy does not forward the request body to the external authorization service. To enable WAF inspection of POST payloads (e.g., SQL injection, XSS in JSON bodies), you must configure [`bodyToExtAuth`](https://gateway.envoyproxy.io/latest/api/extension_types/#bodytoextauth):
 
 ```yaml
 apiVersion: gateway.envoyproxy.io/v1alpha1
