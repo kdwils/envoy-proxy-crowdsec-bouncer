@@ -495,9 +495,9 @@ func TestMetricsService_Calculate(t *testing.T) {
 
 		got := items[0]
 		want := &models.MetricsDetailItem{
-			Name:   ptr("decisions_applied"),
-			Unit:   ptr("count"),
-			Value:  ptr(float64(1)),
+			Name:   new("decisions_applied"),
+			Unit:   new("count"),
+			Value:  new(float64(1)),
 			Labels: map[string]string{"origin": "capi", "type": "ban"},
 		}
 		assert.Equal(t, want, got)

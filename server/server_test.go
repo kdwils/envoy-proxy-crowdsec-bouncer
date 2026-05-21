@@ -67,12 +67,12 @@ func TestServer_Check(t *testing.T) {
 		defer ctrl.Finish()
 
 		decision := &models.Decision{
-			Type:     strPtr("ban"),
-			Scenario: strPtr("crowdsecurity/http-bad"),
-			Origin:   strPtr("CAPI"),
-			Duration: strPtr("1h"),
-			Scope:    strPtr("Ip"),
-			Value:    strPtr("192.0.2.1"),
+			Type:     new("ban"),
+			Scenario: new("crowdsecurity/http-bad"),
+			Origin:   new("CAPI"),
+			Duration: new("1h"),
+			Scope:    new("Ip"),
+			Value:    new("192.0.2.1"),
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
@@ -234,12 +234,12 @@ func TestServer_Check(t *testing.T) {
 		defer ctrl.Finish()
 
 		decision := &models.Decision{
-			Type:     strPtr("ban"),
-			Scenario: strPtr("crowdsecurity/http-bad"),
-			Origin:   strPtr("CAPI"),
-			Duration: strPtr("1h"),
-			Scope:    strPtr("Ip"),
-			Value:    strPtr("192.0.2.1"),
+			Type:     new("ban"),
+			Scenario: new("crowdsecurity/http-bad"),
+			Origin:   new("CAPI"),
+			Duration: new("1h"),
+			Scope:    new("Ip"),
+			Value:    new("192.0.2.1"),
 		}
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
@@ -923,6 +923,7 @@ func findHeader(headers []*core.HeaderValueOption, key string) (string, bool) {
 	return "", false
 }
 
+//go:fix inline
 func strPtr(s string) *string {
-	return &s
+	return new(s)
 }

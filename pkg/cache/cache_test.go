@@ -11,8 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//go:fix inline
 func ptr[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 func TestDecisionCache(t *testing.T) {
@@ -22,11 +23,11 @@ func TestDecisionCache(t *testing.T) {
 	ip := "192.168.1.1"
 	decision := models.Decision{
 		ID:       1,
-		Origin:   ptr("test"),
-		Type:     ptr("ban"),
+		Origin:   new("test"),
+		Type:     new("ban"),
 		Value:    &ip,
-		Duration: ptr(time.Hour.String()),
-		Scenario: ptr("test"),
+		Duration: new(time.Hour.String()),
+		Scenario: new("test"),
 	}
 	c.Set(ip, decision)
 	assert.Equal(t, 1, c.Size(), "expected cache size 1 after Set")

@@ -49,8 +49,9 @@ type CaptchaService interface {
 	StartCleanup(ctx context.Context)
 }
 
+//go:fix inline
 func ptr[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 type Bouncer struct {

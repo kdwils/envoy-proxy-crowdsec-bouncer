@@ -319,7 +319,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	t.Run("Test Bouncer non-banned", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(0), check.Status.Code)
@@ -328,7 +328,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	t.Run("Test banned decision", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/testing", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(403), check.Status.Code)
@@ -339,7 +339,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 			"x-forwarded-for": "192.168.1.100,10.0.0.1",
 		}))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(403), check.Status.Code)
@@ -364,7 +364,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 		time.Sleep(2 * time.Second)
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(0), check.Status.Code)
@@ -375,16 +375,54 @@ func testBouncerWithVersion(t *testing.T, image string) {
 			"x-forwarded-for": "192.168.1.100,10.0.0.1",
 		}))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(403), check.Status.Code)
 	})
 
+	t.Run("ipv4 cidr range ban", func(t *testing.T) {
+		_, _, err = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "add", "--range", "10.0.0.0/8",
+		})
+		require.NoError(t, err, "failed to add ipv4 cidr decision")
+
+		time.Sleep(2 * time.Second)
+
+		req := createCheckRequest("10.50.100.200", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := client.Check(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(403), check.Status.Code, "expected IP within CIDR range to be banned")
+	})
+
+	t.Run("ipv4 cidr range outside not banned", func(t *testing.T) {
+		req := createCheckRequest("172.16.0.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := client.Check(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(0), check.Status.Code, "expected IP outside CIDR range to be allowed")
+	})
+
+	t.Run("ipv4 cidr range delete allows traffic", func(t *testing.T) {
+		_, _, err = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "delete", "--range", "10.0.0.0/8",
+		})
+		require.NoError(t, err, "failed to delete ipv4 cidr decision")
+
+		time.Sleep(2 * time.Second)
+
+		req := createCheckRequest("10.50.100.200", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := client.Check(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(0), check.Status.Code, "expected IP to be allowed after CIDR deletion")
+	})
+
 	t.Run("Test captcha decision with disabled captcha service", func(t *testing.T) {
 		req := createCheckRequest("192.168.2.100", createHttpRequest("GET", "/protected", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 
 		require.NotNil(t, check.HttpResponse)
@@ -396,11 +434,11 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 		bypassMetric, ok := snapshot["CAPI:bypass"]
 		require.True(t, ok, "expected CAPI:bypass metric to exist")
-		require.Equal(t, int64(3), bypassMetric.Value)
+		require.Equal(t, int64(5), bypassMetric.Value)
 
 		banMetric, ok := snapshot["CAPI:ban"]
 		require.True(t, ok, "expected CAPI:ban metric to exist")
-		require.Equal(t, int64(3), banMetric.Value)
+		require.Equal(t, int64(4), banMetric.Value)
 
 		originCounts := bouncer.DecisionCache.GetOriginCounts()
 		require.NotEmpty(t, originCounts, "should have active decisions")
@@ -408,8 +446,8 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		require.Equal(t, 0, originCounts["cscli"], "should have 0 decision from cscli origin after deletion")
 
 		metrics := recorder.GetMetrics()
-		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 3 allowed requests")
-		assert.Equal(t, float64(3), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 3 banned requests")
+		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 5 allowed requests")
+		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 4 banned requests")
 	})
 }
 
@@ -668,7 +706,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 
 		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(302), check.Status.Code)
@@ -715,7 +753,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	t.Run("Test WAF trigger captcha flow", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.1", createHttpRequest("GET", "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(302), check.Status.Code)
@@ -743,7 +781,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	t.Run("Test non-captcha decision allows through", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.200", createHttpRequest("GET", "/testing", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(0), check.Status.Code)
@@ -772,7 +810,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	t.Run("Test IP mismatch during verification", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected-ip-test", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(302), check.Status.Code)
@@ -809,7 +847,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	t.Run("Test rate limiting on captcha endpoints", func(t *testing.T) {
 		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected-ratelimit-test", "my-host.com", nil))
 
-		check, err := client.Check(context.TODO(), req)
+		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
 		require.NotNil(t, check.HttpResponse)
 		require.Equal(t, int32(302), check.Status.Code)

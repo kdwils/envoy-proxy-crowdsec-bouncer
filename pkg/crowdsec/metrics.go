@@ -178,9 +178,9 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 
 	for _, metric := range currentMetrics {
 		items = append(items, &models.MetricsDetailItem{
-			Name:   ptr(metric.Name),
-			Unit:   ptr(metric.Unit),
-			Value:  ptr(float64(metric.Value)),
+			Name:   new(metric.Name),
+			Unit:   new(metric.Unit),
+			Value:  new(float64(metric.Value)),
 			Labels: metric.Labels,
 		})
 	}
@@ -265,6 +265,7 @@ func (mc *MetricsService) Run(ctx context.Context, interval time.Duration) error
 	}
 }
 
+//go:fix inline
 func ptr[T any](v T) *T {
-	return &v
+	return new(v)
 }
