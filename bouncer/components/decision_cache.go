@@ -187,7 +187,7 @@ func (dc *DecisionCache) buildIndex(ctx context.Context) *bart.Table[models.Deci
 			continue
 		}
 
-		if !strings.Contains(value, "/") {
+		if !isScope(decision, "Range") {
 			continue
 		}
 
@@ -239,6 +239,8 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				continue
 			}
 
+			cidrChanged := false
+
 			for _, decision := range d.Deleted {
 				if decision == nil || decision.Value == nil {
 					continue
@@ -248,6 +250,9 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 				dc.decisions.Delete(*decision.Value)
 				if decision.Origin != nil {
 					dc.prom.IncLAPIDecisionsDeletedTotal(*decision.Origin)
+				}
+				if isScope(*decision, "Range") {
+					cidrChanged = true
 				}
 			}
 
@@ -261,9 +266,15 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 					dc.knownOrigins.Set(*decision.Origin, struct{}{})
 					dc.prom.IncLAPIDecisionsAddedTotal(*decision.Origin)
 				}
+				if isScope(*decision, "Range") {
+					cidrChanged = true
+				}
 			}
 
-			cidrs := dc.buildIndex(ctx)
+			var cidrs *bart.Table[models.Decision]
+			if cidrChanged {
+				cidrs = dc.buildIndex(ctx)
+			}
 
 			originCounts := dc.GetOriginCounts()
 
@@ -283,7 +294,9 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 			dc.prom.SetLAPILastSyncTimestamp()
 
 			dc.mu.Lock()
-			dc.cidrs = cidrs
+			if cidrChanged {
+				dc.cidrs = cidrs
+			}
 			if !dc.syncComplete {
 				dc.syncComplete = true
 				dc.prom.SetLAPIStreamConnected(true)
@@ -292,4 +305,8 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 			dc.mu.Unlock()
 		}
 	}
+}
+
+func isScope(decision models.Decision, scope string) bool {
+	return decision.Scope != nil && *decision.Scope == scope
 }

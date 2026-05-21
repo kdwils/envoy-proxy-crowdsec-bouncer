@@ -101,7 +101,7 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 			decisions: cache.New[string, models.Decision](),
 			mu:        &sync.RWMutex{},
 		}
-		want := models.Decision{Value: new("10.0.0.0/8"), Type: new("ban")}
+		want := models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")}
 		dc.decisions.Set("10.0.0.0/8", want)
 		dc.cidrs = dc.buildIndex(ctx)
 
@@ -116,7 +116,7 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 			decisions: cache.New[string, models.Decision](),
 			mu:        &sync.RWMutex{},
 		}
-		want := models.Decision{Value: new("2001:db8::/32"), Type: new("ban")}
+		want := models.Decision{Value: new("2001:db8::/32"), Type: new("ban"), Scope: new("Range")}
 		dc.decisions.Set("2001:db8::/32", want)
 		dc.cidrs = dc.buildIndex(ctx)
 
@@ -131,7 +131,7 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 			decisions: cache.New[string, models.Decision](),
 			mu:        &sync.RWMutex{},
 		}
-		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban")})
+		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
 		dc.cidrs = dc.buildIndex(ctx)
 
 		got, err := dc.GetDecision(ctx, "172.16.0.1")
@@ -144,8 +144,8 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 			decisions: cache.New[string, models.Decision](),
 			mu:        &sync.RWMutex{},
 		}
-		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban")})
-		want := models.Decision{Value: new("10.0.0.50"), Type: new("captcha")}
+		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
+		want := models.Decision{Value: new("10.0.0.50"), Type: new("captcha"), Scope: new("Ip")}
 		dc.decisions.Set("10.0.0.50", want)
 		dc.cidrs = dc.buildIndex(ctx)
 
@@ -160,8 +160,8 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 			decisions: cache.New[string, models.Decision](),
 			mu:        &sync.RWMutex{},
 		}
-		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban")})
-		want := models.Decision{Value: new("10.1.0.0/16"), Type: new("captcha")}
+		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
+		want := models.Decision{Value: new("10.1.0.0/16"), Type: new("captcha"), Scope: new("Range")}
 		dc.decisions.Set("10.1.0.0/16", want)
 		dc.cidrs = dc.buildIndex(ctx)
 
@@ -229,13 +229,13 @@ func makeDecisions(count int, cidrRatio float64) *DecisionCache {
 	cidrCount := int(float64(count) * cidrRatio)
 	for i := 0; i < count-cidrCount; i++ {
 		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
-		dec := models.Decision{Value: new(ip), Type: new("ban")}
+		dec := models.Decision{Value: new(ip), Type: new("ban"), Scope: new("Ip")}
 		dc.decisions.Set(ip, dec)
 	}
 
 	for i := range cidrCount {
 		cidr := fmt.Sprintf("172.%d.0.0/16", i%256)
-		dec := models.Decision{Value: new(cidr), Type: new("ban")}
+		dec := models.Decision{Value: new(cidr), Type: new("ban"), Scope: new("Range")}
 		dc.decisions.Set(cidr, dec)
 	}
 
