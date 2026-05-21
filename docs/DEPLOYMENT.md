@@ -177,8 +177,8 @@ By default, Envoy does not forward the request body to the external authorizatio
        kind: HTTPRoute
        name: plex
    extAuth:
-++   bodyToExtAuth:
-++     maxRequestBytes: 65536
++    bodyToExtAuth:
++      maxRequestBytes: 65536
      grpc:
        backendRefs:
          - group: ""
