@@ -251,39 +251,47 @@ func makeDecisions(count int, cidrRatio float64) *DecisionCache {
 func BenchmarkGetDecision_ExactIP_1k(b *testing.B) {
 	dc := makeDecisions(1000, 0)
 	ctx := context.Background()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
-		dc.GetDecision(ctx, ip)
+	ips := make([]string, 1000)
+	for i := range ips {
+		ips[i] = fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
+	}
+	for i := 0; b.Loop(); i++ {
+		dc.GetDecision(ctx, ips[i%1000])
 	}
 }
 
 func BenchmarkGetDecision_ExactIP_10k(b *testing.B) {
 	dc := makeDecisions(10000, 0)
 	ctx := context.Background()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
-		dc.GetDecision(ctx, ip)
+	ips := make([]string, 10000)
+	for i := range ips {
+		ips[i] = fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
+	}
+	for i := 0; b.Loop(); i++ {
+		dc.GetDecision(ctx, ips[i%10000])
 	}
 }
 
 func BenchmarkGetDecision_CIDR_1k(b *testing.B) {
 	dc := makeDecisions(1000, 0.5)
 	ctx := context.Background()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		ip := fmt.Sprintf("172.%d.5.5", i%256)
-		dc.GetDecision(ctx, ip)
+	ips := make([]string, 256)
+	for i := range ips {
+		ips[i] = fmt.Sprintf("172.%d.5.5", i)
+	}
+	for i := 0; b.Loop(); i++ {
+		dc.GetDecision(ctx, ips[i%256])
 	}
 }
 
 func BenchmarkGetDecision_Mixed_10k(b *testing.B) {
 	dc := makeDecisions(10000, 0.3)
 	ctx := context.Background()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
-		dc.GetDecision(ctx, ip)
+	ips := make([]string, 10000)
+	for i := range ips {
+		ips[i] = fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
+	}
+	for i := 0; b.Loop(); i++ {
+		dc.GetDecision(ctx, ips[i%10000])
 	}
 }
