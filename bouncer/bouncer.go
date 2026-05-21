@@ -49,11 +49,6 @@ type CaptchaService interface {
 	StartCleanup(ctx context.Context)
 }
 
-//go:fix inline
-func ptr[T any](v T) *T {
-	return new(v)
-}
-
 type Bouncer struct {
 	DecisionCache      DecisionCache
 	WAF                WAF

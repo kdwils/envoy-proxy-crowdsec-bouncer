@@ -11,11 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:fix inline
-func ptr[T any](v T) *T {
-	return new(v)
-}
-
 func TestDecisionCache(t *testing.T) {
 	c := New[string, models.Decision]()
 	assert.Equal(t, 0, c.Size(), "expected empty cache")

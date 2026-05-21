@@ -12,11 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:fix inline
-func ptr[T any](v T) *T {
-	return new(v)
-}
-
 func TestDecisionCache_GetDecision(t *testing.T) {
 	ctx := context.Background()
 

@@ -264,8 +264,3 @@ func (mc *MetricsService) Run(ctx context.Context, interval time.Duration) error
 		}
 	}
 }
-
-//go:fix inline
-func ptr[T any](v T) *T {
-	return new(v)
-}

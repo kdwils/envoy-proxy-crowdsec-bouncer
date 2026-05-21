@@ -923,7 +923,3 @@ func findHeader(headers []*core.HeaderValueOption, key string) (string, bool) {
 	return "", false
 }
 
-//go:fix inline
-func strPtr(s string) *string {
-	return new(s)
-}
