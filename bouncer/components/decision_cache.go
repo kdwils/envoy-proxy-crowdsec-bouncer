@@ -198,9 +198,13 @@ func (dc *DecisionCache) buildIndex(ctx context.Context) *bart.Table[models.Deci
 		}
 
 		prefix = prefix.Masked()
-		addr := prefix.Addr().Unmap()
-		if addr != prefix.Addr() {
-			prefix = netip.PrefixFrom(addr, prefix.Bits()-96)
+
+		if prefix.Addr().Is4In6() {
+			if prefix.Bits() < 96 {
+				logger.Warn("skipping invalid mapped cidr", slog.String("value", value))
+				continue
+			}
+			prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
 		}
 
 		if prefix.Bits() == prefix.Addr().BitLen() {
