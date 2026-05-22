@@ -161,6 +161,35 @@ spec:
           namespace: envoy-gateway-system
 ```
 
+### Request Body Forwarding
+
+By default, Envoy does not forward the request body to the external authorization service. To enable WAF inspection of POST payloads (e.g., SQL injection, XSS in JSON bodies), you must configure [`bodyToExtAuth`](https://gateway.envoyproxy.io/latest/api/extension_types/#bodytoextauth):
+
+```diff
+ apiVersion: gateway.envoyproxy.io/v1alpha1
+ kind: SecurityPolicy
+ metadata:
+   name: media-security
+   namespace: media
+ spec:
+   targetRefs:
+     - group: gateway.networking.k8s.io
+       kind: HTTPRoute
+       name: plex
+   extAuth:
++    bodyToExtAuth:
++      maxRequestBytes: 65536
+     grpc:
+       backendRefs:
+         - group: ""
+           kind: Service
+           name: envoy-proxy-bouncer
+           port: 8080
+           namespace: envoy-gateway-system
+```
+
+The `maxRequestBytes` field controls the maximum body size Envoy will buffer and forward. A value of `65536` (64KB) covers most API requests and form submissions while keeping memory usage manageable. Without this configuration, the WAF can only inspect URL-based attacks (query strings, paths) and will miss attacks embedded in request bodies.
+
 ### ReferenceGrant Configuration
 
 When SecurityPolicies reference services in different namespaces, a ReferenceGrant is required.
