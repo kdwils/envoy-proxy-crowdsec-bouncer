@@ -155,7 +155,7 @@ type CaptchaService struct {
 	RequestTimeout time.Duration
 	nowFunc        func() time.Time
 	jwt            *JWTManager
-	challengeCache *cache.Cache[ChallengeClaims]
+	challengeCache *cache.Cache[string, ChallengeClaims]
 	prom           *recorder.Recorder
 }
 
@@ -193,7 +193,7 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient, prom *recorder
 		prom:           prom,
 	}
 
-	service.challengeCache = cache.New[ChallengeClaims](
+	service.challengeCache = cache.New[string, ChallengeClaims](
 		cache.WithCleanup(time.Minute, func(key string, value ChallengeClaims) bool {
 			expired := value.ExpiresAt.Time.Before(time.Now())
 			if expired {

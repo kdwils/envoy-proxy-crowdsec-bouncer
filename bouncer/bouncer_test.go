@@ -596,7 +596,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		req := mkReq("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(&models.Decision{Type: ptr("ban")}, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(&models.Decision{Type: new("ban")}, nil)
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
@@ -605,7 +605,7 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:      "crowdsec ban",
 			HTTPStatus:  403,
 			RedirectURL: "",
-			Decision:    &models.Decision{Type: ptr("ban")},
+			Decision:    &models.Decision{Type: new("ban")},
 			ParsedRequest: &ParsedRequest{
 				IP:         "1.2.3.4",
 				RealIP:     "1.2.3.4",
@@ -666,7 +666,7 @@ func TestBouncer_Check(t *testing.T) {
 
 		req := mkReq("2.2.2.2", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban"), Scenario: ptr("crowdsecurity/test"), Origin: ptr("CAPI"), Duration: ptr("1h"), Scope: ptr("Ip"), Value: ptr("2.2.2.2")}, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: new("ban"), Scenario: new("crowdsecurity/test"), Origin: new("CAPI"), Duration: new("1h"), Scope: new("Ip"), Value: new("2.2.2.2")}, nil)
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
@@ -675,7 +675,7 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:      "crowdsecurity/test",
 			HTTPStatus:  403,
 			RedirectURL: "",
-			Decision:    &models.Decision{Type: ptr("ban"), Scenario: ptr("crowdsecurity/test"), Origin: ptr("CAPI"), Duration: ptr("1h"), Scope: ptr("Ip"), Value: ptr("2.2.2.2")},
+			Decision:    &models.Decision{Type: new("ban"), Scenario: new("crowdsecurity/test"), Origin: new("CAPI"), Duration: new("1h"), Scope: new("Ip"), Value: new("2.2.2.2")},
 			ParsedRequest: &ParsedRequest{
 				IP:         "2.2.2.2",
 				RealIP:     "2.2.2.2",
@@ -1190,7 +1190,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 
 		req := mkReq("2.2.2.2", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: ptr("ban")}, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(&models.Decision{Type: new("ban")}, nil)
 
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
@@ -1198,7 +1198,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Action:     "ban",
 			Reason:     "crowdsec ban",
 			HTTPStatus: 403,
-			Decision:   &models.Decision{Type: ptr("ban")},
+			Decision:   &models.Decision{Type: new("ban")},
 			ParsedRequest: &ParsedRequest{
 				IP:         "2.2.2.2",
 				RealIP:     "2.2.2.2",
@@ -1693,7 +1693,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		r := Bouncer{DecisionCache: mb, WAF: mw, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
 		req := mkReq("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
-		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: ptr("captcha")}, nil)
+		mb.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(&models.Decision{Type: new("captcha")}, nil)
 		mc.EXPECT().IsEnabled().Return(true)
 		mc.EXPECT().CookieName().Return("session")
 		mc.EXPECT().CreateSession("15.15.15.15", "https://example.com/test", "").Return(&components.CaptchaSession{
@@ -1707,7 +1707,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Reason:      "captcha required",
 			HTTPStatus:  302,
 			RedirectURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
-			Decision:    &models.Decision{Type: ptr("captcha")},
+			Decision:    &models.Decision{Type: new("captcha")},
 			ParsedRequest: &ParsedRequest{
 				IP:         "15.15.15.15",
 				RealIP:     "15.15.15.15",

@@ -458,12 +458,12 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		prom := recorder.NewNoOp()
 		cfg := config.Captcha{
-			Enabled:                 true,
-			Provider:                "recaptcha",
-			SecretKey:               "test",
-			SigningKey:              "test-signing-key-that-is-at-least-32-bytes-long",
-			SessionDuration:         1 * time.Hour,
-			ChallengeDuration:       5 * time.Minute,
+			Enabled:                          true,
+			Provider:                         "recaptcha",
+			SecretKey:                        "test",
+			SigningKey:                       "test-signing-key-that-is-at-least-32-bytes-long",
+			SessionDuration:                  1 * time.Hour,
+			ChallengeDuration:                5 * time.Minute,
 			DisableChallengeReplayProtection: true,
 		}
 		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
