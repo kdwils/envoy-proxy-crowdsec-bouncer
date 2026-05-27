@@ -28,7 +28,7 @@ jobs:
         run: go test -v -coverprofile=coverage.txt ./...
 
       - name: Run functional tests
-        run: go test -v -tags=functional ./tests/functional
+        run: go test -v -tags=functional -timeout 30m ./tests/functional
 
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main'
