@@ -132,21 +132,13 @@ func TestServer_Check(t *testing.T) {
 			HTTPStatus: 500,
 		})
 
-		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-
 		rec := recorder.NewNoOp()
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
 
-		assert.NoError(t, err)
-		assert.Equal(t, int32(500), resp.Status.Code)
-		deny := resp.GetDeniedResponse()
-		if assert.NotNil(t, deny) {
-			assert.Contains(t, deny.Body, "test error")
-			value, ok := findHeader(deny.Headers, "Content-Type")
-			assert.True(t, ok)
-			assert.Equal(t, "text/plain; charset=utf-8", value)
-		}
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "test error")
 	})
 
 	t.Run("request blocked", func(t *testing.T) {
@@ -323,20 +315,12 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 			HTTPStatus: 500,
 		})
 
-		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-
 		rec := recorder.NewNoOp()
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
-		assert.NoError(t, err)
-		assert.Equal(t, int32(500), resp.Status.Code)
-		deny := resp.GetDeniedResponse()
-		if assert.NotNil(t, deny) {
-			assert.Contains(t, deny.Body, "remediator error")
-			value, ok := findHeader(deny.Headers, "Content-Type")
-			assert.True(t, ok)
-			assert.Equal(t, "text/plain; charset=utf-8", value)
-		}
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "remediator error")
 	})
 
 	t.Run("remediator returns ban", func(t *testing.T) {
@@ -462,14 +446,12 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 			HTTPStatus: 500,
 		})
 
-		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-
 		rec := recorder.NewNoOp()
-		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
-		assert.NoError(t, err)
-		assert.Equal(t, int32(envoy_type.StatusCode_InternalServerError), resp.Status.Code)
-		assert.Contains(t, resp.GetDeniedResponse().Body, "unknown action")
+		assert.Error(t, err)
+		assert.Nil(t, resp)
+		assert.Contains(t, err.Error(), "unknown action")
 	})
 
 	t.Run("show denied page disabled returns reason without template", func(t *testing.T) {
@@ -922,4 +904,3 @@ func findHeader(headers []*core.HeaderValueOption, key string) (string, bool) {
 	}
 	return "", false
 }
-
