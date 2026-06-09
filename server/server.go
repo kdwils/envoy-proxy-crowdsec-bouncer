@@ -23,11 +23,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/genproto/googleapis/rpc/status"
+	rpc_status "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -418,9 +420,10 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		body, headers := s.renderDeniedResponse(result)
 		return getDeniedResponse(httpStatusToEnvoyStatus(result.HTTPStatus), body, headers), nil
 	case "error":
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, result.Reason, map[string]string{"Content-Type": s.config.Templates.DeniedTemplateHeaders}), nil
+		s.logger.Error("failed to evaluate request", "ip", result.IP, "action", result.Action, "reason", result.Reason)
+		return nil, status.Error(codes.Unavailable, result.Reason)
 	default:
-		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, "unknown action", map[string]string{"Content-Type": s.config.Templates.DeniedTemplateHeaders}), nil
+		return nil, status.Error(codes.Internal, "unknown action")
 	}
 }
 
@@ -504,7 +507,7 @@ func httpStatusToEnvoyStatus(httpStatus int) envoy_type.StatusCode {
 
 func getAllowedResponse() *auth.CheckResponse {
 	return &auth.CheckResponse{
-		Status: &status.Status{
+		Status: &rpc_status.Status{
 			Code: 0,
 		},
 		HttpResponse: &auth.CheckResponse_OkResponse{},
@@ -513,7 +516,7 @@ func getAllowedResponse() *auth.CheckResponse {
 
 func getDeniedResponse(code envoy_type.StatusCode, body string, headers map[string]string) *auth.CheckResponse {
 	return &auth.CheckResponse{
-		Status: &status.Status{
+		Status: &rpc_status.Status{
 			Code: int32(code),
 		},
 		HttpResponse: &auth.CheckResponse_DeniedResponse{
@@ -530,7 +533,7 @@ func getDeniedResponse(code envoy_type.StatusCode, body string, headers map[stri
 
 func getRedirectResponse(location string) *auth.CheckResponse {
 	return &auth.CheckResponse{
-		Status: &status.Status{
+		Status: &rpc_status.Status{
 			Code: int32(envoy_type.StatusCode_Found),
 		},
 		HttpResponse: &auth.CheckResponse_DeniedResponse{
