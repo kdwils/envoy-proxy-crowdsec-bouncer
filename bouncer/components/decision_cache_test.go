@@ -420,81 +420,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	})
 }
 
-func TestCrowdSecDecisionCache_GetDecision(t *testing.T) {
-	testCache := cache.New[string, models.Decision]()
-	decision := models.Decision{
-		Value: ptr("192.168.1.100"),
-		Type:  ptr("ban"),
-	}
-	testCache.Set("192.168.1.100", decision)
-
-	type fields struct {
-		stream    *csbouncer.StreamBouncer
-		decisions *cache.Cache[string, models.Decision]
-		mu        *sync.RWMutex
-	}
-	type args struct {
-		ctx context.Context
-		ip  string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *models.Decision
-		wantErr bool
-	}{
-		{
-			name: "empty ip",
-			fields: fields{
-				decisions: testCache,
-				mu:        &sync.RWMutex{},
-			},
-			args: args{
-				ctx: context.Background(),
-				ip:  "",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "nil cache",
-			fields: fields{
-				mu: &sync.RWMutex{},
-			},
-			args: args{
-				ctx: context.Background(),
-				ip:  "192.168.1.1",
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "decision found in cache",
-			fields: fields{
-				decisions: testCache,
-				mu:        &sync.RWMutex{},
-			},
-			args: args{
-				ctx: context.Background(),
-				ip:  "192.168.1.100",
-			},
-			want:    &decision,
-			wantErr: false,
-		},
-		{
-			name: "decision not found in cache",
-			fields: fields{
-				decisions: testCache,
-				mu:        &sync.RWMutex{},
-			},
-			args: args{
-				ctx: context.Background(),
-				ip:  "192.168.1.99",
-			},
-			want:    nil,
-			wantErr: false,
-		},
+func makeDecisions(count int, cidrRatio float64) *DecisionCache {
+	dc := &DecisionCache{
+		decisions: cache.New[string, models.Decision](),
+		mu:        &sync.RWMutex{},
 	}
 
 	cidrCount := int(float64(count) * cidrRatio)
