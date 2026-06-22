@@ -67,9 +67,8 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    # New Features
+    # Bugfix
 
-    ### New CrowdSec version supported
-    This version bumps go packages and images used for testing to CrowdSec version v1.7.7.
+    The bouncer now returns a grpc error during internal server errors instead of an explicit denied so that openFail policies are respected
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
