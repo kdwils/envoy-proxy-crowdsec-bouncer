@@ -54,6 +54,7 @@ type Bouncer struct {
 	WAF                WAF
 	CaptchaService     CaptchaService
 	TrustedProxies     []*net.IPNet
+	TrustedIPHeader    string
 	MetricsService     *crowdsec.MetricsService
 	PrometheusRecorder *recorder.Recorder
 	config             config.Config
@@ -67,6 +68,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	bouncer := &Bouncer{
 		TrustedProxies:     trustedProxies,
+		TrustedIPHeader:    cfg.TrustedIPHeader,
 		PrometheusRecorder: recorder,
 		config:             cfg,
 	}
@@ -177,12 +179,29 @@ func (b *Bouncer) ExtractRealIPFromHTTP(r *http.Request) string {
 	}
 
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ExtractRealIP(host, headers, b.TrustedProxies)
+	return ExtractRealIP(host, headers, b.TrustedProxies, b.TrustedIPHeader)
 }
 
 // ExtractRealIP determines the real client IP from headers and socket address, matching bouncer logic.
 // Headers are checked case-insensitively to handle both normalized and original casing.
-func ExtractRealIP(ip string, headers map[string]string, trustedProxies []*net.IPNet) string {
+//
+// If trustedIPHeader is set, it is checked first and, if present with a valid IP, returned
+// directly - no X-Forwarded-For parsing or trustedProxies matching involved. This is for
+// deployments where an upstream proxy (e.g. an Envoy edge gateway with numTrustedProxies
+// configured) has already resolved the real client IP itself and stamped it into a single,
+// dedicated header (e.g. X-Envoy-External-Address), so the bouncer doesn't need its own
+// external-proxy IP-range allowlist to re-derive the same answer. Falls back to the existing
+// X-Forwarded-For/X-Real-IP/trustedProxies logic if the header is unset or absent from the
+// request, so this is fully backward compatible.
+func ExtractRealIP(ip string, headers map[string]string, trustedProxies []*net.IPNet, trustedIPHeader string) string {
+	if trustedIPHeader != "" {
+		for k, v := range headers {
+			if strings.EqualFold(k, trustedIPHeader) && v != "" && isValidIP(v) {
+				return v
+			}
+		}
+	}
+
 	for k, v := range headers {
 		if strings.EqualFold(k, "x-forwarded-for") && v != "" {
 			ips := strings.Split(v, ",")
@@ -500,7 +519,7 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 
 	parsedRequest.Cookies = parseCookies(parsedRequest.Headers["cookie"])
 
-	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies)
+	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies, b.TrustedIPHeader)
 
 	url := url.URL{
 		Scheme: parsedRequest.Headers[":scheme"],

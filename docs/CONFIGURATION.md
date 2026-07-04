@@ -108,6 +108,7 @@ export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `trustedProxies` | []string | `[]` | List of trusted proxy IPs/CIDRs |
+| `trustedIPHeader` | string | `""` | Header name to read the real client IP from directly, bypassing `X-Forwarded-For`/`trustedProxies` entirely. See below. |
 
 ```yaml
 trustedProxies:
@@ -117,6 +118,20 @@ trustedProxies:
 
 ```bash
 export ENVOY_BOUNCER_TRUSTEDPROXIES=192.168.0.1,10.0.0.0/8
+```
+
+### `trustedIPHeader`
+
+If your edge proxy already resolves the real client IP itself and stamps it into a single, dedicated header - for example Envoy with `numTrustedProxies`/`use_remote_address` configured, which sets `X-Envoy-External-Address` - point `trustedIPHeader` at that header instead of listing every possible upstream proxy's IP ranges in `trustedProxies`. This avoids re-deriving an answer your edge proxy has already computed, and avoids having to track and update a separate CIDR allowlist for every reverse proxy (e.g. Cloudflare) that might sit in front of it.
+
+When set, this header is checked first: if present with a valid IP, that value is used directly, with no `X-Forwarded-For` parsing or `trustedProxies` matching involved. If the header is unset, absent from the request, or does not contain a valid IP, the bouncer falls back to the existing `X-Forwarded-For` / `X-Real-IP` / `trustedProxies` logic - fully backward compatible with existing deployments.
+
+```yaml
+trustedIPHeader: "X-Envoy-External-Address"
+```
+
+```bash
+export ENVOY_BOUNCER_TRUSTEDIPHEADER=X-Envoy-External-Address
 ```
 
 ## CAPTCHA

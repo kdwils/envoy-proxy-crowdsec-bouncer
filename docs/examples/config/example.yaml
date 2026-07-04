@@ -8,6 +8,13 @@ trustedProxies:
   - 172.16.0.0/12
   - 192.168.0.0/16
 
+# Optional: if an edge proxy in front of this bouncer already resolves the real
+# client IP and stamps it into its own header (e.g. Envoy with numTrustedProxies
+# set, via X-Envoy-External-Address), point trustedIPHeader at it instead of
+# expanding trustedProxies with that edge proxy's own IP ranges. Leave unset to
+# keep the trustedProxies-based X-Forwarded-For logic above.
+# trustedIPHeader: "X-Envoy-External-Address"
+
 bouncer:
   enabled: true
   apiKey: "<lapi-key>"
