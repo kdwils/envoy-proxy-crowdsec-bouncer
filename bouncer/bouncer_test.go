@@ -36,11 +36,12 @@ func TestExtractRealIP(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		ip             string
-		headers        map[string]string
-		trustedProxies []*net.IPNet
-		want           string
+		name            string
+		ip              string
+		headers         map[string]string
+		trustedProxies  []*net.IPNet
+		trustedIPHeader string
+		want            string
 	}{
 		{
 			name: "No headers, returns socket IP",
@@ -151,11 +152,64 @@ func TestExtractRealIP(t *testing.T) {
 			trustedProxies: nil,
 			want:           "1.2.3.4",
 		},
+		{
+			name: "trustedIPHeader set and present, used directly, bypassing x-forwarded-for entirely",
+			ip:   "1.2.3.4",
+			headers: map[string]string{
+				"x-envoy-external-address": "8.8.8.8",
+				"x-forwarded-for":          "9.9.9.9",
+			},
+			trustedProxies:  nil,
+			trustedIPHeader: "x-envoy-external-address",
+			want:            "8.8.8.8",
+		},
+		{
+			name: "trustedIPHeader set, case-insensitive match",
+			ip:   "1.2.3.4",
+			headers: map[string]string{
+				"X-Envoy-External-Address": "8.8.8.8",
+			},
+			trustedProxies:  nil,
+			trustedIPHeader: "x-envoy-external-address",
+			want:            "8.8.8.8",
+		},
+		{
+			name: "trustedIPHeader set but invalid IP, falls through to x-forwarded-for",
+			ip:   "1.2.3.4",
+			headers: map[string]string{
+				"x-envoy-external-address": "not-an-ip",
+				"x-forwarded-for":          "9.9.9.9",
+			},
+			trustedProxies:  nil,
+			trustedIPHeader: "x-envoy-external-address",
+			want:            "9.9.9.9",
+		},
+		{
+			name: "trustedIPHeader set but absent from request, falls through to x-forwarded-for",
+			ip:   "1.2.3.4",
+			headers: map[string]string{
+				"x-forwarded-for": "9.9.9.9",
+			},
+			trustedProxies:  nil,
+			trustedIPHeader: "x-envoy-external-address",
+			want:            "9.9.9.9",
+		},
+		{
+			name: "trustedIPHeader unset (default), x-envoy-external-address header ignored, x-forwarded-for used as before",
+			ip:   "1.2.3.4",
+			headers: map[string]string{
+				"x-envoy-external-address": "8.8.8.8",
+				"x-forwarded-for":          "9.9.9.9",
+			},
+			trustedProxies:  nil,
+			trustedIPHeader: "",
+			want:            "9.9.9.9",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ExtractRealIP(tt.ip, tt.headers, tt.trustedProxies)
+			got := ExtractRealIP(tt.ip, tt.headers, tt.trustedProxies, tt.trustedIPHeader)
 			if got != tt.want {
 				t.Errorf("ExtractRealIP() = %q, want %q", got, tt.want)
 			}
