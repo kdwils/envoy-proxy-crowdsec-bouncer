@@ -351,7 +351,7 @@ func TestIsTrustedProxy(t *testing.T) {
 	}
 }
 
-func TestParseProxyAddresses(t *testing.T) {
+func Test_parseIPNets(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []string
@@ -416,7 +416,7 @@ func TestParseProxyAddresses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseProxyAddresses(tt.input)
+			got, err := parseIPNets(tt.input)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error but got nil")

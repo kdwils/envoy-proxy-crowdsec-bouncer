@@ -62,12 +62,12 @@ type Bouncer struct {
 }
 
 func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
-	trustedProxies, err := parseProxyAddresses(cfg.TrustedProxies)
+	trustedProxies, err := parseIPNets(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
 	}
 
-	exemptIPs, err := parseProxyAddresses(cfg.ExemptIPs)
+	exemptIPs, err := parseIPNets(cfg.ExemptIPs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse exempt IPs list: %w", err)
 	}
@@ -312,20 +312,20 @@ func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *mode
 	}
 }
 
-func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
-	ipNets := make([]*net.IPNet, 0, len(trustedProxies))
-	for _, proxy := range trustedProxies {
-		if !strings.Contains(proxy, "/") {
-			if strings.Contains(proxy, ":") {
-				proxy = proxy + "/128"
+func parseIPNets(addresses []string) ([]*net.IPNet, error) {
+	ipNets := make([]*net.IPNet, 0, len(addresses))
+	for _, addr := range addresses {
+		if !strings.Contains(addr, "/") {
+			if strings.Contains(addr, ":") {
+				addr = addr + "/128"
 			} else {
-				proxy = proxy + "/32"
+				addr = addr + "/32"
 			}
 		}
 
-		_, ipNet, err := net.ParseCIDR(proxy)
+		_, ipNet, err := net.ParseCIDR(addr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid proxy address %s: %v", proxy, err)
+			return nil, fmt.Errorf("invalid address %s: %v", addr, err)
 		}
 		ipNets = append(ipNets, ipNet)
 	}
