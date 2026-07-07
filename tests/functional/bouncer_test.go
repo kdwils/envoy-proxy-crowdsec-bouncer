@@ -265,6 +265,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("exemptIPs", []string{"172.16.0.0/12"})
 	v.Set("captcha.enabled", false)
 
 	config, err := config.New(v)
@@ -448,6 +449,45 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		metrics := recorder.GetMetrics()
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 5 allowed requests")
 		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 4 banned requests")
+	})
+
+	t.Run("Test exempt IP bypasses all checks", func(t *testing.T) {
+		_, _, err = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "add", "--type", "ban", "--value", "172.16.0.1",
+		})
+		require.NoError(t, err)
+
+		_, _, err = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "add", "--range", "10.0.0.0/8",
+		})
+		require.NoError(t, err)
+
+		time.Sleep(2 * time.Second)
+
+		req := createCheckRequest("172.16.0.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := client.Check(t.Context(), req)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(0), check.Status.Code, "exempt IP should bypass ban")
+
+		reqWAF := createCheckRequest("172.16.0.1", createHttpRequest("GET", "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", "my-host.com", nil))
+		checkWAF, err := client.Check(t.Context(), reqWAF)
+		require.NoError(t, err)
+		require.NotNil(t, checkWAF.HttpResponse)
+		require.Equal(t, int32(0), checkWAF.Status.Code, "exempt IP should bypass WAF")
+
+		reqBanned := createCheckRequest("10.0.0.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		checkBanned, err := client.Check(t.Context(), reqBanned)
+		require.NoError(t, err)
+		require.NotNil(t, checkBanned.HttpResponse)
+		require.Equal(t, int32(403), checkBanned.Status.Code, "non-exempt IP in banned CIDR should be banned")
+
+		_, _, _ = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "delete", "-i", "172.16.0.1",
+		})
+		_, _, _ = lapiContainer.Exec(t.Context(), []string{
+			"cscli", "decisions", "delete", "--range", "10.0.0.0/8",
+		})
 	})
 }
 
