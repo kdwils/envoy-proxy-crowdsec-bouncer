@@ -482,6 +482,20 @@ func testBouncerWithVersion(t *testing.T, image string) {
 		require.NotNil(t, checkBanned.HttpResponse)
 		require.Equal(t, int32(403), checkBanned.Status.Code, "non-exempt IP in banned CIDR should be banned")
 
+		snapshot := bouncer.MetricsService.GetSnapshot()
+
+		bypassMetric, ok := snapshot["CAPI:bypass"]
+		require.True(t, ok, "expected CAPI:bypass metric to exist")
+		require.Equal(t, int64(7), bypassMetric.Value)
+
+		banMetric, ok := snapshot["CAPI:ban"]
+		require.True(t, ok, "expected CAPI:ban metric to exist")
+		require.Equal(t, int64(5), banMetric.Value)
+
+		metrics := recorder.GetMetrics()
+		assert.Equal(t, float64(7), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 7 allowed requests")
+		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 5 banned requests")
+
 		_, _, _ = lapiContainer.Exec(t.Context(), []string{
 			"cscli", "decisions", "delete", "-i", "172.16.0.1",
 		})
