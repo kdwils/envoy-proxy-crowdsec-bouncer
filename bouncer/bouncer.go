@@ -216,9 +216,9 @@ func ExtractRealIP(ip string, headers map[string]string, trustedProxies []*net.I
 				ips = ips[len(ips)-20:]
 			}
 			for i := len(ips) - 1; i >= 0; i-- {
-				ParsedRealIP := strings.TrimSpace(ips[i])
-				if !isTrustedProxy(ParsedRealIP, trustedProxies) && isValidIP(ParsedRealIP) {
-					return ParsedRealIP
+				parsedIP := strings.TrimSpace(ips[i])
+				if !isTrustedProxy(parsedIP, trustedProxies) && isValidIP(parsedIP) {
+					return parsedIP
 				}
 			}
 		}
