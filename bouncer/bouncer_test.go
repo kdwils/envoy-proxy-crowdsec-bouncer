@@ -1232,7 +1232,7 @@ func TestBouncer_Check(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
-	t.Run("allow list bypasses all checks", func(t *testing.T) {
+	t.Run("exempt list bypasses all checks", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
