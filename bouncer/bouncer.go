@@ -342,7 +342,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 
 	if b.isExemptIP(parsed.ParsedRealIP) {
 		log.Debug("ip is in exempt list, skipping request check")
-		result := NewCheckedRequest(parsed.RealIP, "allow", "bypassed by allow list", http.StatusOK, nil, "", parsed, nil)
+		result := NewCheckedRequest(parsed.RealIP, "allow", "ip is in exempt list", http.StatusOK, nil, "", parsed, nil)
 		b.recordFinalMetric(result)
 		return result
 	}

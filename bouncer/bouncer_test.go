@@ -1262,13 +1262,11 @@ func TestBouncer_Check(t *testing.T) {
 
 		req := mkReq("10.0.0.1", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
 
-		// No expectations on decision cache, WAF, or captcha — they should NOT be called
-
 		got := r.Check(context.Background(), req)
 		want := CheckedRequest{
 			IP:         "10.0.0.1",
 			Action:     "allow",
-			Reason:     "bypassed by allow list",
+			Reason:     "ip is in exempt list",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
 				IP:           "10.0.0.1",
