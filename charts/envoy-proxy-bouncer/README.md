@@ -47,6 +47,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.captcha.signingKeySecretRef.name | string | `""` |  |
 | config.captcha.siteKey | string | `""` |  |
 | config.captcha.timeout | string | `"10s"` |  |
+| config.exemptIPs | list | `[]` |  |
 | config.prometheus.enabled | bool | `false` |  |
 | config.prometheus.port | int | `9090` |  |
 | config.prometheus.serviceMonitor.enabled | bool | `false` |  |

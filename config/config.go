@@ -17,6 +17,7 @@ type Config struct {
 	Prometheus      Prometheus `yaml:"prometheus" json:"prometheus"`
 	TrustedProxies  []string   `yaml:"trustedProxies" json:"trustedProxies"`
 	TrustedIPHeader string     `yaml:"trustedIPHeader" json:"trustedIPHeader"`
+	ExemptIPs       []string   `yaml:"exemptIPs" json:"exemptIPs"`
 	Templates       Templates  `yaml:"templates" json:"templates"`
 }
 

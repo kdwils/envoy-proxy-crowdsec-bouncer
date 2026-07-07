@@ -216,6 +216,74 @@ func TestExtractRealIP(t *testing.T) {
 		})
 	}
 }
+func TestIsExemptIP(t *testing.T) {
+	exemptIPs := []*net.IPNet{
+		parseCIDROrFail(t, "10.0.0.0/8"),
+		parseCIDROrFail(t, "192.168.0.0/16"),
+		parseCIDROrFail(t, "2001:db8::/32"),
+	}
+
+	tests := []struct {
+		name      string
+		ip        net.IP
+		exemptIPs []*net.IPNet
+		want      bool
+	}{
+		{
+			name:      "Empty exempt IPs list returns false",
+			ip:        net.ParseIP("10.0.0.1"),
+			exemptIPs: nil,
+			want:      false,
+		},
+		{
+			name:      "IP in exempt IPs (IPv4)",
+			ip:        net.ParseIP("10.1.2.3"),
+			exemptIPs: exemptIPs,
+			want:      true,
+		},
+		{
+			name:      "IP not in exempt IPs (IPv4)",
+			ip:        net.ParseIP("8.8.8.8"),
+			exemptIPs: exemptIPs,
+			want:      false,
+		},
+		{
+			name:      "IP in exempt IPs (second range)",
+			ip:        net.ParseIP("192.168.1.100"),
+			exemptIPs: exemptIPs,
+			want:      true,
+		},
+		{
+			name:      "Invalid IP returns false",
+			ip:        nil,
+			exemptIPs: exemptIPs,
+			want:      false,
+		},
+		{
+			name:      "IPv6 in exempt IPs",
+			ip:        net.ParseIP("2001:db8::1"),
+			exemptIPs: exemptIPs,
+			want:      true,
+		},
+		{
+			name:      "IPv6 not in exempt IPs",
+			ip:        net.ParseIP("2001:dead:beef::1"),
+			exemptIPs: exemptIPs,
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &Bouncer{ExemptIPs: tt.exemptIPs}
+			got := b.isExemptIP(tt.ip)
+			if got != tt.want {
+				t.Errorf("isExemptIP(%v) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsTrustedProxy(t *testing.T) {
 	trusted := []*net.IPNet{
 		parseCIDROrFail(t, "10.0.0.0/8"),
@@ -283,7 +351,7 @@ func TestIsTrustedProxy(t *testing.T) {
 	}
 }
 
-func TestParseProxyAddresses(t *testing.T) {
+func Test_parseIPNets(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []string
@@ -348,7 +416,7 @@ func TestParseProxyAddresses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseProxyAddresses(tt.input)
+			got, err := parseIPNets(tt.input)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error but got nil")
@@ -424,8 +492,9 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:     "5.6.7.8",
-				RealIP: "5.6.7.8",
+				IP:           "5.6.7.8",
+				RealIP:       "5.6.7.8",
+				ParsedRealIP: net.ParseIP("5.6.7.8"),
 				Headers: map[string]string{
 					":scheme":         "https",
 					":authority":      "example.com",
@@ -473,8 +542,9 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:     "2.2.2.2",
-				RealIP: "2.2.2.2",
+				IP:           "2.2.2.2",
+				RealIP:       "2.2.2.2",
+				ParsedRealIP: net.ParseIP("2.2.2.2"),
 				Headers: map[string]string{
 					":scheme":    "http",
 					":authority": "host.com",
@@ -520,8 +590,9 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:     "3.3.3.3",
-				RealIP: "3.3.3.3",
+				IP:           "3.3.3.3",
+				RealIP:       "3.3.3.3",
+				ParsedRealIP: net.ParseIP("3.3.3.3"),
 				Headers: map[string]string{
 					":scheme":    "http",
 					":authority": "nested.com",
@@ -567,8 +638,9 @@ func TestParseCheckRequest(t *testing.T) {
 				},
 			},
 			want: &ParsedRequest{
-				IP:     "4.4.4.4",
-				RealIP: "8.8.8.8",
+				IP:           "4.4.4.4",
+				RealIP:       "8.8.8.8",
+				ParsedRealIP: net.ParseIP("8.8.8.8"),
 				Headers: map[string]string{
 					":scheme":         "http",
 					":authority":      "xff.com",
@@ -661,16 +733,17 @@ func TestBouncer_Check(t *testing.T) {
 			RedirectURL: "",
 			Decision:    &models.Decision{Type: new("ban")},
 			ParsedRequest: &ParsedRequest{
-				IP:         "1.2.3.4",
-				RealIP:     "1.2.3.4",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "1.2.3.4",
+				RealIP:       "1.2.3.4",
+				ParsedRealIP: net.ParseIP("1.2.3.4"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 			CaptchaSession: nil,
 		}
@@ -731,16 +804,17 @@ func TestBouncer_Check(t *testing.T) {
 			RedirectURL: "",
 			Decision:    &models.Decision{Type: new("ban"), Scenario: new("crowdsecurity/test"), Origin: new("CAPI"), Duration: new("1h"), Scope: new("Ip"), Value: new("2.2.2.2")},
 			ParsedRequest: &ParsedRequest{
-				IP:         "2.2.2.2",
-				RealIP:     "2.2.2.2",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "2.2.2.2",
+				RealIP:       "2.2.2.2",
+				ParsedRealIP: net.ParseIP("2.2.2.2"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 			CaptchaSession: nil,
 		}
@@ -778,14 +852,15 @@ func TestBouncer_Check(t *testing.T) {
 			RedirectURL: "",
 			Decision:    nil,
 			ParsedRequest: &ParsedRequest{
-				IP:         "5.6.7.8",
-				RealIP:     "5.6.7.8",
-				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "5.6.7.8",
+				RealIP:       "5.6.7.8",
+				ParsedRealIP: net.ParseIP("5.6.7.8"),
+				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 				Headers: map[string]string{
 					":scheme":    "http",
 					":authority": "example.com",
@@ -844,16 +919,17 @@ func TestBouncer_Check(t *testing.T) {
 			HTTPStatus:  403,
 			RedirectURL: "",
 			ParsedRequest: &ParsedRequest{
-				IP:         "9.9.9.9",
-				RealIP:     "9.9.9.9",
-				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
-				Method:     "POST",
-				UserAgent:  "UT",
-				Body:       []byte("abc"),
-				ProtoMajor: 2,
-				ProtoMinor: 0,
+				IP:           "9.9.9.9",
+				RealIP:       "9.9.9.9",
+				ParsedRealIP: net.ParseIP("9.9.9.9"),
+				Headers:      map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "host", Path: "/bar"},
+				Method:       "POST",
+				UserAgent:    "UT",
+				Body:         []byte("abc"),
+				ProtoMajor:   2,
+				ProtoMinor:   0,
 			},
 			CaptchaSession: nil,
 		}
@@ -903,16 +979,17 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:     "error",
 			HTTPStatus: 500,
 			ParsedRequest: &ParsedRequest{
-				IP:         "10.0.0.1",
-				RealIP:     "10.0.0.1",
-				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 0,
+				IP:           "10.0.0.1",
+				RealIP:       "10.0.0.1",
+				ParsedRealIP: net.ParseIP("10.0.0.1"),
+				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -947,16 +1024,17 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:     "ok",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
-				IP:         "7.7.7.7",
-				RealIP:     "7.7.7.7",
-				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 2,
-				ProtoMinor: 0,
+				IP:           "7.7.7.7",
+				RealIP:       "7.7.7.7",
+				ParsedRealIP: net.ParseIP("7.7.7.7"),
+				Headers:      map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   2,
+				ProtoMinor:   0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1005,16 +1083,17 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:     "ban",
 			HTTPStatus: 403,
 			ParsedRequest: &ParsedRequest{
-				IP:         "8.8.8.8",
-				RealIP:     "8.8.8.8",
-				Headers:    map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
-				Method:     "POST",
-				UserAgent:  "UT",
-				Body:       []byte("abc"),
-				ProtoMajor: 2,
-				ProtoMinor: 0,
+				IP:           "8.8.8.8",
+				RealIP:       "8.8.8.8",
+				ParsedRealIP: net.ParseIP("8.8.8.8"),
+				Headers:      map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "host", Path: "/bar"},
+				Method:       "POST",
+				UserAgent:    "UT",
+				Body:         []byte("abc"),
+				ProtoMajor:   2,
+				ProtoMinor:   0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1049,16 +1128,17 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:     "ban",
 			HTTPStatus: 403,
 			ParsedRequest: &ParsedRequest{
-				IP:         "11.11.11.11",
-				RealIP:     "11.11.11.11",
-				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 0,
+				IP:           "11.11.11.11",
+				RealIP:       "11.11.11.11",
+				ParsedRealIP: net.ParseIP("11.11.11.11"),
+				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1093,16 +1173,17 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:     "unknown action",
 			HTTPStatus: 500,
 			ParsedRequest: &ParsedRequest{
-				IP:         "12.12.12.12",
-				RealIP:     "12.12.12.12",
-				Headers:    map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 0,
+				IP:           "12.12.12.12",
+				RealIP:       "12.12.12.12",
+				ParsedRealIP: net.ParseIP("12.12.12.12"),
+				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1135,16 +1216,70 @@ func TestBouncer_Check(t *testing.T) {
 			Reason:     "ok",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
-				IP:         "13.13.13.13",
-				RealIP:     "13.13.13.13",
-				Headers:    map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
-				Method:     "GET",
-				UserAgent:  "UT",
-				Body:       []byte(""),
-				ProtoMajor: 2,
-				ProtoMinor: 0,
+				IP:           "13.13.13.13",
+				RealIP:       "13.13.13.13",
+				ParsedRealIP: net.ParseIP("13.13.13.13"),
+				Headers:      map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   2,
+				ProtoMinor:   0,
+			},
+		}
+		require.Equal(t, want, got)
+	})
+
+	t.Run("exempt list bypasses all checks", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		mc := remediationmocks.NewMockCaptchaService(ctrl)
+		exemptIPs := []*net.IPNet{
+			parseCIDROrFail(t, "10.0.0.0/8"),
+		}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{
+			DecisionCache:      mb,
+			WAF:                mw,
+			CaptchaService:     mc,
+			ExemptIPs:          exemptIPs,
+			MetricsService:     collector,
+			PrometheusRecorder: rec,
+		}
+
+		req := mkReq("10.0.0.1", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:         "10.0.0.1",
+			Action:     "allow",
+			Reason:     "ip is in exempt list",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:           "10.0.0.1",
+				RealIP:       "10.0.0.1",
+				ParsedRealIP: net.ParseIP("10.0.0.1"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:       "GET",
+				UserAgent:    "UT",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1195,16 +1330,17 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Reason:     "ok",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
-				IP:         "1.1.1.1",
-				RealIP:     "1.1.1.1",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "1.1.1.1",
+				RealIP:       "1.1.1.1",
+				ParsedRealIP: net.ParseIP("1.1.1.1"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1254,16 +1390,17 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			HTTPStatus: 403,
 			Decision:   &models.Decision{Type: new("ban")},
 			ParsedRequest: &ParsedRequest{
-				IP:         "2.2.2.2",
-				RealIP:     "2.2.2.2",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "2.2.2.2",
+				RealIP:       "2.2.2.2",
+				ParsedRealIP: net.ParseIP("2.2.2.2"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1311,14 +1448,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			RedirectURL: "",
 			Decision:    nil,
 			ParsedRequest: &ParsedRequest{
-				IP:         "3.3.3.3",
-				RealIP:     "3.3.3.3",
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "3.3.3.3",
+				RealIP:       "3.3.3.3",
+				ParsedRealIP: net.ParseIP("3.3.3.3"),
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 				Headers: map[string]string{
 					":scheme":    "https",
 					":authority": "example.com",
@@ -1362,16 +1500,17 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Reason:     "ban",
 			HTTPStatus: 403,
 			ParsedRequest: &ParsedRequest{
-				IP:         "4.4.4.4",
-				RealIP:     "4.4.4.4",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "4.4.4.4",
+				RealIP:       "4.4.4.4",
+				ParsedRealIP: net.ParseIP("4.4.4.4"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1407,16 +1546,17 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Reason:     "ban",
 			HTTPStatus: 403,
 			ParsedRequest: &ParsedRequest{
-				IP:         "5.5.5.5",
-				RealIP:     "5.5.5.5",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "5.5.5.5",
+				RealIP:       "5.5.5.5",
+				ParsedRealIP: net.ParseIP("5.5.5.5"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1452,16 +1592,17 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Reason:     "error",
 			HTTPStatus: 500,
 			ParsedRequest: &ParsedRequest{
-				IP:         "6.6.6.6",
-				RealIP:     "6.6.6.6",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "6.6.6.6",
+				RealIP:       "6.6.6.6",
+				ParsedRealIP: net.ParseIP("6.6.6.6"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1582,16 +1723,17 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			Reason:     "captcha disabled",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
-				IP:         "10.10.10.10",
-				RealIP:     "10.10.10.10",
-				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "10.10.10.10",
+				RealIP:       "10.10.10.10",
+				ParsedRealIP: net.ParseIP("10.10.10.10"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+				Cookies:      map[string]string{},
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1763,14 +1905,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			RedirectURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
 			Decision:    &models.Decision{Type: new("captcha")},
 			ParsedRequest: &ParsedRequest{
-				IP:         "15.15.15.15",
-				RealIP:     "15.15.15.15",
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				IP:           "15.15.15.15",
+				RealIP:       "15.15.15.15",
+				ParsedRealIP: net.ParseIP("15.15.15.15"),
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 				Headers: map[string]string{
 					":scheme":    "https",
 					":authority": "example.com",

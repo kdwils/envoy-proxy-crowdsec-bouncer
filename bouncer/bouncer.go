@@ -55,20 +55,27 @@ type Bouncer struct {
 	CaptchaService     CaptchaService
 	TrustedProxies     []*net.IPNet
 	TrustedIPHeader    string
+	ExemptIPs          []*net.IPNet
 	MetricsService     *crowdsec.MetricsService
 	PrometheusRecorder *recorder.Recorder
 	config             config.Config
 }
 
 func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
-	trustedProxies, err := parseProxyAddresses(cfg.TrustedProxies)
+	trustedProxies, err := parseIPNets(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
+	}
+
+	exemptIPs, err := parseIPNets(cfg.ExemptIPs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse exempt IPs list: %w", err)
 	}
 
 	bouncer := &Bouncer{
 		TrustedProxies:     trustedProxies,
 		TrustedIPHeader:    cfg.TrustedIPHeader,
+		ExemptIPs:          exemptIPs,
 		PrometheusRecorder: recorder,
 		config:             cfg,
 	}
@@ -243,6 +250,19 @@ func isTrustedProxy(ip string, trustedProxies []*net.IPNet) bool {
 	return false
 }
 
+// isExemptIP returns true if the IP falls within any CIDR range in the exempt IPs list.
+func (b *Bouncer) isExemptIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range b.ExemptIPs {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // isValidIP returns true if the string is a valid IPv4 or IPv6 address.
 func isValidIP(ip string) bool {
 	return net.ParseIP(ip) != nil
@@ -253,16 +273,17 @@ type ParseError struct{ Reason string }
 
 // ParsedRequest holds the fields extracted from the gRPC CheckRequest for remediation logic.
 type ParsedRequest struct {
-	IP         string
-	RealIP     string
-	Headers    map[string]string
-	Cookies    map[string]string
-	URL        url.URL
-	Method     string
-	UserAgent  string
-	Body       []byte
-	ProtoMajor int
-	ProtoMinor int
+	IP           string
+	RealIP       string
+	ParsedRealIP net.IP
+	Headers      map[string]string
+	Cookies      map[string]string
+	URL          url.URL
+	Method       string
+	UserAgent    string
+	Body         []byte
+	ProtoMajor   int
+	ProtoMinor   int
 }
 
 func (e *ParseError) Error() string { return e.Reason }
@@ -291,20 +312,20 @@ func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *mode
 	}
 }
 
-func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
-	ipNets := make([]*net.IPNet, 0, len(trustedProxies))
-	for _, proxy := range trustedProxies {
-		if !strings.Contains(proxy, "/") {
-			if strings.Contains(proxy, ":") {
-				proxy = proxy + "/128"
+func parseIPNets(addresses []string) ([]*net.IPNet, error) {
+	ipNets := make([]*net.IPNet, 0, len(addresses))
+	for _, addr := range addresses {
+		if !strings.Contains(addr, "/") {
+			if strings.Contains(addr, ":") {
+				addr = addr + "/128"
 			} else {
-				proxy = proxy + "/32"
+				addr = addr + "/32"
 			}
 		}
 
-		_, ipNet, err := net.ParseCIDR(proxy)
+		_, ipNet, err := net.ParseCIDR(addr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid proxy address %s: %v", proxy, err)
+			return nil, fmt.Errorf("invalid address %s: %v", addr, err)
 		}
 		ipNets = append(ipNets, ipNet)
 	}
@@ -316,7 +337,15 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
 
 	parsed := b.ParseCheckRequest(ctx, req)
-	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
+	log := logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP))
+	ctx = logger.WithContext(ctx, log)
+
+	if b.isExemptIP(parsed.ParsedRealIP) {
+		log.Debug("ip is in exempt list, skipping request check")
+		result := NewCheckedRequest(parsed.RealIP, "allow", "ip is in exempt list", http.StatusOK, nil, "", parsed, nil)
+		b.recordFinalMetric(result)
+		return result
+	}
 
 	bouncerResult := b.checkDecisionCache(ctx, parsed)
 
@@ -520,6 +549,7 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 	parsedRequest.Cookies = parseCookies(parsedRequest.Headers["cookie"])
 
 	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies, b.TrustedIPHeader)
+	parsedRequest.ParsedRealIP = net.ParseIP(parsedRequest.RealIP)
 
 	url := url.URL{
 		Scheme: parsedRequest.Headers[":scheme"],
