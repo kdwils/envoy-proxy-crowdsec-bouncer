@@ -69,7 +69,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	exemptIPs, err := parseProxyAddresses(cfg.ExemptIPs)
 	if err != nil {
-		return nil, fmt.Errorf("allow list: %w", err)
+		return nil, fmt.Errorf("failed to parse exempt IPs list: %w", err)
 	}
 
 	bouncer := &Bouncer{
