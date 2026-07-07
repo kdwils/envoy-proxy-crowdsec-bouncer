@@ -337,10 +337,11 @@ func parseProxyAddresses(trustedProxies []string) ([]*net.IPNet, error) {
 func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
 
 	parsed := b.ParseCheckRequest(ctx, req)
-	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
+	log := logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP))
+	ctx = logger.WithContext(ctx, log)
 
 	if b.isExemptIP(parsed.ParsedRealIP) {
-		logger.FromContext(ctx).Debug("ip is in exempt list, skipping request check")
+		log.Debug("ip is in exempt list, skipping request check")
 		result := NewCheckedRequest(parsed.RealIP, "allow", "bypassed by allow list", http.StatusOK, nil, "", parsed, nil)
 		b.recordFinalMetric(result)
 		return result
