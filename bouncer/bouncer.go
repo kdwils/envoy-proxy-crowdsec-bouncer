@@ -216,9 +216,9 @@ func ExtractRealIP(ip string, headers map[string]string, trustedProxies []*net.I
 				ips = ips[len(ips)-20:]
 			}
 			for i := len(ips) - 1; i >= 0; i-- {
-				parsedIP := strings.TrimSpace(ips[i])
-				if !isTrustedProxy(parsedIP, trustedProxies) && isValidIP(parsedIP) {
-					return parsedIP
+				ParsedRealIP := strings.TrimSpace(ips[i])
+				if !isTrustedProxy(ParsedRealIP, trustedProxies) && isValidIP(ParsedRealIP) {
+					return ParsedRealIP
 				}
 			}
 		}
@@ -251,16 +251,12 @@ func isTrustedProxy(ip string, trustedProxies []*net.IPNet) bool {
 }
 
 // isExemptIP returns true if the IP falls within any CIDR range in the exempt IPs list.
-func (b *Bouncer) isExemptIP(ip string) bool {
-	if len(b.ExemptIPs) == 0 {
-		return false
-	}
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
+func (b *Bouncer) isExemptIP(ip net.IP) bool {
+	if ip == nil {
 		return false
 	}
 	for _, cidr := range b.ExemptIPs {
-		if cidr.Contains(parsed) {
+		if cidr.Contains(ip) {
 			return true
 		}
 	}
@@ -277,16 +273,17 @@ type ParseError struct{ Reason string }
 
 // ParsedRequest holds the fields extracted from the gRPC CheckRequest for remediation logic.
 type ParsedRequest struct {
-	IP         string
-	RealIP     string
-	Headers    map[string]string
-	Cookies    map[string]string
-	URL        url.URL
-	Method     string
-	UserAgent  string
-	Body       []byte
-	ProtoMajor int
-	ProtoMinor int
+	IP           string
+	RealIP       string
+	ParsedRealIP net.IP
+	Headers      map[string]string
+	Cookies      map[string]string
+	URL          url.URL
+	Method       string
+	UserAgent    string
+	Body         []byte
+	ProtoMajor   int
+	ProtoMinor   int
 }
 
 func (e *ParseError) Error() string { return e.Reason }
@@ -342,7 +339,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	parsed := b.ParseCheckRequest(ctx, req)
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
 
-	if b.isExemptIP(parsed.RealIP) {
+	if b.isExemptIP(parsed.ParsedRealIP) {
 		logger.FromContext(ctx).Debug("ip is in exempt list, skipping request check")
 		result := NewCheckedRequest(parsed.RealIP, "allow", "bypassed by allow list", http.StatusOK, nil, "", parsed, nil)
 		b.recordFinalMetric(result)
@@ -551,6 +548,7 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 	parsedRequest.Cookies = parseCookies(parsedRequest.Headers["cookie"])
 
 	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies, b.TrustedIPHeader)
+	parsedRequest.ParsedRealIP = net.ParseIP(parsedRequest.RealIP)
 
 	url := url.URL{
 		Scheme: parsedRequest.Headers[":scheme"],
