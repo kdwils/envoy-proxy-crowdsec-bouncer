@@ -201,6 +201,10 @@
                         }
                     }
                 },
+                "exemptIPs": {
+                    "default": [],
+                    "type": "array"
+                },
                 "prometheus": {
                     "type": "object",
                     "properties": {
