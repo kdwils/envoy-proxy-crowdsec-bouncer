@@ -55,6 +55,7 @@ type Bouncer struct {
 	CaptchaService     CaptchaService
 	TrustedProxies     []*net.IPNet
 	TrustedIPHeader    string
+	ExemptIPs          []*net.IPNet
 	MetricsService     *crowdsec.MetricsService
 	PrometheusRecorder *recorder.Recorder
 	config             config.Config
@@ -66,9 +67,15 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 		return nil, err
 	}
 
+	exemptIPs, err := parseProxyAddresses(cfg.ExemptIPs)
+	if err != nil {
+		return nil, fmt.Errorf("allow list: %w", err)
+	}
+
 	bouncer := &Bouncer{
 		TrustedProxies:     trustedProxies,
 		TrustedIPHeader:    cfg.TrustedIPHeader,
+		ExemptIPs:          exemptIPs,
 		PrometheusRecorder: recorder,
 		config:             cfg,
 	}
@@ -243,6 +250,23 @@ func isTrustedProxy(ip string, trustedProxies []*net.IPNet) bool {
 	return false
 }
 
+// isExemptIP returns true if the IP falls within any CIDR range in the exempt IPs list.
+func (b *Bouncer) isExemptIP(ip string) bool {
+	if len(b.ExemptIPs) == 0 {
+		return false
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, cidr := range b.ExemptIPs {
+		if cidr.Contains(parsed) {
+			return true
+		}
+	}
+	return false
+}
+
 // isValidIP returns true if the string is a valid IPv4 or IPv6 address.
 func isValidIP(ip string) bool {
 	return net.ParseIP(ip) != nil
@@ -317,6 +341,12 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 
 	parsed := b.ParseCheckRequest(ctx, req)
 	ctx = logger.WithContext(ctx, logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP)))
+
+	if b.isExemptIP(parsed.RealIP) {
+		result := NewCheckedRequest(parsed.RealIP, "allow", "bypassed by allow list", http.StatusOK, nil, "", parsed, nil)
+		b.recordFinalMetric(result)
+		return result
+	}
 
 	bouncerResult := b.checkDecisionCache(ctx, parsed)
 

@@ -84,25 +84,36 @@ func TestNew(t *testing.T) {
 		v.Set("bouncer.apiKey", "test-key")
 		v.Set("bouncer.lapiURL", "http://test.com")
 		v.Set("trustedProxies", []string{"127.0.0.1"})
+		v.Set("exemptIPs", []string{"10.0.0.0/8"})
 		v.Set("bouncer.metrics", true)
 		v.Set("bouncer.tickerInterval", "30s")
 		v.Set("waf.enabled", true)
-		v.Set("waf.timeout", "30s")
 		v.Set("waf.apiKey", "test-key")
 		v.Set("waf.appSecURL", "http://test.com")
 
 		c, err := New(v)
 		assert.NoError(t, err)
-		assert.Equal(t, 8080, c.Server.GRPCPort)
-		assert.Equal(t, 8081, c.Server.HTTPPort)
-		assert.Equal(t, "debug", c.Server.LogLevel)
-		assert.Equal(t, "test-key", c.Bouncer.ApiKey)
-		assert.Equal(t, "http://test.com", c.Bouncer.LAPIURL)
-		assert.Equal(t, []string{"127.0.0.1"}, c.TrustedProxies)
-		assert.True(t, c.Bouncer.Metrics)
-		assert.Equal(t, "30s", c.Bouncer.TickerInterval)
-		assert.True(t, c.WAF.Enabled)
-		assert.Equal(t, "test-key", c.WAF.ApiKey)
-		assert.Equal(t, "http://test.com", c.WAF.AppSecURL)
+
+		want := Config{
+			Server: Server{
+				GRPCPort: 8080,
+				HTTPPort: 8081,
+				LogLevel: "debug",
+			},
+			Bouncer: Bouncer{
+				ApiKey:         "test-key",
+				LAPIURL:        "http://test.com",
+				Metrics:        true,
+				TickerInterval: "30s",
+			},
+			WAF: WAF{
+				Enabled:   true,
+				ApiKey:    "test-key",
+				AppSecURL: "http://test.com",
+			},
+			TrustedProxies: []string{"127.0.0.1"},
+			ExemptIPs:      []string{"10.0.0.0/8"},
+		}
+		assert.Equal(t, want, c)
 	})
 }

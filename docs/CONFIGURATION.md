@@ -103,12 +103,13 @@ export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:7422
 export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 ```
 
-## Trusted Proxies
+## Network
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `trustedProxies` | []string | `[]` | List of trusted proxy IPs/CIDRs |
 | `trustedIPHeader` | string | `""` | Header name to read the real client IP from directly, bypassing `X-Forwarded-For`/`trustedProxies` entirely. See below. |
+| `exemptIPs` | []string | `[]` | IPs or CIDR ranges to bypass all CrowdSec evaluation (decision cache, WAF, captcha). See below. |
 
 ```yaml
 trustedProxies:
@@ -132,6 +133,21 @@ trustedIPHeader: "X-Envoy-External-Address"
 
 ```bash
 export ENVOY_BOUNCER_TRUSTEDIPHEADER=X-Envoy-External-Address
+```
+
+### `exemptIPs`
+
+A list of IP addresses or CIDR ranges that bypass all CrowdSec evaluation entirely — decision cache lookups, WAF inspection, and captcha challenges are skipped for matching requests.
+
+```yaml
+exemptIPs:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+```
+
+```bash
+export ENVOY_BOUNCER_EXEMPTIPS=10.0.0.0/8,172.16.0.0/12
 ```
 
 ## CAPTCHA

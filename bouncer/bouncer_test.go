@@ -216,6 +216,74 @@ func TestExtractRealIP(t *testing.T) {
 		})
 	}
 }
+func TestIsExemptIP(t *testing.T) {
+	exemptIPs := []*net.IPNet{
+		parseCIDROrFail(t, "10.0.0.0/8"),
+		parseCIDROrFail(t, "192.168.0.0/16"),
+		parseCIDROrFail(t, "2001:db8::/32"),
+	}
+
+	tests := []struct {
+		name      string
+		ip        string
+		exemptIPs []*net.IPNet
+		want      bool
+	}{
+		{
+			name:      "Empty exempt IPs list returns false",
+			ip:        "10.0.0.1",
+			exemptIPs: nil,
+			want:      false,
+		},
+		{
+			name:      "IP in exempt IPs (IPv4)",
+			ip:        "10.1.2.3",
+			exemptIPs: exemptIPs,
+			want:      true,
+		},
+		{
+			name:      "IP not in exempt IPs (IPv4)",
+			ip:        "8.8.8.8",
+			exemptIPs: exemptIPs,
+			want:      false,
+		},
+		{
+			name:      "IP in exempt IPs (second range)",
+			ip:        "192.168.1.100",
+			exemptIPs: exemptIPs,
+			want:      true,
+		},
+		{
+			name:      "Invalid IP returns false",
+			ip:        "not-an-ip",
+			exemptIPs: exemptIPs,
+			want:      false,
+		},
+		{
+			name:      "IPv6 in exempt IPs",
+			ip:        "2001:db8::1",
+			exemptIPs: exemptIPs,
+			want:      true,
+		},
+		{
+			name:      "IPv6 not in exempt IPs",
+			ip:        "2001:dead:beef::1",
+			exemptIPs: exemptIPs,
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &Bouncer{ExemptIPs: tt.exemptIPs}
+			got := b.isExemptIP(tt.ip)
+			if got != tt.want {
+				t.Errorf("isExemptIP(%q) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsTrustedProxy(t *testing.T) {
 	trusted := []*net.IPNet{
 		parseCIDROrFail(t, "10.0.0.0/8"),
@@ -1145,6 +1213,60 @@ func TestBouncer_Check(t *testing.T) {
 				Body:       []byte(""),
 				ProtoMajor: 2,
 				ProtoMinor: 0,
+			},
+		}
+		require.Equal(t, want, got)
+	})
+
+	t.Run("allow list bypasses all checks", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		mc := remediationmocks.NewMockCaptchaService(ctrl)
+		exemptIPs := []*net.IPNet{
+			parseCIDROrFail(t, "10.0.0.0/8"),
+		}
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{
+			DecisionCache:      mb,
+			WAF:                mw,
+			CaptchaService:     mc,
+			ExemptIPs:          exemptIPs,
+			MetricsService:     collector,
+			PrometheusRecorder: rec,
+		}
+
+		req := mkReq("10.0.0.1", "http", "example.com", "/foo", "GET", "HTTP/1.1", "")
+
+		// No expectations on decision cache, WAF, or captcha — they should NOT be called
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:         "10.0.0.1",
+			Action:     "allow",
+			Reason:     "bypassed by allow list",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:         "10.0.0.1",
+				RealIP:     "10.0.0.1",
+				Headers:    map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
+				Cookies:    map[string]string{},
+				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		}
 		require.Equal(t, want, got)

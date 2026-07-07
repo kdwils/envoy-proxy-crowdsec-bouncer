@@ -15,6 +15,13 @@ trustedProxies:
 # keep the trustedProxies-based X-Forwarded-For logic above.
 # trustedIPHeader: "X-Envoy-External-Address"
 
+# IPs or CIDR ranges that bypass all CrowdSec evaluation (decision cache, WAF,
+# captcha).
+# exemptIPs:
+#   - 10.0.0.0/8
+#   - 172.16.0.0/12
+#   - 192.168.0.0/16
+
 bouncer:
   enabled: true
   apiKey: "<lapi-key>"

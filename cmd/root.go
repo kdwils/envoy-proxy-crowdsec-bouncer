@@ -43,6 +43,7 @@ func initConfig() {
 
 	viper.SetDefault("trustedProxies", []string{})
 	viper.SetDefault("trustedIPHeader", "")
+	viper.SetDefault("exemptIPs", []string{})
 
 	viper.SetDefault("server.grpcPort", 8080)
 	viper.SetDefault("server.httpPort", 8081)
