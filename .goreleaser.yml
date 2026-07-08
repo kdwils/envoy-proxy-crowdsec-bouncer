@@ -71,10 +71,9 @@ release:
 
     Added support for an exempt list of IP/CIDR addresses to exclude from request evaluation
     - Documentation can be found [here](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/CONFIGURATION.md#exemptips)
-    
+
     Added support for parsing IP addresses via configurable headers by @galovics
     - Documentation can be found [here](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/CONFIGURATION.md#trustedipheader)
 
-    
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
