@@ -22,7 +22,7 @@ securityContext:
       - all
   readOnlyRootFilesystem: true
   runAsNonRoot: true
-  runAsUser: 1000
+  runAsUser: 65532
 
 service:
   type: ClusterIP # @schema default: ClusterIP
