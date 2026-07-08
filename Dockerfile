@@ -1,21 +1,28 @@
-FROM golang:1.26.4 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.4 AS builder
+
+ARG TARGETOS TARGETARCH
 
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o envoy-proxy-bouncer
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 \
+    GOOS=${TARGETOS:-linux} \
+    GOARCH=${TARGETARCH:-amd64} \
+    go build -o envoy-proxy-bouncer
 
 FROM gcr.io/distroless/static-debian12
 
 WORKDIR /app
 
-COPY --chown=1000:1000 --from=builder /app/envoy-proxy-bouncer /app/
-
-USER 1000
+COPY --from=builder /app/envoy-proxy-bouncer /app/
 
 ENTRYPOINT ["/app/envoy-proxy-bouncer"]
+
 CMD ["serve"]
