@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     GOARCH=${TARGETARCH:-amd64} \
     go build -o envoy-proxy-bouncer
 
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 
