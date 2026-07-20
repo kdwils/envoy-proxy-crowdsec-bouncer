@@ -820,6 +820,84 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, wantMetric, metric)
 	})
 
+	t.Run("waf issues a challenge after bouncer allows", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{
+			DecisionCache:      mb,
+			WAF:                mw,
+			MetricsService:     collector,
+			PrometheusRecorder: rec,
+			config: config.Config{
+				Bouncer: config.Bouncer{
+					BanStatusCode: 403,
+				},
+			},
+		}
+
+		req := mkReq("4.4.4.4", "https", "host", "/protected", "GET", "HTTP/2", "")
+
+		mb.EXPECT().GetDecision(gomock.Any(), "4.4.4.4").Return(nil, nil)
+		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{
+			Action:          "challenge",
+			HTTPStatus:      401,
+			UserBodyContent: "<html>challenge</html>",
+			UserCookies:     []string{"cs_challenge=abc123; Path=/; HttpOnly"},
+			UserHeaders:     map[string][]string{"Content-Type": {"text/html"}},
+		}, nil)
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:          "4.4.4.4",
+			Action:      "challenge",
+			Reason:      "crowdsec challenge",
+			HTTPStatus:  401,
+			RedirectURL: "",
+			ParsedRequest: &ParsedRequest{
+				IP:         "4.4.4.4",
+				RealIP:     "4.4.4.4",
+				Headers:    map[string]string{":authority": "host", ":method": "GET", ":path": "/protected", ":scheme": "https", "user-agent": "UT"},
+				Cookies:    map[string]string{},
+				URL:        url.URL{Scheme: "https", Host: "host", Path: "/protected"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       []byte(""),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
+			},
+			CaptchaSession:  nil,
+			ResponseBody:    "<html>challenge</html>",
+			ResponseHeaders: map[string][]string{"Content-Type": {"text/html"}, "Set-Cookie": {"cs_challenge=abc123; Path=/; HttpOnly"}},
+		}
+		require.Equal(t, want, got)
+
+		actualMetrics := r.MetricsService.GetSnapshot()
+		wantMetric := crowdsec.Metric{
+			Name:  "dropped",
+			Unit:  "request",
+			Value: 1,
+			Labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "challenge",
+			},
+		}
+		metric, ok := actualMetrics["CAPI:challenge"]
+		require.True(t, ok, "expected CAPI:challenge metric to exist")
+		assert.Equal(t, wantMetric, metric)
+	})
+
 	t.Run("waf error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
