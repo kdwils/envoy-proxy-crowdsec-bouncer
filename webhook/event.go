@@ -5,10 +5,11 @@ import "time"
 type EventType string
 
 const (
-	EventRequestBlocked  EventType = "request_blocked"
-	EventCaptchaRequired EventType = "captcha_required"
-	EventCaptchaVerified EventType = "captcha_verified"
-	EventRequestAllowed  EventType = "request_allowed"
+	EventRequestBlocked    EventType = "request_blocked"
+	EventCaptchaRequired   EventType = "captcha_required"
+	EventCaptchaVerified   EventType = "captcha_verified"
+	EventChallengeRequired EventType = "challenge_required"
+	EventRequestAllowed    EventType = "request_allowed"
 )
 
 type Event struct {

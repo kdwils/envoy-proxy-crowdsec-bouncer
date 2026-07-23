@@ -12,6 +12,7 @@ For configuration options see the [Configuration Reference](CONFIGURATION.md#web
 | `request_blocked` | CrowdSec ban/deny or WAF blocked it |
 | `captcha_required` | CAPTCHA challenge issued |
 | `captcha_verified` | User completed CAPTCHA |
+| `challenge_required` | AppSec bot challenge (fingerprint/PoW) issued |
 
 ## Payload
 

@@ -221,6 +221,48 @@ func TestServer_Check(t *testing.T) {
 		assert.Nil(t, resp.GetDeniedResponse())
 	})
 
+	t.Run("appsec challenge served verbatim", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
+			Action:       "challenge",
+			Reason:       "crowdsec challenge",
+			HTTPStatus:   401,
+			IP:           "192.0.2.1",
+			ResponseBody: "<html>challenge</html>",
+			ResponseHeaders: map[string][]string{
+				"Content-Type":            {"text/html"},
+				"Content-Security-Policy": {"default-src 'self'"},
+				"Set-Cookie":              {"cs_challenge=abc123; Path=/", "cs_other=xyz; Path=/"},
+			},
+		})
+
+		rec := recorder.NewNoOp()
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+
+		require.NoError(t, err)
+		assert.Equal(t, int32(401), resp.Status.Code)
+		deny := resp.GetDeniedResponse()
+		require.NotNil(t, deny)
+		assert.Equal(t, "<html>challenge</html>", deny.Body)
+
+		contentType, ok := findHeader(deny.Headers, "Content-Type")
+		assert.True(t, ok, "expected Content-Type header")
+		assert.Equal(t, "text/html", contentType)
+
+		csp, ok := findHeader(deny.Headers, "Content-Security-Policy")
+		assert.True(t, ok, "expected Content-Security-Policy header")
+		assert.Equal(t, "default-src 'self'", csp)
+
+		cookies := findAllHeaders(deny.Headers, "Set-Cookie")
+		require.Len(t, cookies, 2, "expected both Set-Cookie headers to be preserved")
+		assert.Equal(t, "cs_challenge=abc123; Path=/", cookies[0])
+		assert.Equal(t, "cs_other=xyz; Path=/", cookies[1])
+	})
+
 	t.Run("template rendering with real template store", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -903,4 +945,17 @@ func findHeader(headers []*core.HeaderValueOption, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func findAllHeaders(headers []*core.HeaderValueOption, key string) []string {
+	var values []string
+	for _, h := range headers {
+		if h == nil || h.Header == nil {
+			continue
+		}
+		if strings.EqualFold(h.Header.Key, key) {
+			values = append(values, h.Header.Value)
+		}
+	}
+	return values
 }

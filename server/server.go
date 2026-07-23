@@ -372,6 +372,8 @@ func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event 
 		eventType = webhook.EventRequestBlocked
 	case "captcha":
 		eventType = webhook.EventCaptchaRequired
+	case "challenge":
+		eventType = webhook.EventChallengeRequired
 	}
 
 	event := webhook.Event{
@@ -415,6 +417,8 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		return getAllowedResponse(), nil
 	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
+	case "challenge":
+		return getChallengeResponse(httpStatusToEnvoyStatus(result.HTTPStatus), result.ResponseBody, result.ResponseHeaders), nil
 	case "ban":
 		s.logger.Info("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		body, headers := s.renderDeniedResponse(result)
@@ -526,6 +530,48 @@ func getDeniedResponse(code envoy_type.StatusCode, body string, headers map[stri
 				},
 				Body:    body,
 				Headers: buildHeaderValues(headers),
+			},
+		},
+	}
+}
+
+func buildMultiHeaderValues(headers map[string][]string) []*envoy_core.HeaderValueOption {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	values := make([]*envoy_core.HeaderValueOption, 0, len(headers))
+	for k, vs := range headers {
+		key := k
+		for _, v := range vs {
+			value := v
+			values = append(values, &envoy_core.HeaderValueOption{
+				Header: &envoy_core.HeaderValue{
+					Key:   key,
+					Value: value,
+				},
+			})
+		}
+	}
+
+	return values
+}
+
+// getChallengeResponse passes the AppSec-rendered challenge body, cookies, and
+// headers through to the client verbatim - AppSec already produced the final
+// content (challenge page, PoW worker script, or submission result JSON).
+func getChallengeResponse(code envoy_type.StatusCode, body string, headers map[string][]string) *auth.CheckResponse {
+	return &auth.CheckResponse{
+		Status: &rpc_status.Status{
+			Code: int32(code),
+		},
+		HttpResponse: &auth.CheckResponse_DeniedResponse{
+			DeniedResponse: &auth.DeniedHttpResponse{
+				Status: &envoy_type.HttpStatus{
+					Code: code,
+				},
+				Body:    body,
+				Headers: buildMultiHeaderValues(headers),
 			},
 		},
 	}
