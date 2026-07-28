@@ -37,5 +37,6 @@ jobs:
           CHARTS_DIR: ${{ inputs.charts_dir }}
           OCI_REGISTRY: ${{ inputs.oci_registry }}
         run: |
-          helm package "$CHARTS_DIR" --destination /tmp/
-          helm push /tmp/*.tgz "oci://$OCI_REGISTRY/${{ github.repository_owner }}/charts"
+          OUT=$(mktemp -d)
+          helm package "$CHARTS_DIR" --destination "$OUT"
+          helm push "$OUT"/*.tgz "oci://$OCI_REGISTRY/${{ github.repository_owner }}/charts"

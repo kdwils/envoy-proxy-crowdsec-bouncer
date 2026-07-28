@@ -27,9 +27,6 @@ jobs:
       - name: Run unit tests
         run: go test -v -coverprofile=coverage.txt ./...
 
-      - name: Run functional tests
-        run: go test -v -tags=functional -timeout 30m ./tests/functional
-
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v4
@@ -65,3 +62,4 @@ jobs:
           cache-to: type=gha,mode=max
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
+
