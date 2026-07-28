@@ -34,12 +34,27 @@ jobs:
 
   charts:
     needs: [tag]
-    uses: kdwils/homelab-workflow/.github/workflows/helm-publish-oci.yml@main
+    uses: ./.github/workflows/helm-publish.yaml
     with:
       charts_dir: charts/envoy-proxy-bouncer
+      oci_registry: ghcr.io
 
   goreleaser:
     needs: [tag]
     if: "!contains(github.ref, '-rc')"
-    uses: kdwils/homelab-workflow/.github/workflows/go-releaser.yml@main
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: goreleaser/goreleaser-action@v7.2.3
+        with:
+          distribution: goreleaser
+          version: v7.2.3
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,4 +1,4 @@
-name: releaser
+name: charts
 
 on:
   pull_request:
@@ -7,15 +7,12 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-  packages: write
-
 jobs:
   charts:
     if: >
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'charts/')
-    uses: kdwils/homelab-workflow/.github/workflows/helm-publish-oci.yml@main
+    uses: ./.github/workflows/helm-publish.yaml
     with:
       charts_dir: charts/envoy-proxy-bouncer
+      oci_registry: ghcr.io
