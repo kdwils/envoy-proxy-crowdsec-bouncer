@@ -7,7 +7,6 @@ import (
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
-	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 )
 
 //go:generate mockgen -destination=mocks/mock_bouncer.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/server Bouncer
@@ -27,7 +26,8 @@ type TemplateStore interface {
 
 //go:generate mockgen -destination=mocks/mock_notifier.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/server Notifier
 type Notifier interface {
-	Notify(ctx context.Context, event webhook.Event)
+	NotifyCheckedRequest(ctx context.Context, result bouncer.CheckedRequest)
+	NotifyCaptchaVerified(ctx context.Context, ip string)
 }
 
 type Captcha = bouncer.CaptchaService

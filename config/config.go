@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/spf13/viper"
 )
 
@@ -91,10 +90,15 @@ type WAF struct {
 }
 
 type Webhook struct {
-	Subscriptions []webhook.Subscription `yaml:"subscriptions" json:"subscriptions"`
-	SigningKey    string                 `yaml:"signingKey" json:"signingKey"`
-	Timeout       time.Duration          `yaml:"timeout" json:"timeout"`
-	BufferSize    int                    `yaml:"bufferSize" json:"bufferSize"`
+	Subscriptions []Subscription `yaml:"subscriptions" json:"subscriptions"`
+	SigningKey    string         `yaml:"signingKey" json:"signingKey"`
+	Timeout       time.Duration  `yaml:"timeout" json:"timeout"`
+	BufferSize    int            `yaml:"bufferSize" json:"bufferSize"`
+}
+
+type Subscription struct {
+	URL    string   `yaml:"url" json:"url"`
+	Events []string `yaml:"events" json:"events"`
 }
 
 type Prometheus struct {

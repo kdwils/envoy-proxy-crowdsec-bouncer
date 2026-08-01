@@ -88,8 +88,12 @@ var ServeCmd = &cobra.Command{
 			templateStore = nil
 		}
 
-		notifier := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
-		go notifier.Start(ctx)
+		var notifier server.Notifier = webhook.NewNoopNotifier()
+		if len(config.Webhook.Subscriptions) > 0 {
+			webhookService := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
+			go webhookService.Start(ctx)
+			notifier = webhookService
+		}
 
 		server := server.NewServer(config, bouncer, bouncer.CaptchaService, notifier, templateStore, slogger, rec, gatherer)
 

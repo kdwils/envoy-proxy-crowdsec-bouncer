@@ -19,7 +19,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
-	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
@@ -247,13 +246,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	cookie := s.buildSessionCookie(cookieName, verificationResult.Token)
 	http.SetCookie(w, cookie)
 
-	s.notifier.Notify(r.Context(), webhook.Event{
-		Type:      webhook.EventCaptchaVerified,
-		Timestamp: s.now().UTC(),
-		IP:        clientIP,
-		Action:    "allow",
-		Reason:    "captcha verified",
-	})
+	s.notifier.NotifyCaptchaVerified(r.Context(), clientIP)
 
 	http.Redirect(w, r, session.OriginalURL, http.StatusFound)
 }
@@ -363,39 +356,6 @@ func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.Unar
 	return handler(logger.WithContext(ctx, reqLogger), req)
 }
 
-func (s *Server) buildWebhookEvent(result bouncer.CheckedRequest) webhook.Event {
-	eventType := webhook.EventRequestAllowed
-	switch result.Action {
-	case "allow":
-		eventType = webhook.EventRequestAllowed
-	case "ban", "deny":
-		eventType = webhook.EventRequestBlocked
-	case "captcha":
-		eventType = webhook.EventCaptchaRequired
-	}
-
-	event := webhook.Event{
-		Type:      eventType,
-		Timestamp: s.now().UTC(),
-		IP:        result.IP,
-		Action:    result.Action,
-		Reason:    result.Reason,
-	}
-
-	if result.ParsedRequest != nil {
-		event.Request = &webhook.Request{
-			Method:    result.ParsedRequest.Method,
-			URL:       result.ParsedRequest.URL.String(),
-			Host:      result.ParsedRequest.URL.Host,
-			Scheme:    result.ParsedRequest.URL.Scheme,
-			Path:      result.ParsedRequest.URL.Path,
-			UserAgent: result.ParsedRequest.UserAgent,
-		}
-	}
-
-	return event
-}
-
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
 	defer s.prometheusRecorder.ObserveDuration()()
 
@@ -406,9 +366,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 
 	result := s.bouncer.Check(ctx, req)
 	s.logger.Debug("remediation result", slog.Any("result", result))
-	if result.Action != "error" {
-		s.notifier.Notify(ctx, s.buildWebhookEvent(result))
-	}
+	s.notifier.NotifyCheckedRequest(ctx, result)
 
 	switch result.Action {
 	case "allow":
