@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
@@ -49,26 +50,17 @@ func New(subscriptions []config.Subscription, signingKey string, timeout time.Du
 	}
 }
 
-type eventURL struct {
-	event EventType
-	url   string
-}
-
 func buildSubsByEvent(subscriptions []config.Subscription) map[EventType][]string {
 	byEvent := make(map[EventType][]string)
-	seen := make(map[eventURL]struct{}, len(subscriptions))
 	for _, sub := range subscriptions {
 		for _, e := range sub.Events {
 			eventType, ok := parseEventType(e)
 			if !ok {
 				continue
 			}
-			key := eventURL{event: eventType, url: sub.URL}
-			if _, ok := seen[key]; ok {
-				continue
+			if !slices.Contains(byEvent[eventType], sub.URL) {
+				byEvent[eventType] = append(byEvent[eventType], sub.URL)
 			}
-			seen[key] = struct{}{}
-			byEvent[eventType] = append(byEvent[eventType], sub.URL)
 		}
 	}
 	return byEvent
