@@ -222,7 +222,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	verificationResult, err := s.captcha.VerifyResponse(r.Context(), clientIP, challengeToken, captchaResponse)
 	if err != nil {
 		if verificationResult != nil && !verificationResult.Success {
-			s.logger.Info("captcha verification failed", "error", err)
+			s.logger.Debug("captcha verification failed", "error", err)
 			s.prometheusRecorder.IncCaptchaVerificationsTotal("failure")
 			http.Error(w, verificationResult.Message, http.StatusForbidden)
 			return
@@ -235,7 +235,7 @@ func (s *Server) handleCaptchaVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !verificationResult.Success {
-		s.logger.Info("captcha verification result failed")
+		s.logger.Debug("captcha verification result failed")
 		s.prometheusRecorder.IncCaptchaVerificationsTotal("failure")
 		http.Error(w, verificationResult.Message, http.StatusForbidden)
 		return
@@ -374,7 +374,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	case "captcha":
 		return getRedirectResponse(result.RedirectURL), nil
 	case "ban":
-		s.logger.Info("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
+		s.logger.Debug("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		body, headers := s.renderDeniedResponse(result)
 		return getDeniedResponse(httpStatusToEnvoyStatus(result.HTTPStatus), body, headers), nil
 	case "error":
