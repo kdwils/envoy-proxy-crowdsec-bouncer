@@ -97,7 +97,6 @@ func (s *Service) Start(ctx context.Context) {
 func (s *Service) NotifyCheckedRequest(ctx context.Context, result bouncer.CheckedRequest) {
 	eventType, err := eventTypeForAction(result.Action)
 	if err != nil {
-		logger.FromContext(ctx).Error("webhook event type not derivable", "action", result.Action, "error", err)
 		return
 	}
 	if !s.subscribedTo(eventType) {
@@ -124,11 +123,10 @@ func (s *Service) subscribedTo(t EventType) bool {
 }
 
 func (s *Service) enqueue(ctx context.Context, event Event) {
-	log := logger.FromContext(ctx)
 	select {
 	case s.events <- event:
 	default:
-		log.Warn("webhook event dropped, channel full")
+		logger.FromContext(ctx).Debug("webhook event dropped, channel full")
 	}
 }
 
@@ -171,12 +169,11 @@ func (s *Service) buildCheckedRequestEvent(eventType EventType, result bouncer.C
 }
 
 func (s *Service) dispatch(ctx context.Context, event Event) {
-	log := logger.FromContext(ctx)
 	urls := s.subsByEvent[event.Type]
 
 	body, err := json.Marshal(event)
 	if err != nil {
-		log.Error("webhook marshal error", "error", err)
+		logger.FromContext(ctx).Error("webhook marshal error", "error", err)
 		return
 	}
 
@@ -186,13 +183,12 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 }
 
 func (s *Service) send(ctx context.Context, endpoint string, body []byte) {
-	log := logger.FromContext(ctx)
 	reqCtx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		log.Error("webhook request creation error", "endpoint", endpoint, "error", err)
+		logger.FromContext(ctx).Error("webhook request creation error", "endpoint", endpoint, "error", err)
 		return
 	}
 
@@ -203,13 +199,13 @@ func (s *Service) send(ctx context.Context, endpoint string, body []byte) {
 
 	resp, err := s.http.Do(req)
 	if err != nil {
-		log.Error("webhook delivery error", "endpoint", endpoint, "error", err)
+		logger.FromContext(ctx).Error("webhook delivery error", "endpoint", endpoint, "error", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		log.Warn("webhook non-success response", "endpoint", endpoint, "status", resp.StatusCode)
+		logger.FromContext(ctx).Warn("webhook non-success response", "endpoint", endpoint, "status", resp.StatusCode)
 	}
 }
 

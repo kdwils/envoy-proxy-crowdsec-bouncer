@@ -846,13 +846,15 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockNotifier := mocks.NewMockNotifier(ctrl)
 		mockCaptcha.EXPECT().GetSession("test-challenge-token").Return(session, true)
 		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(verificationResult, nil)
 		mockCaptcha.EXPECT().CookieName().Return("session")
+		mockNotifier.EXPECT().NotifyCaptchaVerified(gomock.Any(), "192.168.1.1")
 
 		rec := recorder.NewNoOp()
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, mockNotifier, mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("challengeToken", "test-challenge-token")
