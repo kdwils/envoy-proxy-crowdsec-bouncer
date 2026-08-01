@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	webhook "github.com/kdwils/envoy-proxy-bouncer/webhook"
+	bouncer "github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,14 +41,26 @@ func (m *MockNotifier) EXPECT() *MockNotifierMockRecorder {
 	return m.recorder
 }
 
-// Notify mocks base method.
-func (m *MockNotifier) Notify(ctx context.Context, event webhook.Event) {
+// NotifyCheckedRequest mocks base method.
+func (m *MockNotifier) NotifyCheckedRequest(ctx context.Context, result bouncer.CheckedRequest) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Notify", ctx, event)
+	m.ctrl.Call(m, "NotifyCheckedRequest", ctx, result)
 }
 
-// Notify indicates an expected call of Notify.
-func (mr *MockNotifierMockRecorder) Notify(ctx, event any) *gomock.Call {
+// NotifyCheckedRequest indicates an expected call of NotifyCheckedRequest.
+func (mr *MockNotifierMockRecorder) NotifyCheckedRequest(ctx, result any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Notify", reflect.TypeOf((*MockNotifier)(nil).Notify), ctx, event)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyCheckedRequest", reflect.TypeOf((*MockNotifier)(nil).NotifyCheckedRequest), ctx, result)
+}
+
+// NotifyCaptchaVerified mocks base method.
+func (m *MockNotifier) NotifyCaptchaVerified(ctx context.Context, ip string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "NotifyCaptchaVerified", ctx, ip)
+}
+
+// NotifyCaptchaVerified indicates an expected call of NotifyCaptchaVerified.
+func (mr *MockNotifierMockRecorder) NotifyCaptchaVerified(ctx, ip any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyCaptchaVerified", reflect.TypeOf((*MockNotifier)(nil).NotifyCaptchaVerified), ctx, ip)
 }
