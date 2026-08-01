@@ -32,6 +32,13 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/envoy-proxy-bouncer:sha-${{ github.sha }} \
             --tag ghcr.io/${{ github.repository_owner }}/envoy-proxy-bouncer:${{ github.ref_name }}
 
+  charts:
+    needs: [tag]
+    uses: ./.github/workflows/helm-publish.yaml
+    with:
+      charts_dir: charts/envoy-proxy-bouncer
+      oci_registry: ghcr.io
+
   goreleaser:
     needs: [tag]
     if: "!contains(github.ref, '-rc')"

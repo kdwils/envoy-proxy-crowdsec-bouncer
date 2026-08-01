@@ -1,9 +1,11 @@
 name: charts
 
 on:
-  push:
+  pull_request:
+    types:
+      - closed
     branches:
-      - 'charts/**'
+      - main
 
 permissions:
   contents: write
@@ -11,6 +13,9 @@ permissions:
 
 jobs:
   charts:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'charts/')
     uses: ./.github/workflows/helm-publish.yaml
     with:
       charts_dir: charts/envoy-proxy-bouncer
