@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"slices"
 	"time"
@@ -87,8 +86,8 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 func (s *Service) NotifyCheckedRequest(ctx context.Context, result bouncer.CheckedRequest) {
-	eventType, err := eventTypeForAction(result.Action)
-	if err != nil {
+	eventType, ok := eventTypeForAction(result.Action)
+	if !ok {
 		return
 	}
 	if !s.subscribedTo(eventType) {
@@ -122,16 +121,16 @@ func (s *Service) enqueue(ctx context.Context, event Event) {
 	}
 }
 
-func eventTypeForAction(action string) (EventType, error) {
+func eventTypeForAction(action string) (EventType, bool) {
 	switch action {
 	case "allow":
-		return EventRequestAllowed, nil
+		return EventRequestAllowed, true
 	case "ban", "deny":
-		return EventRequestBlocked, nil
+		return EventRequestBlocked, true
 	case "captcha":
-		return EventCaptchaRequired, nil
+		return EventCaptchaRequired, true
 	default:
-		return "", fmt.Errorf("unsupported action %q", action)
+		return "", false
 	}
 }
 
@@ -207,10 +206,12 @@ func computeHMAC(body []byte, key string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+var noopNotifier = &NoopNotifier{}
+
 type NoopNotifier struct{}
 
 func NewNoopNotifier() *NoopNotifier {
-	return &NoopNotifier{}
+	return noopNotifier
 }
 
 func (n *NoopNotifier) NotifyCheckedRequest(_ context.Context, _ bouncer.CheckedRequest) {}
