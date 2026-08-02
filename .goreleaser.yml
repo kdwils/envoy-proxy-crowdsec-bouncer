@@ -67,13 +67,12 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    # Features
+    # Bugfixes
+    * Fixed an issue where the bouncer continued processing webhook events even when no configurations/subscriptions existed, which caused severe resource exhaustion under load (#217)
 
-    Added support for an exempt list of IP/CIDR addresses to exclude from request evaluation
-    - Documentation can be found [here](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/CONFIGURATION.md#exemptips)
-
-    Added support for parsing IP addresses via configurable headers by @galovics
-    - Documentation can be found [here](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/CONFIGURATION.md#trustedipheader)
+    # Changes
+    * Final stage in dockerfile now uses gcr.io/distroless/static-debian12:nonroot, and a new default user 65532. The helm charts are updated to reflect this change. The previous default user was 1000.
+    * Info level logging was changed to be less verbose
 
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
