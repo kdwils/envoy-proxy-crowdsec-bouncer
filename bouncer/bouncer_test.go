@@ -140,6 +140,13 @@ func TestExtractRealIP(t *testing.T) {
 			trustedValue: "",
 			want:         "9.9.9.9",
 		},
+		{
+			name:           "IPv4-mapped IPv6 in x-forwarded-for matches IPv4 trusted prefix, falls through to socket IP",
+			ip:             "1.2.3.4",
+			xff:            "::ffff:1.2.3.5",
+			trustedProxies: []netip.Prefix{parseCIDROrFail(t, "1.2.3.0/24")},
+			want:           "1.2.3.4",
+		},
 	}
 
 	for _, tt := range tests {
@@ -205,6 +212,12 @@ func TestIsExemptIP(t *testing.T) {
 			ip:        netip.MustParseAddr("2001:dead:beef::1"),
 			exemptIPs: exemptIPs,
 			want:      false,
+		},
+		{
+			name:      "IPv4-mapped IPv6 in exempt IPs",
+			ip:        netip.MustParseAddr("::ffff:10.1.2.3"),
+			exemptIPs: exemptIPs,
+			want:      true,
 		},
 	}
 
@@ -273,6 +286,12 @@ func TestIsTrustedProxy(t *testing.T) {
 			ip:             "2001:dead:beef::1",
 			trustedProxies: trusted,
 			want:           false,
+		},
+		{
+			name:           "IPv4-mapped IPv6 matches IPv4 trusted prefix",
+			ip:             "::ffff:10.1.2.3",
+			trustedProxies: trusted,
+			want:           true,
 		},
 	}
 

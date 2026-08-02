@@ -257,6 +257,7 @@ func isTrustedProxy(ip string, trustedProxies []netip.Prefix) bool {
 }
 
 func isTrustedProxyAddr(addr netip.Addr, trustedProxies []netip.Prefix) bool {
+	addr = addr.Unmap()
 	for _, prefix := range trustedProxies {
 		if prefix.Contains(addr) {
 			return true
@@ -270,6 +271,7 @@ func (b *Bouncer) isExemptIP(ip netip.Addr) bool {
 	if !ip.IsValid() {
 		return false
 	}
+	ip = ip.Unmap()
 	for _, prefix := range b.ExemptIPs {
 		if prefix.Contains(ip) {
 			return true
