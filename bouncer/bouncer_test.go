@@ -3,6 +3,8 @@ package bouncer
 import (
 	"context"
 	"fmt"
+	"maps"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"testing"
@@ -158,6 +160,107 @@ func TestExtractRealIP(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractRealIPFromHTTP(t *testing.T) {
+	trusted := []netip.Prefix{
+		parseCIDROrFail(t, "10.0.0.0/8"),
+		parseCIDROrFail(t, "192.168.0.0/16"),
+	}
+
+	newReq := func(remoteAddr string, headers map[string][]string) *http.Request {
+		req, err := http.NewRequest(http.MethodGet, "http://example.com/test", nil)
+		require.NoError(t, err)
+		req.RemoteAddr = remoteAddr
+		maps.Copy(req.Header, headers)
+		return req
+	}
+
+	tests := []struct {
+		name            string
+		remoteAddr      string
+		headers         map[string][]string
+		trustedProxies  []netip.Prefix
+		trustedIPHeader string
+		want            string
+	}{
+		{
+			name:       "no headers, returns socket IP",
+			remoteAddr: "1.2.3.4:5678",
+			want:       "1.2.3.4",
+		},
+		{
+			name:       "IPv6 socket IP without headers",
+			remoteAddr: "[2001:db8::1]:8080",
+			want:       "2001:db8::1",
+		},
+		{
+			name:       "x-forwarded-for, no trusted proxies, picks last",
+			remoteAddr: "1.2.3.4:5678",
+			headers: map[string][]string{
+				"X-Forwarded-For": {"10.0.0.1, 8.8.8.8, 9.9.9.9"},
+			},
+			want: "9.9.9.9",
+		},
+		{
+			name:           "x-forwarded-for, skips trusted proxies",
+			remoteAddr:     "1.2.3.4:5678",
+			trustedProxies: trusted,
+			headers: map[string][]string{
+				"X-Forwarded-For": {"10.0.0.1, 192.168.1.1, 8.8.8.8"},
+			},
+			want: "8.8.8.8",
+		},
+		{
+			name:       "x-real-ip present and valid",
+			remoteAddr: "1.2.3.4:5678",
+			headers: map[string][]string{
+				"X-Real-IP": {"5.6.7.8"},
+			},
+			want: "5.6.7.8",
+		},
+		{
+			name:           "mixed-case x-forwarded-for key is matched",
+			remoteAddr:     "1.2.3.4:5678",
+			trustedProxies: trusted,
+			headers: map[string][]string{
+				"X-FORWARDED-FOR": {"10.0.0.1, 8.8.8.8"},
+			},
+			want: "8.8.8.8",
+		},
+		{
+			name:       "mixed-case x-real-ip key is matched",
+			remoteAddr: "1.2.3.4:5678",
+			headers: map[string][]string{
+				"x-REAL-ip": {"5.6.7.8"},
+			},
+			want: "5.6.7.8",
+		},
+		{
+			name:            "trustedIPHeader set and present, used directly, bypassing x-forwarded-for",
+			remoteAddr:      "1.2.3.4:5678",
+			trustedIPHeader: "x-envoy-external-address",
+			headers: map[string][]string{
+				"X-Envoy-External-Address": {"8.8.8.8"},
+				"X-Forwarded-For":          {"9.9.9.9"},
+			},
+			want: "8.8.8.8",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &Bouncer{
+				TrustedProxies:  tt.trustedProxies,
+				TrustedIPHeader: tt.trustedIPHeader,
+			}
+			got := b.ExtractRealIPFromHTTP(newReq(tt.remoteAddr, tt.headers))
+			if got != tt.want {
+				t.Errorf("ExtractRealIPFromHTTP() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsExemptIP(t *testing.T) {
 	exemptIPs := []netip.Prefix{
 		parseCIDROrFail(t, "10.0.0.0/8"),
@@ -558,6 +661,86 @@ func TestParseCheckRequest(t *testing.T) {
 								":path":           "/xff",
 								":method":         "GET",
 								"x-forwarded-for": "10.0.0.1, 8.8.8.8",
+							},
+							Protocol: "HTTP/1.1",
+							Body:     "",
+						},
+					},
+				},
+			},
+			want: &ParsedRequest{
+				IP:           "4.4.4.4",
+				RealIP:       "8.8.8.8",
+				ParsedRealIP: netip.MustParseAddr("8.8.8.8"),
+				URL:          url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         nil,
+				ProtoMajor:   1,
+				ProtoMinor:   1,
+			},
+		},
+		{
+			name: "x-forwarded-for with mixed-case header key",
+			req: &auth.CheckRequest{
+				Attributes: &auth.AttributeContext{
+					Source: &auth.AttributeContext_Peer{
+						Address: &core.Address{
+							Address: &core.Address_SocketAddress{
+								SocketAddress: &core.SocketAddress{
+									Address: "4.4.4.4",
+								},
+							},
+						},
+					},
+					Request: &auth.AttributeContext_Request{
+						Http: &auth.AttributeContext_HttpRequest{
+							Headers: map[string]string{
+								":scheme":         "http",
+								":authority":      "xff.com",
+								":path":           "/xff",
+								":method":         "GET",
+								"X-Forwarded-For": "10.0.0.1, 8.8.8.8",
+							},
+							Protocol: "HTTP/1.1",
+							Body:     "",
+						},
+					},
+				},
+			},
+			want: &ParsedRequest{
+				IP:           "4.4.4.4",
+				RealIP:       "8.8.8.8",
+				ParsedRealIP: netip.MustParseAddr("8.8.8.8"),
+				URL:          url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         nil,
+				ProtoMajor:   1,
+				ProtoMinor:   1,
+			},
+		},
+		{
+			name: "x-real-ip with mixed-case header key",
+			req: &auth.CheckRequest{
+				Attributes: &auth.AttributeContext{
+					Source: &auth.AttributeContext_Peer{
+						Address: &core.Address{
+							Address: &core.Address_SocketAddress{
+								SocketAddress: &core.SocketAddress{
+									Address: "4.4.4.4",
+								},
+							},
+						},
+					},
+					Request: &auth.AttributeContext_Request{
+						Http: &auth.AttributeContext_HttpRequest{
+							Headers: map[string]string{
+								":scheme":    "http",
+								":authority": "xff.com",
+								":path":      "/xff",
+								":method":    "GET",
+								"X-Real-IP":  "8.8.8.8",
 							},
 							Protocol: "HTTP/1.1",
 							Body:     "",
@@ -1817,6 +2000,57 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		metric, ok := actualMetrics["CAPI:captcha"]
 		require.True(t, ok, "expected CAPI:captcha metric to exist")
 		assert.Equal(t, wantMetric, metric)
+	})
+
+	t.Run("bouncer captcha - session token from cookie is passed to CreateSession", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mc := remediationmocks.NewMockCaptchaService(ctrl)
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{DecisionCache: mb, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
+
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{Address: "16.16.16.16"}},
+					},
+				},
+				Request: &auth.AttributeContext_Request{
+					Http: &auth.AttributeContext_HttpRequest{
+						Headers: map[string]string{
+							":scheme":    "https",
+							":authority": "example.com",
+							":path":      "/test",
+							":method":    "GET",
+							"cookie":     "session=abc123; theme=dark",
+						},
+						Protocol: "HTTP/1.1",
+					},
+				},
+			},
+		}
+
+		mb.EXPECT().GetDecision(gomock.Any(), "16.16.16.16").Return(&models.Decision{Type: new("captcha")}, nil)
+		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().CookieName().Return("session")
+		mc.EXPECT().CreateSession("16.16.16.16", "https://example.com/test", "abc123").Return(&components.CaptchaSession{
+			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123",
+		}, nil)
+
+		got := r.Check(context.Background(), req)
+		if got.Action != "captcha" || got.HTTPStatus != 302 || got.RedirectURL != "https://bouncer.example.com/captcha/challenge?session=abc123" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
 	})
 
 	t.Run("bouncer captcha - direct to captcha flow", func(t *testing.T) {
