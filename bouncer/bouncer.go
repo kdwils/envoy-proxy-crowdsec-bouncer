@@ -417,7 +417,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	logger.Debug("running decision cache", slog.String("ip", parsed.RealIP))
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
-		logger.Error("decision cache error", "error", err)
+		logger.Error("decision cache error", "error", err, slog.String("ip", parsed.RealIP))
 		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
@@ -470,7 +470,7 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 
 	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, sessionToken)
 	if err != nil {
-		logger.Error("error creating session", "error", err)
+		logger.Error("error creating session", "error", err, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncCaptchaErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
@@ -502,7 +502,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
-		logger.Error("waf error", "error", wafErr)
+		logger.Error("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncWAFErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
