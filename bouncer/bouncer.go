@@ -118,11 +118,11 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 		if err != nil {
 			return nil, err
 		}
+		bouncer.CaptchaService = c
 	}
 
 	bouncer.DecisionCache = dc
 	bouncer.WAF = w
-	bouncer.CaptchaService = c
 
 	return bouncer, nil
 }
