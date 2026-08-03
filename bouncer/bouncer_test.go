@@ -1320,7 +1320,9 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		require.NoError(t, err)
 
 		rec := recorder.NewNoOp()
-		r := Bouncer{DecisionCache: nil, WAF: nil, CaptchaService: nil, MetricsService: collector, PrometheusRecorder: rec}
+		r, err := New(config.Config{}, rec)
+		require.NoError(t, err)
+		r.MetricsService = collector
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
 
 		got := r.Check(context.Background(), req)
@@ -1941,6 +1943,55 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		metric, ok := actualMetrics["CAPI:captcha"]
 		require.True(t, ok, "expected CAPI:captcha metric to exist")
 		assert.Equal(t, wantMetric, metric)
+	})
+
+	t.Run("bouncer returns captcha decision - captcha service disabled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r, err := New(config.Config{}, rec)
+		require.NoError(t, err)
+		r.DecisionCache = mb
+		r.MetricsService = collector
+		req := mkReq("16.16.16.16", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
+
+		mb.EXPECT().GetDecision(gomock.Any(), "16.16.16.16").Return(&models.Decision{Type: new("captcha")}, nil)
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:         "16.16.16.16",
+			Action:     "allow",
+			Reason:     "captcha disabled",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:           "16.16.16.16",
+				RealIP:       "16.16.16.16",
+				ParsedRealIP: net.ParseIP("16.16.16.16"),
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
+				Headers: map[string]string{
+					":scheme":    "https",
+					":authority": "example.com",
+					":path":      "/test",
+					":method":    "GET",
+				},
+				Cookies: map[string]string{},
+			},
+		}
+		require.Equal(t, want, got)
 	})
 }
 
