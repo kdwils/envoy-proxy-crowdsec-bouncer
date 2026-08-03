@@ -1967,9 +1967,31 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mb.EXPECT().GetDecision(gomock.Any(), "16.16.16.16").Return(&models.Decision{Type: new("captcha")}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "allow" || got.Reason != "captcha disabled" || got.HTTPStatus != 200 || got.IP != "16.16.16.16" {
-			t.Fatalf("unexpected result: %+v", got)
+		want := CheckedRequest{
+			IP:         "16.16.16.16",
+			Action:     "allow",
+			Reason:     "captcha disabled",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:           "16.16.16.16",
+				RealIP:       "16.16.16.16",
+				ParsedRealIP: net.ParseIP("16.16.16.16"),
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         []byte(""),
+				ProtoMajor:   1,
+				ProtoMinor:   1,
+				Headers: map[string]string{
+					":scheme":    "https",
+					":authority": "example.com",
+					":path":      "/test",
+					":method":    "GET",
+				},
+				Cookies: map[string]string{},
+			},
 		}
+		require.Equal(t, want, got)
 	})
 }
 
