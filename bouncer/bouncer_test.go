@@ -3,7 +3,9 @@ package bouncer
 import (
 	"context"
 	"fmt"
-	"net"
+	"maps"
+	"net/http"
+	"net/netip"
 	"net/url"
 	"testing"
 
@@ -21,203 +23,246 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func parseCIDROrFail(t *testing.T, cidr string) *net.IPNet {
-	_, ipnet, err := net.ParseCIDR(cidr)
+func parseCIDROrFail(t *testing.T, cidr string) netip.Prefix {
+	prefix, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		t.Fatalf("failed to parse CIDR %q: %v", cidr, err)
 	}
-	return ipnet
+	return prefix.Masked()
 }
 
 func TestExtractRealIP(t *testing.T) {
-	trusted := []*net.IPNet{
+	trusted := []netip.Prefix{
 		parseCIDROrFail(t, "10.0.0.0/8"),
 		parseCIDROrFail(t, "192.168.0.0/16"),
 	}
 
 	tests := []struct {
-		name            string
-		ip              string
-		headers         map[string]string
-		trustedProxies  []*net.IPNet
-		trustedIPHeader string
-		want            string
+		name           string
+		ip             string
+		xff            string
+		xri            string
+		trustedValue   string
+		trustedProxies []netip.Prefix
+		want           string
 	}{
 		{
 			name: "No headers, returns socket IP",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"foo": "bar",
-			},
-			trustedProxies: nil,
-			want:           "1.2.3.4",
+			want: "1.2.3.4",
 		},
 		{
 			name: "x-real-ip present and valid",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-real-ip": "5.6.7.8",
-			},
-			trustedProxies: nil,
-			want:           "5.6.7.8",
+			xri:  "5.6.7.8",
+			want: "5.6.7.8",
 		},
 		{
 			name: "x-real-ip present but invalid, fallback to socket IP",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-real-ip": "not-an-ip",
-			},
-			trustedProxies: nil,
-			want:           "1.2.3.4",
+			xri:  "not-an-ip",
+			want: "1.2.3.4",
 		},
 		{
 			name: "x-forwarded-for, no trusted proxies, picks last valid",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-forwarded-for": "10.0.0.1, 8.8.8.8, 9.9.9.9",
-			},
-			trustedProxies: nil,
-			want:           "9.9.9.9",
+			xff:  "10.0.0.1, 8.8.8.8, 9.9.9.9",
+			want: "9.9.9.9",
 		},
 		{
-			name: "x-forwarded-for, skips trusted proxies",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-forwarded-for": "10.0.0.1, 192.168.1.1, 8.8.8.8",
-			},
+			name:           "x-forwarded-for, skips trusted proxies",
+			ip:             "1.2.3.4",
+			xff:            "10.0.0.1, 192.168.1.1, 8.8.8.8",
 			trustedProxies: trusted,
 			want:           "8.8.8.8",
 		},
 		{
-			name: "x-forwarded-for, all trusted, fallback to socket IP",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"X-Forwarded-For": "10.0.0.1, 192.168.1.1",
-			},
+			name:           "x-forwarded-for, all trusted, fallback to socket IP",
+			ip:             "1.2.3.4",
+			xff:            "10.0.0.1, 192.168.1.1",
 			trustedProxies: trusted,
 			want:           "1.2.3.4",
 		},
 		{
 			name: "x-forwarded-for, some invalid IPs, picks valid",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"X-Forwarded-For": "not-an-ip, 8.8.8.8",
-			},
-			trustedProxies: nil,
-			want:           "8.8.8.8",
+			xff:  "not-an-ip, 8.8.8.8",
+			want: "8.8.8.8",
 		},
 		{
 			name: "x-forwarded-for, more than 20 IPs, only last 20 considered",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"X-Forwarded-For": "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4,5.5.5.5,6.6.6.6,7.7.7.7,8.8.8.8,9.9.9.9,10.10.10.10,11.11.11.11,12.12.12.12,13.13.13.13,14.14.14.14,15.15.15.15,16.16.16.16,17.17.17.17,18.18.18.18,19.19.19.19,20.20.20.20,21.21.21.21,22.22.22.22",
-			},
-			trustedProxies: nil,
-			want:           "22.22.22.22",
-		},
-		{
-			name: "x-forwarded-for header case-insensitive",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-Forwarded-For": "8.8.8.8",
-			},
-			trustedProxies: nil,
-			want:           "8.8.8.8",
+			xff:  "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4,5.5.5.5,6.6.6.6,7.7.7.7,8.8.8.8,9.9.9.9,10.10.10.10,11.11.11.11,12.12.12.12,13.13.13.13,14.14.14.14,15.15.15.15,16.16.16.16,17.17.17.17,18.18.18.18,19.19.19.19,20.20.20.20,21.21.21.21,22.22.22.22",
+			want: "22.22.22.22",
 		},
 		{
 			name: "x-forwarded-for with spaces",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"X-Forwarded-For": " 10.0.0.1 , 8.8.8.8 ",
-			},
-			trustedProxies: nil,
-			want:           "8.8.8.8",
+			xff:  " 10.0.0.1 , 8.8.8.8 ",
+			want: "8.8.8.8",
 		},
 		{
 			name: "x-forwarded-for, all invalid, fallback to x-real-ip",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"X-Forwarded-For": "not-an-ip, also-bad",
-				"x-real-ip":       "5.5.5.5",
-			},
-			trustedProxies: nil,
-			want:           "5.5.5.5",
+			xff:  "not-an-ip, also-bad",
+			xri:  "5.5.5.5",
+			want: "5.5.5.5",
 		},
 		{
 			name: "x-forwarded-for, all invalid, fallback to socket IP",
 			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"X-Forwarded-For": "not-an-ip, also-bad",
-			},
-			trustedProxies: nil,
+			xff:  "not-an-ip, also-bad",
+			want: "1.2.3.4",
+		},
+		{
+			name:         "trustedIPHeader set and present, used directly, bypassing x-forwarded-for entirely",
+			ip:           "1.2.3.4",
+			xff:          "9.9.9.9",
+			trustedValue: "8.8.8.8",
+			want:         "8.8.8.8",
+		},
+		{
+			name:         "trustedIPHeader set but invalid IP, falls through to x-forwarded-for",
+			ip:           "1.2.3.4",
+			xff:          "9.9.9.9",
+			trustedValue: "not-an-ip",
+			want:         "9.9.9.9",
+		},
+		{
+			name:         "trustedIPHeader set but absent from request, falls through to x-forwarded-for",
+			ip:           "1.2.3.4",
+			xff:          "9.9.9.9",
+			trustedValue: "",
+			want:         "9.9.9.9",
+		},
+		{
+			name:         "trustedIPHeader unset (default), x-envoy-external-address header ignored, x-forwarded-for used as before",
+			ip:           "1.2.3.4",
+			xff:          "9.9.9.9",
+			trustedValue: "",
+			want:         "9.9.9.9",
+		},
+		{
+			name:           "IPv4-mapped IPv6 in x-forwarded-for matches IPv4 trusted prefix, falls through to socket IP",
+			ip:             "1.2.3.4",
+			xff:            "::ffff:1.2.3.5",
+			trustedProxies: []netip.Prefix{parseCIDROrFail(t, "1.2.3.0/24")},
 			want:           "1.2.3.4",
-		},
-		{
-			name: "trustedIPHeader set and present, used directly, bypassing x-forwarded-for entirely",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-envoy-external-address": "8.8.8.8",
-				"x-forwarded-for":          "9.9.9.9",
-			},
-			trustedProxies:  nil,
-			trustedIPHeader: "x-envoy-external-address",
-			want:            "8.8.8.8",
-		},
-		{
-			name: "trustedIPHeader set, case-insensitive match",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"X-Envoy-External-Address": "8.8.8.8",
-			},
-			trustedProxies:  nil,
-			trustedIPHeader: "x-envoy-external-address",
-			want:            "8.8.8.8",
-		},
-		{
-			name: "trustedIPHeader set but invalid IP, falls through to x-forwarded-for",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-envoy-external-address": "not-an-ip",
-				"x-forwarded-for":          "9.9.9.9",
-			},
-			trustedProxies:  nil,
-			trustedIPHeader: "x-envoy-external-address",
-			want:            "9.9.9.9",
-		},
-		{
-			name: "trustedIPHeader set but absent from request, falls through to x-forwarded-for",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-forwarded-for": "9.9.9.9",
-			},
-			trustedProxies:  nil,
-			trustedIPHeader: "x-envoy-external-address",
-			want:            "9.9.9.9",
-		},
-		{
-			name: "trustedIPHeader unset (default), x-envoy-external-address header ignored, x-forwarded-for used as before",
-			ip:   "1.2.3.4",
-			headers: map[string]string{
-				"x-envoy-external-address": "8.8.8.8",
-				"x-forwarded-for":          "9.9.9.9",
-			},
-			trustedProxies:  nil,
-			trustedIPHeader: "",
-			want:            "9.9.9.9",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ExtractRealIP(tt.ip, tt.headers, tt.trustedProxies, tt.trustedIPHeader)
+			got, _ := ExtractRealIP(tt.ip, tt.xff, tt.xri, tt.trustedValue, tt.trustedProxies)
 			if got != tt.want {
 				t.Errorf("ExtractRealIP() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
+
+func TestExtractRealIPFromHTTP(t *testing.T) {
+	trusted := []netip.Prefix{
+		parseCIDROrFail(t, "10.0.0.0/8"),
+		parseCIDROrFail(t, "192.168.0.0/16"),
+	}
+
+	newReq := func(remoteAddr string, headers map[string][]string) *http.Request {
+		req, err := http.NewRequest(http.MethodGet, "http://example.com/test", nil)
+		require.NoError(t, err)
+		req.RemoteAddr = remoteAddr
+		maps.Copy(req.Header, headers)
+		return req
+	}
+
+	tests := []struct {
+		name            string
+		remoteAddr      string
+		headers         map[string][]string
+		trustedProxies  []netip.Prefix
+		trustedIPHeader string
+		want            string
+	}{
+		{
+			name:       "no headers, returns socket IP",
+			remoteAddr: "1.2.3.4:5678",
+			want:       "1.2.3.4",
+		},
+		{
+			name:       "IPv6 socket IP without headers",
+			remoteAddr: "[2001:db8::1]:8080",
+			want:       "2001:db8::1",
+		},
+		{
+			name:       "x-forwarded-for, no trusted proxies, picks last",
+			remoteAddr: "1.2.3.4:5678",
+			headers: map[string][]string{
+				"X-Forwarded-For": {"10.0.0.1, 8.8.8.8, 9.9.9.9"},
+			},
+			want: "9.9.9.9",
+		},
+		{
+			name:           "x-forwarded-for, skips trusted proxies",
+			remoteAddr:     "1.2.3.4:5678",
+			trustedProxies: trusted,
+			headers: map[string][]string{
+				"X-Forwarded-For": {"10.0.0.1, 192.168.1.1, 8.8.8.8"},
+			},
+			want: "8.8.8.8",
+		},
+		{
+			name:       "x-real-ip present and valid",
+			remoteAddr: "1.2.3.4:5678",
+			headers: map[string][]string{
+				"X-Real-IP": {"5.6.7.8"},
+			},
+			want: "5.6.7.8",
+		},
+		{
+			name:           "mixed-case x-forwarded-for key is matched",
+			remoteAddr:     "1.2.3.4:5678",
+			trustedProxies: trusted,
+			headers: map[string][]string{
+				"X-FORWARDED-FOR": {"10.0.0.1, 8.8.8.8"},
+			},
+			want: "8.8.8.8",
+		},
+		{
+			name:       "mixed-case x-real-ip key is matched",
+			remoteAddr: "1.2.3.4:5678",
+			headers: map[string][]string{
+				"x-REAL-ip": {"5.6.7.8"},
+			},
+			want: "5.6.7.8",
+		},
+		{
+			name:            "trustedIPHeader set and present, used directly, bypassing x-forwarded-for",
+			remoteAddr:      "1.2.3.4:5678",
+			trustedIPHeader: "x-envoy-external-address",
+			headers: map[string][]string{
+				"X-Envoy-External-Address": {"8.8.8.8"},
+				"X-Forwarded-For":          {"9.9.9.9"},
+			},
+			want: "8.8.8.8",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &Bouncer{
+				TrustedProxies:  tt.trustedProxies,
+				TrustedIPHeader: tt.trustedIPHeader,
+			}
+			got := b.ExtractRealIPFromHTTP(newReq(tt.remoteAddr, tt.headers))
+			if got != tt.want {
+				t.Errorf("ExtractRealIPFromHTTP() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsExemptIP(t *testing.T) {
-	exemptIPs := []*net.IPNet{
+	exemptIPs := []netip.Prefix{
 		parseCIDROrFail(t, "10.0.0.0/8"),
 		parseCIDROrFail(t, "192.168.0.0/16"),
 		parseCIDROrFail(t, "2001:db8::/32"),
@@ -225,51 +270,57 @@ func TestIsExemptIP(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		ip        net.IP
-		exemptIPs []*net.IPNet
+		ip        netip.Addr
+		exemptIPs []netip.Prefix
 		want      bool
 	}{
 		{
 			name:      "Empty exempt IPs list returns false",
-			ip:        net.ParseIP("10.0.0.1"),
+			ip:        netip.MustParseAddr("10.0.0.1"),
 			exemptIPs: nil,
 			want:      false,
 		},
 		{
 			name:      "IP in exempt IPs (IPv4)",
-			ip:        net.ParseIP("10.1.2.3"),
+			ip:        netip.MustParseAddr("10.1.2.3"),
 			exemptIPs: exemptIPs,
 			want:      true,
 		},
 		{
 			name:      "IP not in exempt IPs (IPv4)",
-			ip:        net.ParseIP("8.8.8.8"),
+			ip:        netip.MustParseAddr("8.8.8.8"),
 			exemptIPs: exemptIPs,
 			want:      false,
 		},
 		{
 			name:      "IP in exempt IPs (second range)",
-			ip:        net.ParseIP("192.168.1.100"),
+			ip:        netip.MustParseAddr("192.168.1.100"),
 			exemptIPs: exemptIPs,
 			want:      true,
 		},
 		{
 			name:      "Invalid IP returns false",
-			ip:        nil,
+			ip:        netip.Addr{},
 			exemptIPs: exemptIPs,
 			want:      false,
 		},
 		{
 			name:      "IPv6 in exempt IPs",
-			ip:        net.ParseIP("2001:db8::1"),
+			ip:        netip.MustParseAddr("2001:db8::1"),
 			exemptIPs: exemptIPs,
 			want:      true,
 		},
 		{
 			name:      "IPv6 not in exempt IPs",
-			ip:        net.ParseIP("2001:dead:beef::1"),
+			ip:        netip.MustParseAddr("2001:dead:beef::1"),
 			exemptIPs: exemptIPs,
 			want:      false,
+		},
+		{
+			name:      "IPv4-mapped IPv6 in exempt IPs",
+			ip:        netip.MustParseAddr("::ffff:10.1.2.3"),
+			exemptIPs: exemptIPs,
+			want:      true,
 		},
 	}
 
@@ -285,7 +336,7 @@ func TestIsExemptIP(t *testing.T) {
 }
 
 func TestIsTrustedProxy(t *testing.T) {
-	trusted := []*net.IPNet{
+	trusted := []netip.Prefix{
 		parseCIDROrFail(t, "10.0.0.0/8"),
 		parseCIDROrFail(t, "192.168.0.0/16"),
 		parseCIDROrFail(t, "2001:db8::/32"),
@@ -294,7 +345,7 @@ func TestIsTrustedProxy(t *testing.T) {
 	tests := []struct {
 		name           string
 		ip             string
-		trustedProxies []*net.IPNet
+		trustedProxies []netip.Prefix
 		want           bool
 	}{
 		{
@@ -338,6 +389,12 @@ func TestIsTrustedProxy(t *testing.T) {
 			ip:             "2001:dead:beef::1",
 			trustedProxies: trusted,
 			want:           false,
+		},
+		{
+			name:           "IPv4-mapped IPv6 matches IPv4 trusted prefix",
+			ip:             "::ffff:10.1.2.3",
+			trustedProxies: trusted,
+			want:           true,
 		},
 	}
 
@@ -441,7 +498,7 @@ func Test_parseIPNets(t *testing.T) {
 }
 
 func TestParseCheckRequest(t *testing.T) {
-	trusted := []*net.IPNet{
+	trusted := []netip.Prefix{
 		parseCIDROrFail(t, "10.0.0.0/8"),
 	}
 	r := &Bouncer{TrustedProxies: trusted}
@@ -454,12 +511,12 @@ func TestParseCheckRequest(t *testing.T) {
 		{
 			name: "nil request returns empty ParsedRequest",
 			req:  nil,
-			want: &ParsedRequest{Headers: map[string]string{}, Cookies: map[string]string{}},
+			want: &ParsedRequest{},
 		},
 		{
 			name: "nil attributes returns empty ParsedRequest",
 			req:  &auth.CheckRequest{},
-			want: &ParsedRequest{Headers: map[string]string{}, Cookies: map[string]string{}},
+			want: &ParsedRequest{},
 		},
 		{
 			name: "full request with Envoy pseudo-headers",
@@ -494,23 +551,13 @@ func TestParseCheckRequest(t *testing.T) {
 			want: &ParsedRequest{
 				IP:           "5.6.7.8",
 				RealIP:       "5.6.7.8",
-				ParsedRealIP: net.ParseIP("5.6.7.8"),
-				Headers: map[string]string{
-					":scheme":         "https",
-					":authority":      "example.com",
-					":path":           "/foo/bar",
-					":method":         "GET",
-					"user-agent":      "TestAgent",
-					"some-header":     "some-value",
-					"x-forwarded-for": "10.0.0.1,5.6.7.8",
-				},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/foo/bar"},
-				Method:     "GET",
-				UserAgent:  "TestAgent",
-				Body:       []byte("bodydata"),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+				ParsedRealIP: netip.MustParseAddr("5.6.7.8"),
+				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/foo/bar"},
+				Method:       "GET",
+				UserAgent:    "TestAgent",
+				Body:         nil,
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		},
 		{
@@ -544,21 +591,13 @@ func TestParseCheckRequest(t *testing.T) {
 			want: &ParsedRequest{
 				IP:           "2.2.2.2",
 				RealIP:       "2.2.2.2",
-				ParsedRealIP: net.ParseIP("2.2.2.2"),
-				Headers: map[string]string{
-					":scheme":    "http",
-					":authority": "host.com",
-					":path":      "/baz",
-					":method":    "POST",
-					"user-agent": "UA-From-Headers",
-				},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "host.com", Path: "/baz"},
-				Method:     "POST",
-				UserAgent:  "UA-From-Headers",
-				Body:       []byte(""),
-				ProtoMajor: 2,
-				ProtoMinor: 0,
+				ParsedRealIP: netip.MustParseAddr("2.2.2.2"),
+				URL:          url.URL{Scheme: "http", Host: "host.com", Path: "/baz"},
+				Method:       "POST",
+				UserAgent:    "UA-From-Headers",
+				Body:         nil,
+				ProtoMajor:   2,
+				ProtoMinor:   0,
 			},
 		},
 		{
@@ -592,21 +631,13 @@ func TestParseCheckRequest(t *testing.T) {
 			want: &ParsedRequest{
 				IP:           "3.3.3.3",
 				RealIP:       "3.3.3.3",
-				ParsedRealIP: net.ParseIP("3.3.3.3"),
-				Headers: map[string]string{
-					":scheme":    "http",
-					":authority": "nested.com",
-					":path":      "/nested",
-					":method":    "PUT",
-					"foo":        "bar",
-				},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "nested.com", Path: "/nested"},
-				Method:     "PUT",
-				UserAgent:  "",
-				Body:       []byte("abc"),
-				ProtoMajor: 2,
-				ProtoMinor: 0,
+				ParsedRealIP: netip.MustParseAddr("3.3.3.3"),
+				URL:          url.URL{Scheme: "http", Host: "nested.com", Path: "/nested"},
+				Method:       "PUT",
+				UserAgent:    "",
+				Body:         nil,
+				ProtoMajor:   2,
+				ProtoMinor:   0,
 			},
 		},
 		{
@@ -640,21 +671,93 @@ func TestParseCheckRequest(t *testing.T) {
 			want: &ParsedRequest{
 				IP:           "4.4.4.4",
 				RealIP:       "8.8.8.8",
-				ParsedRealIP: net.ParseIP("8.8.8.8"),
-				Headers: map[string]string{
-					":scheme":         "http",
-					":authority":      "xff.com",
-					":path":           "/xff",
-					":method":         "GET",
-					"x-forwarded-for": "10.0.0.1, 8.8.8.8",
+				ParsedRealIP: netip.MustParseAddr("8.8.8.8"),
+				URL:          url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         nil,
+				ProtoMajor:   1,
+				ProtoMinor:   1,
+			},
+		},
+		{
+			name: "x-forwarded-for with mixed-case header key",
+			req: &auth.CheckRequest{
+				Attributes: &auth.AttributeContext{
+					Source: &auth.AttributeContext_Peer{
+						Address: &core.Address{
+							Address: &core.Address_SocketAddress{
+								SocketAddress: &core.SocketAddress{
+									Address: "4.4.4.4",
+								},
+							},
+						},
+					},
+					Request: &auth.AttributeContext_Request{
+						Http: &auth.AttributeContext_HttpRequest{
+							Headers: map[string]string{
+								":scheme":         "http",
+								":authority":      "xff.com",
+								":path":           "/xff",
+								":method":         "GET",
+								"X-Forwarded-For": "10.0.0.1, 8.8.8.8",
+							},
+							Protocol: "HTTP/1.1",
+							Body:     "",
+						},
+					},
 				},
-				Cookies:    map[string]string{},
-				URL:        url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
-				Method:     "GET",
-				UserAgent:  "",
-				Body:       []byte(""),
-				ProtoMajor: 1,
-				ProtoMinor: 1,
+			},
+			want: &ParsedRequest{
+				IP:           "4.4.4.4",
+				RealIP:       "8.8.8.8",
+				ParsedRealIP: netip.MustParseAddr("8.8.8.8"),
+				URL:          url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         nil,
+				ProtoMajor:   1,
+				ProtoMinor:   1,
+			},
+		},
+		{
+			name: "x-real-ip with mixed-case header key",
+			req: &auth.CheckRequest{
+				Attributes: &auth.AttributeContext{
+					Source: &auth.AttributeContext_Peer{
+						Address: &core.Address{
+							Address: &core.Address_SocketAddress{
+								SocketAddress: &core.SocketAddress{
+									Address: "4.4.4.4",
+								},
+							},
+						},
+					},
+					Request: &auth.AttributeContext_Request{
+						Http: &auth.AttributeContext_HttpRequest{
+							Headers: map[string]string{
+								":scheme":    "http",
+								":authority": "xff.com",
+								":path":      "/xff",
+								":method":    "GET",
+								"X-Real-IP":  "8.8.8.8",
+							},
+							Protocol: "HTTP/1.1",
+							Body:     "",
+						},
+					},
+				},
+			},
+			want: &ParsedRequest{
+				IP:           "4.4.4.4",
+				RealIP:       "8.8.8.8",
+				ParsedRealIP: netip.MustParseAddr("8.8.8.8"),
+				URL:          url.URL{Scheme: "http", Host: "xff.com", Path: "/xff"},
+				Method:       "GET",
+				UserAgent:    "",
+				Body:         nil,
+				ProtoMajor:   1,
+				ProtoMinor:   1,
 			},
 		},
 	}
@@ -665,6 +768,40 @@ func TestParseCheckRequest(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestParseCheckRequest_TrustedIPHeader(t *testing.T) {
+	r := &Bouncer{TrustedIPHeader: "x-envoy-external-address"}
+	req := &auth.CheckRequest{
+		Attributes: &auth.AttributeContext{
+			Source: &auth.AttributeContext_Peer{
+				Address: &core.Address{
+					Address: &core.Address_SocketAddress{
+						SocketAddress: &core.SocketAddress{Address: "1.2.3.4"},
+					},
+				},
+			},
+			Request: &auth.AttributeContext_Request{
+				Http: &auth.AttributeContext_HttpRequest{
+					Headers: map[string]string{
+						"X-Envoy-External-Address": "8.8.8.8",
+						"x-forwarded-for":          "9.9.9.9",
+					},
+					Protocol: "HTTP/1.1",
+				},
+			},
+		},
+	}
+
+	got := r.ParseCheckRequest(context.Background(), req)
+	want := &ParsedRequest{
+		IP:           "1.2.3.4",
+		RealIP:       "8.8.8.8",
+		ParsedRealIP: netip.MustParseAddr("8.8.8.8"),
+		ProtoMajor:   1,
+		ProtoMinor:   1,
+	}
+	assert.Equal(t, want, got)
 }
 
 func TestBouncer_Check(t *testing.T) {
@@ -735,15 +872,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "1.2.3.4",
 				RealIP:       "1.2.3.4",
-				ParsedRealIP: net.ParseIP("1.2.3.4"),
+				ParsedRealIP: netip.MustParseAddr("1.2.3.4"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
-				Method:       "GET",
-				UserAgent:    "UT",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 			CaptchaSession: nil,
 		}
@@ -806,15 +943,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "2.2.2.2",
 				RealIP:       "2.2.2.2",
-				ParsedRealIP: net.ParseIP("2.2.2.2"),
+				ParsedRealIP: netip.MustParseAddr("2.2.2.2"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
-				Method:       "GET",
-				UserAgent:    "UT",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 			CaptchaSession: nil,
 		}
@@ -854,11 +991,11 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "5.6.7.8",
 				RealIP:       "5.6.7.8",
-				ParsedRealIP: net.ParseIP("5.6.7.8"),
+				ParsedRealIP: netip.MustParseAddr("5.6.7.8"),
 				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
 				Method:       "GET",
 				UserAgent:    "UT",
-				Body:         []byte(""),
+				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
 				Headers: map[string]string{
@@ -868,7 +1005,6 @@ func TestBouncer_Check(t *testing.T) {
 					":method":    "GET",
 					"user-agent": "UT",
 				},
-				Cookies: map[string]string{},
 			},
 			CaptchaSession: nil,
 		}
@@ -921,15 +1057,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "9.9.9.9",
 				RealIP:       "9.9.9.9",
-				ParsedRealIP: net.ParseIP("9.9.9.9"),
+				ParsedRealIP: netip.MustParseAddr("9.9.9.9"),
 				Headers:      map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "host", Path: "/bar"},
-				Method:       "POST",
-				UserAgent:    "UT",
-				Body:         []byte("abc"),
-				ProtoMajor:   2,
-				ProtoMinor:   0,
+
+				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
+				Method:     "POST",
+				UserAgent:  "UT",
+				Body:       []byte("abc"),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
 			},
 			CaptchaSession: nil,
 		}
@@ -981,15 +1117,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "10.0.0.1",
 				RealIP:       "10.0.0.1",
-				ParsedRealIP: net.ParseIP("10.0.0.1"),
+				ParsedRealIP: netip.MustParseAddr("10.0.0.1"),
 				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "http", Host: "h", Path: "/p"},
-				Method:       "GET",
-				UserAgent:    "UT",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   0,
+
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1026,15 +1162,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "7.7.7.7",
 				RealIP:       "7.7.7.7",
-				ParsedRealIP: net.ParseIP("7.7.7.7"),
+				ParsedRealIP: netip.MustParseAddr("7.7.7.7"),
 				Headers:      map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
-				Method:       "GET",
-				UserAgent:    "UT",
-				Body:         []byte(""),
-				ProtoMajor:   2,
-				ProtoMinor:   0,
+
+				URL:        url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 2,
+				ProtoMinor: 0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1085,15 +1221,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "8.8.8.8",
 				RealIP:       "8.8.8.8",
-				ParsedRealIP: net.ParseIP("8.8.8.8"),
+				ParsedRealIP: netip.MustParseAddr("8.8.8.8"),
 				Headers:      map[string]string{":authority": "host", ":method": "POST", ":path": "/bar", ":scheme": "https", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "host", Path: "/bar"},
-				Method:       "POST",
-				UserAgent:    "UT",
-				Body:         []byte("abc"),
-				ProtoMajor:   2,
-				ProtoMinor:   0,
+
+				URL:        url.URL{Scheme: "https", Host: "host", Path: "/bar"},
+				Method:     "POST",
+				UserAgent:  "UT",
+				Body:       []byte("abc"),
+				ProtoMajor: 2,
+				ProtoMinor: 0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1130,15 +1266,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "11.11.11.11",
 				RealIP:       "11.11.11.11",
-				ParsedRealIP: net.ParseIP("11.11.11.11"),
+				ParsedRealIP: netip.MustParseAddr("11.11.11.11"),
 				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "http", Host: "h", Path: "/p"},
-				Method:       "GET",
-				UserAgent:    "UT",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   0,
+
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1175,15 +1311,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "12.12.12.12",
 				RealIP:       "12.12.12.12",
-				ParsedRealIP: net.ParseIP("12.12.12.12"),
+				ParsedRealIP: netip.MustParseAddr("12.12.12.12"),
 				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "http", Host: "h", Path: "/p"},
-				Method:       "GET",
-				UserAgent:    "UT",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   0,
+
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 0,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1218,13 +1354,11 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "13.13.13.13",
 				RealIP:       "13.13.13.13",
-				ParsedRealIP: net.ParseIP("13.13.13.13"),
-				Headers:      map[string]string{":authority": "ex", ":method": "GET", ":path": "/ok", ":scheme": "https", "user-agent": "UT"},
-				Cookies:      map[string]string{},
+				ParsedRealIP: netip.MustParseAddr("13.13.13.13"),
 				URL:          url.URL{Scheme: "https", Host: "ex", Path: "/ok"},
 				Method:       "GET",
 				UserAgent:    "UT",
-				Body:         []byte(""),
+				Body:         nil,
 				ProtoMajor:   2,
 				ProtoMinor:   0,
 			},
@@ -1239,7 +1373,7 @@ func TestBouncer_Check(t *testing.T) {
 		mb := remediationmocks.NewMockDecisionCache(ctrl)
 		mw := remediationmocks.NewMockWAF(ctrl)
 		mc := remediationmocks.NewMockCaptchaService(ctrl)
-		exemptIPs := []*net.IPNet{
+		exemptIPs := []netip.Prefix{
 			parseCIDROrFail(t, "10.0.0.0/8"),
 		}
 
@@ -1271,15 +1405,15 @@ func TestBouncer_Check(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "10.0.0.1",
 				RealIP:       "10.0.0.1",
-				ParsedRealIP: net.ParseIP("10.0.0.1"),
+				ParsedRealIP: netip.MustParseAddr("10.0.0.1"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/foo", ":scheme": "http", "user-agent": "UT"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
-				Method:       "GET",
-				UserAgent:    "UT",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "http", Host: "example.com", Path: "/foo"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1332,13 +1466,11 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "1.1.1.1",
 				RealIP:       "1.1.1.1",
-				ParsedRealIP: net.ParseIP("1.1.1.1"),
-				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:      map[string]string{},
+				ParsedRealIP: netip.MustParseAddr("1.1.1.1"),
 				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:       "GET",
 				UserAgent:    "",
-				Body:         []byte(""),
+				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
 			},
@@ -1392,15 +1524,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "2.2.2.2",
 				RealIP:       "2.2.2.2",
-				ParsedRealIP: net.ParseIP("2.2.2.2"),
+				ParsedRealIP: netip.MustParseAddr("2.2.2.2"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:       "GET",
-				UserAgent:    "",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1450,11 +1582,11 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "3.3.3.3",
 				RealIP:       "3.3.3.3",
-				ParsedRealIP: net.ParseIP("3.3.3.3"),
+				ParsedRealIP: netip.MustParseAddr("3.3.3.3"),
 				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:       "GET",
 				UserAgent:    "",
-				Body:         []byte(""),
+				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
 				Headers: map[string]string{
@@ -1463,7 +1595,6 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 					":path":      "/test",
 					":method":    "GET",
 				},
-				Cookies: map[string]string{},
 			},
 			CaptchaSession: nil,
 		}
@@ -1502,15 +1633,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "4.4.4.4",
 				RealIP:       "4.4.4.4",
-				ParsedRealIP: net.ParseIP("4.4.4.4"),
+				ParsedRealIP: netip.MustParseAddr("4.4.4.4"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:       "GET",
-				UserAgent:    "",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1548,15 +1679,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "5.5.5.5",
 				RealIP:       "5.5.5.5",
-				ParsedRealIP: net.ParseIP("5.5.5.5"),
+				ParsedRealIP: netip.MustParseAddr("5.5.5.5"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:       "GET",
-				UserAgent:    "",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1594,15 +1725,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "6.6.6.6",
 				RealIP:       "6.6.6.6",
-				ParsedRealIP: net.ParseIP("6.6.6.6"),
+				ParsedRealIP: netip.MustParseAddr("6.6.6.6"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:       "GET",
-				UserAgent:    "",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1725,15 +1856,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "10.10.10.10",
 				RealIP:       "10.10.10.10",
-				ParsedRealIP: net.ParseIP("10.10.10.10"),
+				ParsedRealIP: netip.MustParseAddr("10.10.10.10"),
 				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
-				Cookies:      map[string]string{},
-				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
-				Method:       "GET",
-				UserAgent:    "",
-				Body:         []byte(""),
-				ProtoMajor:   1,
-				ProtoMinor:   1,
+
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
 			},
 		}
 		require.Equal(t, want, got)
@@ -1871,6 +2002,57 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		assert.Equal(t, wantMetric, metric)
 	})
 
+	t.Run("bouncer captcha - session token from cookie is passed to CreateSession", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mc := remediationmocks.NewMockCaptchaService(ctrl)
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{DecisionCache: mb, CaptchaService: mc, MetricsService: collector, PrometheusRecorder: rec}
+
+		req := &auth.CheckRequest{
+			Attributes: &auth.AttributeContext{
+				Source: &auth.AttributeContext_Peer{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{Address: "16.16.16.16"}},
+					},
+				},
+				Request: &auth.AttributeContext_Request{
+					Http: &auth.AttributeContext_HttpRequest{
+						Headers: map[string]string{
+							":scheme":    "https",
+							":authority": "example.com",
+							":path":      "/test",
+							":method":    "GET",
+							"cookie":     "session=abc123; theme=dark",
+						},
+						Protocol: "HTTP/1.1",
+					},
+				},
+			},
+		}
+
+		mb.EXPECT().GetDecision(gomock.Any(), "16.16.16.16").Return(&models.Decision{Type: new("captcha")}, nil)
+		mc.EXPECT().IsEnabled().Return(true)
+		mc.EXPECT().CookieName().Return("session")
+		mc.EXPECT().CreateSession("16.16.16.16", "https://example.com/test", "abc123").Return(&components.CaptchaSession{
+			ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123",
+		}, nil)
+
+		got := r.Check(context.Background(), req)
+		if got.Action != "captcha" || got.HTTPStatus != 302 || got.RedirectURL != "https://bouncer.example.com/captcha/challenge?session=abc123" {
+			t.Fatalf("unexpected result: %+v", got)
+		}
+	})
+
 	t.Run("bouncer captcha - direct to captcha flow", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1907,11 +2089,11 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "15.15.15.15",
 				RealIP:       "15.15.15.15",
-				ParsedRealIP: net.ParseIP("15.15.15.15"),
+				ParsedRealIP: netip.MustParseAddr("15.15.15.15"),
 				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:       "GET",
 				UserAgent:    "",
-				Body:         []byte(""),
+				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
 				Headers: map[string]string{
@@ -1920,7 +2102,6 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 					":path":      "/test",
 					":method":    "GET",
 				},
-				Cookies: map[string]string{},
 			},
 			CaptchaSession: &components.CaptchaSession{
 				ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=crowdsec123",
@@ -2035,7 +2216,7 @@ func Test_parseCookies(t *testing.T) {
 		{
 			name:         "empty string returns empty map",
 			cookieHeader: "",
-			want:         map[string]string{},
+			want:         nil,
 		},
 		{
 			name:         "single cookie",
