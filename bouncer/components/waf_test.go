@@ -12,6 +12,7 @@ import (
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -172,5 +173,28 @@ func TestWAF_Inspect(t *testing.T) {
 		result, err := waf.Inspect(ctx, areq)
 		assert.NoError(t, err)
 		assert.Equal(t, "captcha", result.Action)
+	})
+
+	t.Run("challenge action with body, cookies, and headers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		waf := WAF{APIURL: "http://test", APIKey: "key", http: mockHTTP}
+		respBody := `{"action":"challenge","http_status":401,"user_body_content":"<html>challenge</html>","user_cookies":["cs_challenge=abc123; Path=/; HttpOnly"],"user_headers":{"Content-Type":["text/html"],"Content-Security-Policy":["default-src 'self'"]}}`
+		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
+		mockHTTP.EXPECT().Do(gomock.Any()).Return(response, nil).Times(1)
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
+		ctx := context.Background()
+		result, err := waf.Inspect(ctx, areq)
+		require.NoError(t, err)
+		assert.Equal(t, "challenge", result.Action)
+		assert.Equal(t, 401, result.HTTPStatus)
+		assert.Equal(t, "<html>challenge</html>", result.UserBodyContent)
+		require.Len(t, result.UserCookies, 1, "expected one cookie in response")
+		assert.Equal(t, "cs_challenge=abc123; Path=/; HttpOnly", result.UserCookies[0])
+		require.Contains(t, result.UserHeaders, "Content-Type")
+		assert.Equal(t, []string{"text/html"}, result.UserHeaders["Content-Type"])
+		require.Contains(t, result.UserHeaders, "Content-Security-Policy")
+		assert.Equal(t, []string{"default-src 'self'"}, result.UserHeaders["Content-Security-Policy"])
 	})
 }

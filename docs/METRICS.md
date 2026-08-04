@@ -12,7 +12,7 @@ All metrics use the `bouncer_` namespace.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `bouncer_requests_total` | Counter | `action` | Total requests processed, labeled by outcome (`allow`, `ban`, `captcha`, `error`) |
+| `bouncer_requests_total` | Counter | `action` | Total requests processed, labeled by outcome (`allow`, `ban`, `captcha`, `challenge`, `error`) |
 | `bouncer_request_duration_seconds` | Histogram | — | End-to-end request processing duration |
 | `bouncer_rate_limited_total` | Counter | — | Total requests rejected by the rate limiter |
 

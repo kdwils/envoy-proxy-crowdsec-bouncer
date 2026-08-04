@@ -27,8 +27,11 @@ type WAF struct {
 }
 
 type WAFResponse struct {
-	Action     string `json:"action"`
-	HTTPStatus int    `json:"http_status,omitempty"`
+	Action          string              `json:"action"`
+	HTTPStatus      int                 `json:"http_status,omitempty"`
+	UserBodyContent string              `json:"user_body_content,omitempty"`
+	UserCookies     []string            `json:"user_cookies,omitempty"`
+	UserHeaders     map[string][]string `json:"user_headers,omitempty"`
 }
 
 // AppSecRequest is a light DTO used to forward the original request data to AppSec.
