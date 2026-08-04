@@ -2156,20 +2156,15 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 			ParsedRequest: &ParsedRequest{
 				IP:           "16.16.16.16",
 				RealIP:       "16.16.16.16",
-				ParsedRealIP: net.ParseIP("16.16.16.16"),
+				ParsedRealIP: netip.MustParseAddr("16.16.16.16"),
 				URL:          url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
 				Method:       "GET",
 				UserAgent:    "",
-				Body:         []byte(""),
+				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
-				Headers: map[string]string{
-					":scheme":    "https",
-					":authority": "example.com",
-					":path":      "/test",
-					":method":    "GET",
-				},
-				Cookies: map[string]string{},
+				Headers:      nil,
+				Cookies:      nil,
 			},
 		}
 		require.Equal(t, want, got)
