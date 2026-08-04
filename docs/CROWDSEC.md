@@ -26,6 +26,7 @@ When WAF is enabled, requests that pass the bouncer IP check are forwarded to th
 - **allow** — request proceeds
 - **ban** — request is denied immediately
 - **captcha** — a CAPTCHA challenge is issued (requires CAPTCHA to be enabled)
+- **challenge** — AppSec's own bot challenge (browser fingerprint / proof-of-work) is issued. The bouncer passes AppSec's rendered page, headers, and cookies straight through to the client; no local configuration is required. Requires an AppSec engine built from a CrowdSec version that supports challenge mode.
 
 ## Trusted Proxies
 
