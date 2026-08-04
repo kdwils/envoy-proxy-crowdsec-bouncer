@@ -11,27 +11,26 @@ import (
 	"slices"
 	"time"
 
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 )
 
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_http_client.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/webhook HTTPClient
 type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-type Subscription struct {
-	URL    string      `yaml:"url" json:"url"`
-	Events []EventType `yaml:"events" json:"events"`
-}
-
 type Service struct {
-	subscriptions []Subscription
-	signingKey    string
-	http          HTTPClient
-	timeout       time.Duration
-	events        chan Event
+	subsByEvent map[EventType][]string
+	signingKey  string
+	http        HTTPClient
+	timeout     time.Duration
+	events      chan Event
+	now         func() time.Time
 }
 
-func New(subscriptions []Subscription, signingKey string, timeout time.Duration, bufferSize int, client HTTPClient) *Service {
+func New(subscriptions []config.Subscription, signingKey string, timeout time.Duration, bufferSize int, client HTTPClient) *Service {
 	t := timeout
 	if t == 0 {
 		t = 5 * time.Second
@@ -41,11 +40,37 @@ func New(subscriptions []Subscription, signingKey string, timeout time.Duration,
 		b = 100
 	}
 	return &Service{
-		subscriptions: subscriptions,
-		signingKey:    signingKey,
-		http:          client,
-		timeout:       t,
-		events:        make(chan Event, b),
+		subsByEvent: buildSubsByEvent(subscriptions),
+		signingKey:  signingKey,
+		http:        client,
+		timeout:     t,
+		events:      make(chan Event, b),
+		now:         time.Now,
+	}
+}
+
+func buildSubsByEvent(subscriptions []config.Subscription) map[EventType][]string {
+	byEvent := make(map[EventType][]string)
+	for _, sub := range subscriptions {
+		for _, e := range sub.Events {
+			eventType, ok := parseEventType(e)
+			if !ok {
+				continue
+			}
+			if !slices.Contains(byEvent[eventType], sub.URL) {
+				byEvent[eventType] = append(byEvent[eventType], sub.URL)
+			}
+		}
+	}
+	return byEvent
+}
+
+func parseEventType(s string) (EventType, bool) {
+	switch EventType(s) {
+	case EventRequestBlocked, EventCaptchaRequired, EventCaptchaVerified, EventRequestAllowed:
+		return EventType(s), true
+	default:
+		return "", false
 	}
 }
 
@@ -60,42 +85,103 @@ func (s *Service) Start(ctx context.Context) {
 	}
 }
 
-func (s *Service) Notify(ctx context.Context, event Event) {
-	log := logger.FromContext(ctx)
+func (s *Service) NotifyCheckedRequest(ctx context.Context, result bouncer.CheckedRequest) {
+	eventType, ok := eventTypeForAction(result.Action)
+	if !ok {
+		return
+	}
+	if !s.subscribedTo(eventType) {
+		return
+	}
+	s.enqueue(ctx, s.buildCheckedRequestEvent(eventType, result))
+}
+
+func (s *Service) NotifyCaptchaVerified(ctx context.Context, ip string) {
+	if !s.subscribedTo(EventCaptchaVerified) {
+		return
+	}
+	s.enqueue(ctx, Event{
+		Type:      EventCaptchaVerified,
+		Timestamp: s.now().UTC(),
+		IP:        ip,
+		Action:    "allow",
+		Reason:    "captcha verified",
+	})
+}
+
+func (s *Service) subscribedTo(t EventType) bool {
+	return len(s.subsByEvent[t]) > 0
+}
+
+func (s *Service) enqueue(ctx context.Context, event Event) {
 	select {
 	case s.events <- event:
 	default:
-		log.Warn("webhook event dropped, channel full")
+		logger.FromContext(ctx).Debug("webhook event dropped, channel full")
 	}
+}
+
+func eventTypeForAction(action string) (EventType, bool) {
+	switch action {
+	case "allow":
+		return EventRequestAllowed, true
+	case "ban", "deny":
+		return EventRequestBlocked, true
+	case "captcha":
+		return EventCaptchaRequired, true
+	case "challenge":
+		return EventChallengeRequired, true
+	default:
+		return "", false
+	}
+}
+
+func (s *Service) buildCheckedRequestEvent(eventType EventType, result bouncer.CheckedRequest) Event {
+	event := Event{
+		Type:      eventType,
+		Timestamp: s.now().UTC(),
+		IP:        result.IP,
+		Action:    result.Action,
+		Reason:    result.Reason,
+	}
+
+	if result.ParsedRequest == nil {
+		return event
+	}
+
+	event.Request = &Request{
+		Method:    result.ParsedRequest.Method,
+		URL:       result.ParsedRequest.URL.String(),
+		Host:      result.ParsedRequest.URL.Host,
+		Scheme:    result.ParsedRequest.URL.Scheme,
+		Path:      result.ParsedRequest.URL.Path,
+		UserAgent: result.ParsedRequest.UserAgent,
+	}
+
+	return event
 }
 
 func (s *Service) dispatch(ctx context.Context, event Event) {
-	log := logger.FromContext(ctx)
+	urls := s.subsByEvent[event.Type]
+
 	body, err := json.Marshal(event)
 	if err != nil {
-		log.Error("webhook marshal error", "error", err)
+		logger.FromContext(ctx).Error("webhook marshal error", "error", err)
 		return
 	}
-	for _, sub := range s.subscriptions {
-		if !sub.subscribedTo(event.Type) {
-			continue
-		}
-		s.send(ctx, sub.URL, body)
-	}
-}
 
-func (sub Subscription) subscribedTo(t EventType) bool {
-	return slices.Contains(sub.Events, t)
+	for _, url := range urls {
+		s.send(ctx, url, body)
+	}
 }
 
 func (s *Service) send(ctx context.Context, endpoint string, body []byte) {
-	log := logger.FromContext(ctx)
 	reqCtx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		log.Error("webhook request creation error", "endpoint", endpoint, "error", err)
+		logger.FromContext(ctx).Error("webhook request creation error", "endpoint", endpoint, "error", err)
 		return
 	}
 
@@ -106,13 +192,13 @@ func (s *Service) send(ctx context.Context, endpoint string, body []byte) {
 
 	resp, err := s.http.Do(req)
 	if err != nil {
-		log.Error("webhook delivery error", "endpoint", endpoint, "error", err)
+		logger.FromContext(ctx).Error("webhook delivery error", "endpoint", endpoint, "error", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		log.Warn("webhook non-success response", "endpoint", endpoint, "status", resp.StatusCode)
+		logger.FromContext(ctx).Warn("webhook non-success response", "endpoint", endpoint, "status", resp.StatusCode)
 	}
 }
 
@@ -122,10 +208,14 @@ func computeHMAC(body []byte, key string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+var noopNotifier = &NoopNotifier{}
+
 type NoopNotifier struct{}
 
 func NewNoopNotifier() *NoopNotifier {
-	return &NoopNotifier{}
+	return noopNotifier
 }
 
-func (n *NoopNotifier) Notify(_ context.Context, _ Event) {}
+func (n *NoopNotifier) NotifyCheckedRequest(_ context.Context, _ bouncer.CheckedRequest) {}
+
+func (n *NoopNotifier) NotifyCaptchaVerified(_ context.Context, _ string) {}

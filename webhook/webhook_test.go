@@ -1,37 +1,158 @@
 package webhook
 
 import (
-	"context"
 	"encoding/json"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/webhook/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
-func TestService_Notify(t *testing.T) {
-	t.Run("sends event to subscribed endpoint", func(t *testing.T) {
-		received := make(chan []byte, 1)
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			buf := make([]byte, 1024)
-			n, _ := r.Body.Read(buf)
-			received <- buf[:n]
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer srv.Close()
+func newService(t *testing.T, subs []config.Subscription, signingKey string) (*Service, *mocks.MockHTTPClient) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	mockHTTP := mocks.NewMockHTTPClient(ctrl)
+	return New(subs, signingKey, time.Second, 0, mockHTTP), mockHTTP
+}
 
-		svc := New(
-			[]Subscription{{URL: srv.URL, Events: []EventType{EventRequestBlocked}}},
-			"",
-			time.Second,
-			0,
-			http.DefaultClient,
-		)
+func assertEvent(t *testing.T, svc *Service, want Event) {
+	t.Helper()
+	select {
+	case got := <-svc.events:
+		assert.Equal(t, want, got, "expected event payload to match")
+	default:
+		t.Fatal("expected event to be enqueued")
+	}
+}
 
-		go svc.Start(t.Context())
+func assertNoEvent(t *testing.T, svc *Service) {
+	t.Helper()
+	select {
+	case got := <-svc.events:
+		t.Fatalf("expected no event enqueued, got %+v", got)
+	default:
+	}
+}
+
+func okResponse() *http.Response {
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}
+}
+
+func TestService_NotifyCheckedRequest(t *testing.T) {
+	t.Run("enqueues request_blocked event for ban action", func(t *testing.T) {
+		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"request_blocked"}}}, "")
+		svc.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+		svc.NotifyCheckedRequest(t.Context(), bouncer.CheckedRequest{
+			IP:     "1.2.3.4",
+			Action: "ban",
+			Reason: "crowdsecurity/ssh-bf",
+		})
+
+		assertEvent(t, svc, Event{
+			Type:      EventRequestBlocked,
+			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			IP:        "1.2.3.4",
+			Action:    "ban",
+			Reason:    "crowdsecurity/ssh-bf",
+		})
+	})
+
+	t.Run("enqueues request_allowed event for allow action", func(t *testing.T) {
+		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"request_allowed"}}}, "")
+		svc.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+		svc.NotifyCheckedRequest(t.Context(), bouncer.CheckedRequest{
+			IP:     "1.2.3.4",
+			Action: "allow",
+		})
+
+		assertEvent(t, svc, Event{
+			Type:      EventRequestAllowed,
+			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			IP:        "1.2.3.4",
+			Action:    "allow",
+		})
+	})
+
+	t.Run("does not enqueue when not subscribed to event type", func(t *testing.T) {
+		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"captcha_required"}}}, "")
+
+		svc.NotifyCheckedRequest(t.Context(), bouncer.CheckedRequest{
+			IP:     "1.2.3.4",
+			Action: "ban",
+		})
+
+		assertNoEvent(t, svc)
+	})
+
+	t.Run("does not enqueue event when action is error", func(t *testing.T) {
+		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"request_blocked"}}}, "")
+
+		svc.NotifyCheckedRequest(t.Context(), bouncer.CheckedRequest{
+			IP:     "1.2.3.4",
+			Action: "error",
+			Reason: "remediator error",
+		})
+
+		assertNoEvent(t, svc)
+	})
+
+	t.Run("no-op when no subscriptions", func(t *testing.T) {
+		svc, _ := newService(t, nil, "")
+
+		svc.NotifyCheckedRequest(t.Context(), bouncer.CheckedRequest{
+			IP:     "1.2.3.4",
+			Action: "ban",
+		})
+
+		assertNoEvent(t, svc)
+	})
+}
+
+func TestService_NotifyCaptchaVerified(t *testing.T) {
+	t.Run("enqueues captcha verified event", func(t *testing.T) {
+		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"captcha_verified"}}}, "")
+		svc.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+		svc.NotifyCaptchaVerified(t.Context(), "1.2.3.4")
+
+		assertEvent(t, svc, Event{
+			Type:      EventCaptchaVerified,
+			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			IP:        "1.2.3.4",
+			Action:    "allow",
+			Reason:    "captcha verified",
+		})
+	})
+
+	t.Run("does not enqueue when not subscribed", func(t *testing.T) {
+		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"request_blocked"}}}, "")
+
+		svc.NotifyCaptchaVerified(t.Context(), "1.2.3.4")
+
+		assertNoEvent(t, svc)
+	})
+}
+
+func TestService_Dispatch(t *testing.T) {
+	t.Run("posts event to subscribed endpoint", func(t *testing.T) {
+		svc, mockHTTP := newService(t, []config.Subscription{{URL: "http://example.com/webhook", Events: []string{"request_blocked"}}}, "")
+
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+			gotReq = req
+			return okResponse(), nil
+		})
 
 		want := Event{
 			Type:      EventRequestBlocked,
@@ -41,107 +162,69 @@ func TestService_Notify(t *testing.T) {
 			Reason:    "crowdsecurity/ssh-bf",
 		}
 
-		svc.Notify(t.Context(), want)
+		svc.dispatch(t.Context(), want)
 
-		select {
-		case body := <-received:
-			var got Event
-			err := json.Unmarshal(body, &got)
-			require.NoError(t, err, "expected valid JSON payload")
-			assert.Equal(t, want, got, "expected event payload to match")
-		case <-time.After(2 * time.Second):
-			t.Fatal("timed out waiting for webhook delivery")
-		}
+		require.NotNil(t, gotReq, "expected webhook request")
+		assert.Equal(t, "http://example.com/webhook", gotReq.URL.String())
+		assert.Equal(t, "application/json", gotReq.Header.Get("Content-Type"))
+
+		body, err := io.ReadAll(gotReq.Body)
+		require.NoError(t, err, "expected readable request body")
+
+		var got Event
+		require.NoError(t, json.Unmarshal(body, &got), "expected valid JSON payload")
+		assert.Equal(t, want, got, "expected event payload to match")
 	})
 
-	t.Run("does not send to endpoint not subscribed to event type", func(t *testing.T) {
-		called := make(chan struct{}, 1)
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			called <- struct{}{}
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer srv.Close()
+	t.Run("sets HMAC signature when signing key configured", func(t *testing.T) {
+		svc, mockHTTP := newService(t, []config.Subscription{{URL: "http://example.com/webhook", Events: []string{"request_allowed"}}}, "secret")
 
-		svc := New(
-			[]Subscription{{URL: srv.URL, Events: []EventType{EventCaptchaRequired}}},
-			"",
-			time.Second,
-			0,
-			http.DefaultClient,
-		)
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+			gotReq = req
+			return okResponse(), nil
+		})
 
-		go svc.Start(t.Context())
+		svc.dispatch(t.Context(), Event{
+			Type:   EventRequestAllowed,
+			IP:     "1.2.3.4",
+			Action: "allow",
+		})
 
-		svc.Notify(t.Context(), Event{Type: EventRequestBlocked, IP: "1.2.3.4"})
-
-		select {
-		case <-called:
-			t.Fatal("expected no webhook delivery for unsubscribed event type")
-		case <-time.After(200 * time.Millisecond):
-		}
-	})
-
-	t.Run("sends HMAC signature when signing key configured", func(t *testing.T) {
-		received := make(chan string, 1)
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			received <- r.Header.Get("X-Signature-SHA256")
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer srv.Close()
-
-		svc := New(
-			[]Subscription{{URL: srv.URL, Events: []EventType{EventRequestAllowed}}},
-			"secret",
-			time.Second,
-			0,
-			http.DefaultClient,
-		)
-
-		go svc.Start(t.Context())
-
-		svc.Notify(t.Context(), Event{Type: EventRequestAllowed, IP: "1.2.3.4"})
-
-		select {
-		case sig := <-received:
-			assert.NotEmpty(t, sig, "expected HMAC signature header")
-			assert.Len(t, sig, 64, "expected 64-char hex SHA256 HMAC")
-		case <-time.After(2 * time.Second):
-			t.Fatal("timed out waiting for webhook delivery")
-		}
+		require.NotNil(t, gotReq, "expected webhook request")
+		sig := gotReq.Header.Get("X-Signature-SHA256")
+		assert.NotEmpty(t, sig, "expected HMAC signature header")
+		assert.Len(t, sig, 64, "expected 64-char hex SHA256 HMAC")
 	})
 
 	t.Run("no HMAC header when no signing key", func(t *testing.T) {
-		received := make(chan string, 1)
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			received <- r.Header.Get("X-Signature-SHA256")
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer srv.Close()
+		svc, mockHTTP := newService(t, []config.Subscription{{URL: "http://example.com/webhook", Events: []string{"request_allowed"}}}, "")
 
-		svc := New(
-			[]Subscription{{URL: srv.URL, Events: []EventType{EventRequestAllowed}}},
-			"",
-			time.Second,
-			0,
-			http.DefaultClient,
-		)
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+			gotReq = req
+			return okResponse(), nil
+		})
 
-		go svc.Start(t.Context())
+		svc.dispatch(t.Context(), Event{
+			Type:   EventRequestAllowed,
+			IP:     "1.2.3.4",
+			Action: "allow",
+		})
 
-		svc.Notify(t.Context(), Event{Type: EventRequestAllowed, IP: "1.2.3.4"})
-
-		select {
-		case sig := <-received:
-			assert.Empty(t, sig, "expected no HMAC signature header")
-		case <-time.After(2 * time.Second):
-			t.Fatal("timed out waiting for webhook delivery")
-		}
+		require.NotNil(t, gotReq, "expected webhook request")
+		assert.Empty(t, gotReq.Header.Get("X-Signature-SHA256"), "expected no HMAC signature header")
 	})
 
-	t.Run("no-op when no subscriptions", func(t *testing.T) {
-		svc := New(nil, "", time.Second, 0, http.DefaultClient)
-		go svc.Start(t.Context())
-		svc.Notify(t.Context(), Event{Type: EventRequestBlocked, IP: "1.2.3.4"})
+	t.Run("skips endpoint not subscribed to event type", func(t *testing.T) {
+		svc, mockHTTP := newService(t, []config.Subscription{{URL: "http://example.com/webhook", Events: []string{"captcha_required"}}}, "")
+		mockHTTP.EXPECT().Do(gomock.Any()).Times(0)
+
+		svc.dispatch(t.Context(), Event{
+			Type:   EventRequestBlocked,
+			IP:     "1.2.3.4",
+			Action: "ban",
+		})
 	})
 }
 
@@ -164,12 +247,5 @@ func TestComputeHMAC(t *testing.T) {
 		sig2 := computeHMAC(body, "key2")
 
 		assert.NotEqual(t, sig1, sig2, "expected different signatures for different keys")
-	})
-}
-
-func TestNoopNotifier(t *testing.T) {
-	t.Run("notify does nothing", func(t *testing.T) {
-		n := NewNoopNotifier()
-		n.Notify(context.Background(), Event{Type: EventRequestBlocked})
 	})
 }

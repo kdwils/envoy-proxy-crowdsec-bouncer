@@ -156,14 +156,14 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	go testBouncer.Sync(ctx)
 
 	notifier := webhook.New(
-		[]webhook.Subscription{
+		[]config.Subscription{
 			{
 				URL: webhookSrv.URL,
-				Events: []webhook.EventType{
-					webhook.EventRequestAllowed,
-					webhook.EventRequestBlocked,
-					webhook.EventCaptchaRequired,
-					webhook.EventCaptchaVerified,
+				Events: []string{
+					"request_allowed",
+					"request_blocked",
+					"captcha_required",
+					"captcha_verified",
 				},
 			},
 		},

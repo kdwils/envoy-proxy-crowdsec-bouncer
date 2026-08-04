@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.6.2](https://img.shields.io/badge/Version-0.6.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.6.2](https://img.shields.io/badge/AppVersion-v0.6.2-informational?style=flat-square)
+![Version: 0.7.1](https://img.shields.io/badge/Version-0.7.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.7.1](https://img.shields.io/badge/AppVersion-v0.7.1-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -47,6 +47,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.captcha.signingKeySecretRef.name | string | `""` |  |
 | config.captcha.siteKey | string | `""` |  |
 | config.captcha.timeout | string | `"10s"` |  |
+| config.exemptIPs | list | `[]` |  |
 | config.prometheus.enabled | bool | `false` |  |
 | config.prometheus.port | int | `9090` |  |
 | config.prometheus.serviceMonitor.enabled | bool | `false` |  |
@@ -107,7 +108,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | securityContext.capabilities.drop[0] | string | `"all"` |  |
 | securityContext.readOnlyRootFilesystem | bool | `true` |  |
 | securityContext.runAsNonRoot | bool | `true` |  |
-| securityContext.runAsUser | int | `1000` |  |
+| securityContext.runAsUser | int | `65532` |  |
 | service.grpcPort | int | `8080` |  |
 | service.httpPort | int | `8081` |  |
 | service.type | string | `"ClusterIP"` |  |

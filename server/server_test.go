@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -40,7 +41,7 @@ func getDefaultConfig() config.Config {
 }
 
 func TestServer_Check(t *testing.T) {
-	log := logger.FromContext(context.Background())
+	log := logger.FromContext(t.Context())
 	t.Run("bouncer not initialized", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -49,7 +50,7 @@ func TestServer_Check(t *testing.T) {
 		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Return("rendered template content", nil)
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), nil, nil, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(500), resp.Status.Code)
@@ -108,7 +109,7 @@ func TestServer_Check(t *testing.T) {
 			},
 		}
 
-		resp, err := s.Check(context.Background(), req)
+		resp, err := s.Check(t.Context(), req)
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
@@ -134,7 +135,7 @@ func TestServer_Check(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 
 		assert.Error(t, err)
 		assert.Nil(t, resp)
@@ -172,7 +173,7 @@ func TestServer_Check(t *testing.T) {
 			},
 		}
 
-		resp, err := s.Check(context.Background(), req)
+		resp, err := s.Check(t.Context(), req)
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
@@ -214,7 +215,7 @@ func TestServer_Check(t *testing.T) {
 			},
 		}
 
-		resp, err := s.Check(context.Background(), req)
+		resp, err := s.Check(t.Context(), req)
 
 		assert.NoError(t, err)
 		assert.Equal(t, int32(0), resp.Status.Code) // OK
@@ -324,7 +325,7 @@ func TestServer_Check(t *testing.T) {
 			},
 		}
 
-		resp, err := s.Check(context.Background(), req)
+		resp, err := s.Check(t.Context(), req)
 		require.NoError(t, err)
 
 		expectedHTML, err := os.ReadFile("testing/denied_with_template.html")
@@ -342,11 +343,99 @@ func TestServer_Check(t *testing.T) {
 			assert.Equal(t, "text/plain; charset=utf-8", value)
 		}
 	})
+
+	t.Run("notifies even when action is error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		result := bouncer.CheckedRequest{
+			Action:     "error",
+			Reason:     "remediator error",
+			HTTPStatus: 500,
+		}
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(result)
+
+		mockNotifier := mocks.NewMockNotifier(ctrl)
+		mockNotifier.EXPECT().NotifyCheckedRequest(gomock.Any(), result)
+
+		rec := recorder.NewNoOp()
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, mockNotifier, mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
+		require.Error(t, err)
+		assert.Nil(t, resp)
+	})
+
+	t.Run("notifies", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		result := bouncer.CheckedRequest{
+			Action:     "ban",
+			Reason:     "blocked",
+			HTTPStatus: 403,
+		}
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(result)
+
+		mockNotifier := mocks.NewMockNotifier(ctrl)
+		mockNotifier.EXPECT().NotifyCheckedRequest(gomock.Any(), result)
+
+		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
+		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Return("Access Blocked", nil)
+
+		rec := recorder.NewNoOp()
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, mockNotifier, mockTemplateStore, log, rec, nil)
+
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
+		require.NoError(t, err)
+		assert.Equal(t, int32(403), resp.Status.Code)
+	})
+
+	t.Run("no webhook work for unsubscribed event type", func(t *testing.T) {
+
+		var deliveries atomic.Int64
+		sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			deliveries.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer sink.Close()
+
+		svc := webhook.New(
+			[]config.Subscription{{URL: sink.URL, Events: []string{"request_blocked"}}},
+			"", time.Second, 0, http.DefaultClient,
+		)
+		ctx := t.Context()
+		go svc.Start(ctx)
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+		}).AnyTimes()
+
+		rec := recorder.NewNoOp()
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, svc, nil, logger.FromContext(ctx), rec, nil)
+
+		req := &auth.CheckRequest{}
+		for range 150 {
+			_, err := s.Check(ctx, req)
+			require.NoError(t, err)
+		}
+
+		assert.Zero(t, deliveries.Load(), "no webhook deliveries expected for unsubscribed event type")
+	})
 }
 
 func TestServer_Check_WithBouncer(t *testing.T) {
 	t.Run("remediator returns error", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 
 		defer ctrl.Finish()
@@ -359,14 +448,14 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "remediator error")
 	})
 
 	t.Run("remediator returns ban", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -383,7 +472,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
 		deny := resp.GetDeniedResponse()
@@ -396,7 +485,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 	})
 
 	t.Run("remediator returns allow", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -411,14 +500,14 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(0), resp.Status.Code)
 		assert.Nil(t, resp.GetDeniedResponse())
 	})
 
 	t.Run("remediator returns captcha", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -443,7 +532,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(envoy_type.StatusCode_Found), resp.Status.Code)
 
@@ -453,7 +542,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 	})
 
 	t.Run("remediator returns ban", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -470,14 +559,14 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
 		assert.Contains(t, resp.GetDeniedResponse().Body, "Access Blocked")
 	})
 
 	t.Run("remediator returns unknown action", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -490,14 +579,14 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "unknown action")
 	})
 
 	t.Run("show denied page disabled returns reason without template", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -516,7 +605,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 		rec := recorder.NewNoOp()
 		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mockTemplateStore, log, rec, nil)
-		resp, err := s.Check(context.Background(), &auth.CheckRequest{})
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
 		assert.NoError(t, err)
 		assert.Equal(t, int32(403), resp.Status.Code)
 		deny := resp.GetDeniedResponse()
@@ -527,7 +616,7 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 
 func TestServer_NewServer(t *testing.T) {
 	t.Run("creates server with all dependencies", func(t *testing.T) {
-		log := logger.FromContext(context.Background())
+		log := logger.FromContext(t.Context())
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -551,7 +640,7 @@ func TestServer_NewServer(t *testing.T) {
 }
 
 func TestServer_handleCaptchaVerify(t *testing.T) {
-	log := logger.FromContext(context.Background())
+	log := logger.FromContext(t.Context())
 
 	t.Run("captcha disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -800,13 +889,15 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 
 		mockBouncer := mocks.NewMockBouncer(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockNotifier := mocks.NewMockNotifier(ctrl)
 		mockCaptcha.EXPECT().GetSession("test-challenge-token").Return(session, true)
 		mockBouncer.EXPECT().ExtractRealIPFromHTTP(gomock.Any()).Return("192.168.1.1")
 		mockCaptcha.EXPECT().VerifyResponse(gomock.Any(), "192.168.1.1", "test-challenge-token", "test-response").Return(verificationResult, nil)
 		mockCaptcha.EXPECT().CookieName().Return("session")
+		mockNotifier.EXPECT().NotifyCaptchaVerified(gomock.Any(), "192.168.1.1")
 
 		rec := recorder.NewNoOp()
-		s := NewServer(cfg, mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+		s := NewServer(cfg, mockBouncer, mockCaptcha, mockNotifier, mocks.NewMockTemplateStore(ctrl), log, rec, nil)
 
 		form := url.Values{}
 		form.Add("challengeToken", "test-challenge-token")
@@ -828,7 +919,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 }
 
 func TestServer_handleCaptchaChallenge(t *testing.T) {
-	log := logger.FromContext(context.Background())
+	log := logger.FromContext(t.Context())
 
 	t.Run("captcha disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

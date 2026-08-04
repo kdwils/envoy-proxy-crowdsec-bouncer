@@ -14,20 +14,46 @@ concurrency:
 
 jobs:
   tag:
-    uses: kdwils/homelab-workflow/.github/workflows/update-image-tag.yml@main
-    secrets: inherit
-    with:
-      image: ${{ github.repository_owner }}/envoy-proxy-bouncer
-      registry: ghcr.io
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Re-tag image with version
+        run: |
+          docker buildx imagetools create \
+            ghcr.io/${{ github.repository_owner }}/envoy-proxy-bouncer:sha-${{ github.sha }} \
+            --tag ghcr.io/${{ github.repository_owner }}/envoy-proxy-bouncer:${{ github.ref_name }}
 
   charts:
     needs: [tag]
-    uses: kdwils/homelab-workflow/.github/workflows/helm-publish-oci.yml@main
+    uses: ./.github/workflows/helm-publish.yaml
     with:
       charts_dir: charts/envoy-proxy-bouncer
+      oci_registry: ghcr.io
 
   goreleaser:
     needs: [tag]
     if: "!contains(github.ref, '-rc')"
-    uses: kdwils/homelab-workflow/.github/workflows/go-releaser.yml@main
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: goreleaser/goreleaser-action@v7.2.3
+        with:
+          distribution: goreleaser
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

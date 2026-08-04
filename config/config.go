@@ -4,19 +4,20 @@ import (
 	"errors"
 	"time"
 
-	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Server         Server     `yaml:"server" json:"server"`
-	Bouncer        Bouncer    `yaml:"bouncer" json:"bouncer"`
-	WAF            WAF        `yaml:"waf" json:"waf"`
-	Captcha        Captcha    `yaml:"captcha" json:"captcha"`
-	Webhook        Webhook    `yaml:"webhook" json:"webhook"`
-	Prometheus     Prometheus `yaml:"prometheus" json:"prometheus"`
-	TrustedProxies []string   `yaml:"trustedProxies" json:"trustedProxies"`
-	Templates      Templates  `yaml:"templates" json:"templates"`
+	Server          Server     `yaml:"server" json:"server"`
+	Bouncer         Bouncer    `yaml:"bouncer" json:"bouncer"`
+	WAF             WAF        `yaml:"waf" json:"waf"`
+	Captcha         Captcha    `yaml:"captcha" json:"captcha"`
+	Webhook         Webhook    `yaml:"webhook" json:"webhook"`
+	Prometheus      Prometheus `yaml:"prometheus" json:"prometheus"`
+	TrustedProxies  []string   `yaml:"trustedProxies" json:"trustedProxies"`
+	TrustedIPHeader string     `yaml:"trustedIPHeader" json:"trustedIPHeader"`
+	ExemptIPs       []string   `yaml:"exemptIPs" json:"exemptIPs"`
+	Templates       Templates  `yaml:"templates" json:"templates"`
 }
 
 type Server struct {
@@ -89,10 +90,15 @@ type WAF struct {
 }
 
 type Webhook struct {
-	Subscriptions []webhook.Subscription `yaml:"subscriptions" json:"subscriptions"`
-	SigningKey    string                 `yaml:"signingKey" json:"signingKey"`
-	Timeout       time.Duration          `yaml:"timeout" json:"timeout"`
-	BufferSize    int                    `yaml:"bufferSize" json:"bufferSize"`
+	Subscriptions []Subscription `yaml:"subscriptions" json:"subscriptions"`
+	SigningKey    string         `yaml:"signingKey" json:"signingKey"`
+	Timeout       time.Duration  `yaml:"timeout" json:"timeout"`
+	BufferSize    int            `yaml:"bufferSize" json:"bufferSize"`
+}
+
+type Subscription struct {
+	URL    string   `yaml:"url" json:"url"`
+	Events []string `yaml:"events" json:"events"`
 }
 
 type Prometheus struct {
