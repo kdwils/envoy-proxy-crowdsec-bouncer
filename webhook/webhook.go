@@ -67,7 +67,11 @@ func buildSubsByEvent(subscriptions []config.Subscription) map[EventType][]strin
 
 func parseEventType(s string) (EventType, bool) {
 	switch EventType(s) {
-	case EventRequestBlocked, EventCaptchaRequired, EventCaptchaVerified, EventRequestAllowed, EventChallengeRequired:
+	case EventRequestBlocked,
+		EventCaptchaRequired,
+		EventCaptchaVerified,
+		EventRequestAllowed,
+		EventChallengeRequired:
 		return EventType(s), true
 	default:
 		return "", false
