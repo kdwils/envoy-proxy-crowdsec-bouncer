@@ -245,6 +245,15 @@ func TestExtractRealIPFromHTTP(t *testing.T) {
 			},
 			want: "8.8.8.8",
 		},
+		{
+			name:            "trustedIPHeader set but absent from request, falls through to x-forwarded-for",
+			remoteAddr:      "1.2.3.4:5678",
+			trustedIPHeader: "x-envoy-external-address",
+			headers: map[string][]string{
+				"X-Forwarded-For": {"9.9.9.9"},
+			},
+			want: "9.9.9.9",
+		},
 	}
 
 	for _, tt := range tests {
@@ -408,6 +417,67 @@ func TestIsTrustedProxy(t *testing.T) {
 	}
 }
 
+func TestIsTrustedProxyAddr(t *testing.T) {
+	trusted := []netip.Prefix{
+		parseCIDROrFail(t, "10.0.0.0/8"),
+		parseCIDROrFail(t, "192.168.0.0/16"),
+		parseCIDROrFail(t, "2001:db8::/32"),
+	}
+
+	tests := []struct {
+		name           string
+		addr           netip.Addr
+		trustedProxies []netip.Prefix
+		want           bool
+	}{
+		{
+			name:           "Empty trusted proxies returns false",
+			addr:           netip.MustParseAddr("10.0.0.1"),
+			trustedProxies: nil,
+			want:           false,
+		},
+		{
+			name:           "IPv4 addr in trusted prefix",
+			addr:           netip.MustParseAddr("10.1.2.3"),
+			trustedProxies: trusted,
+			want:           true,
+		},
+		{
+			name:           "IPv4 addr not in trusted prefix",
+			addr:           netip.MustParseAddr("8.8.8.8"),
+			trustedProxies: trusted,
+			want:           false,
+		},
+		{
+			name:           "IPv6 addr in trusted prefix",
+			addr:           netip.MustParseAddr("2001:db8::1"),
+			trustedProxies: trusted,
+			want:           true,
+		},
+		{
+			name:           "IPv4-mapped IPv6 matches IPv4 trusted prefix via Unmap",
+			addr:           netip.MustParseAddr("::ffff:10.1.2.3"),
+			trustedProxies: trusted,
+			want:           true,
+		},
+		{
+			name:           "IPv4-mapped IPv6 not in trusted prefix",
+			addr:           netip.MustParseAddr("::ffff:8.8.8.8"),
+			trustedProxies: trusted,
+			want:           false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isTrustedProxyAddr(tt.addr, tt.trustedProxies)
+			if got != tt.want {
+				t.Errorf("isTrustedProxyAddr(%v, ...) = %v, want %v", tt.addr, got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_parseIPNets(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -449,6 +519,12 @@ func Test_parseIPNets(t *testing.T) {
 			name:     "Mixed IPv4 and IPv6, some with and without CIDR",
 			input:    []string{"10.0.0.1", "172.16.0.0/12", "2001:db8::1", "fe80::/10"},
 			wantCIDR: []string{"10.0.0.1/32", "172.16.0.0/12", "2001:db8::1/128", "fe80::/10"},
+			wantErr:  false,
+		},
+		{
+			name:     "Non-canonical CIDR with host bits set is masked to network address",
+			input:    []string{"10.0.0.1/8"},
+			wantCIDR: []string{"10.0.0.0/8"},
 			wantErr:  false,
 		},
 		{
