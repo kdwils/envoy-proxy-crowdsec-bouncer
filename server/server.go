@@ -352,8 +352,7 @@ func (s *Server) isReady() bool {
 }
 
 func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-	reqLogger := slog.New(s.logger.Handler())
-	return handler(logger.WithContext(ctx, reqLogger), req)
+	return handler(logger.WithContext(ctx, s.logger), req)
 }
 
 func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
@@ -365,7 +364,6 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	}
 
 	result := s.bouncer.Check(ctx, req)
-	s.logger.Debug("remediation result", slog.Any("result", result))
 	s.notifier.NotifyCheckedRequest(ctx, result)
 
 	switch result.Action {

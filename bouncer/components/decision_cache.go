@@ -100,33 +100,32 @@ func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
 }
 
 func (dc *DecisionCache) GetDecision(ctx context.Context, ip string) (*models.Decision, error) {
-	logger := logger.FromContext(ctx).With(slog.String("method", "get_decision"))
+	log := logger.FromContext(ctx)
 	if ip == "" {
-		logger.Debug("no ip provided")
+		log.Debug("no ip provided")
 		return nil, errors.New("no ip found")
 	}
 
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
-		logger.Debug("invalid ip format", slog.String("ip", ip))
+		log.Debug("invalid ip format", slog.String("ip", ip))
 		return nil, nil
 	}
 	addr = addr.Unmap()
 
-	logger = logger.With(slog.String("ip", ip))
-	logger.Debug("checking for decision")
+	log.Debug("checking for decision", slog.String("ip", ip))
 
 	dc.mu.RLock()
 	defer dc.mu.RUnlock()
 
 	if decision, ok := dc.decisions.Get(ip); ok {
-		logger.Debug("decision found", "type", *decision.Type)
+		log.Debug("decision found", "type", *decision.Type)
 		return &decision, nil
 	}
 
 	if dc.cidrs != nil {
 		if decision, ok := dc.cidrs.Lookup(addr); ok {
-			logger.Debug("decision found", "type", *decision.Type)
+			log.Debug("decision found", "type", *decision.Type)
 			return &decision, nil
 		}
 	}
