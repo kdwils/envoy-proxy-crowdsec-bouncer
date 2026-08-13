@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -235,9 +236,9 @@ func TestStartCleanupWithNoCleanupFunc(t *testing.T) {
 }
 
 func TestStartCleanupContextCancellation(t *testing.T) {
-	deletionCount := 0
+	var deletionCount atomic.Int32
 	c := New(WithCleanup(50*time.Millisecond, func(key string, value string) bool {
-		deletionCount++
+		deletionCount.Add(1)
 		return false
 	}))
 
@@ -249,13 +250,13 @@ func TestStartCleanupContextCancellation(t *testing.T) {
 	c.StartCleanup(ctx)
 
 	time.Sleep(100 * time.Millisecond)
-	initialDeletionCount := deletionCount
+	initialDeletionCount := deletionCount.Load()
 
 	cancel()
 
 	time.Sleep(150 * time.Millisecond)
 
-	assert.LessOrEqual(t, deletionCount, initialDeletionCount+2, "cleanup should have stopped after context cancellation")
+	assert.LessOrEqual(t, deletionCount.Load(), initialDeletionCount+2, "cleanup should have stopped after context cancellation")
 	assert.Equal(t, 2, c.Size(), "expected 2 entries after cancellation")
 
 	val1, ok1 := c.Get("key1")

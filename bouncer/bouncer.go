@@ -59,7 +59,43 @@ type Bouncer struct {
 	ExemptIPs          []netip.Prefix
 	MetricsService     *crowdsec.MetricsService
 	PrometheusRecorder *recorder.Recorder
+	remediationMetrics map[string]remediationMetric
 	config             config.Config
+}
+
+type remediationMetric struct {
+	key    string
+	name   string
+	labels map[string]string
+}
+
+func newRemediationMetrics() map[string]remediationMetric {
+	return map[string]remediationMetric{
+		"allow": {
+			key:  "CAPI:bypass",
+			name: "processed",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "bypass",
+			},
+		},
+		"ban": {
+			key:  "CAPI:ban",
+			name: "dropped",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "ban",
+			},
+		},
+		"captcha": {
+			key:  "CAPI:captcha",
+			name: "dropped",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "captcha",
+			},
+		},
+	}
 }
 
 func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
@@ -78,6 +114,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 		TrustedIPHeader:    cfg.TrustedIPHeader,
 		ExemptIPs:          exemptIPs,
 		PrometheusRecorder: recorder,
+		remediationMetrics: newRemediationMetrics(),
 		config:             cfg,
 	}
 
@@ -110,7 +147,10 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		w = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
+		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var c *components.CaptchaService
@@ -152,28 +192,14 @@ func (b *Bouncer) IsReady() bool {
 	return b.DecisionCache.IsReady()
 }
 
-func (b *Bouncer) incRemediationMetric(name, remediationType string) {
-	if b.MetricsService == nil {
-		return
-	}
-	origin := "CAPI"
-	key := origin + ":" + remediationType
-	b.MetricsService.Inc(key, name, "request", map[string]string{
-		"origin":      origin,
-		"remediation": remediationType,
-	})
-}
-
 func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
 	b.PrometheusRecorder.IncRequestsTotal(result.Action)
 
-	switch result.Action {
-	case "allow":
-		b.incRemediationMetric("processed", "bypass")
-	case "ban":
-		b.incRemediationMetric("dropped", "ban")
-	case "captcha":
-		b.incRemediationMetric("dropped", "captcha")
+	if b.MetricsService == nil {
+		return
+	}
+	if m, ok := b.remediationMetrics[result.Action]; ok {
+		b.MetricsService.Inc(m.key, m.name, "request", m.labels)
 	}
 }
 
@@ -328,11 +354,11 @@ func parseIPNets(addresses []string) ([]netip.Prefix, error) {
 	prefixes := make([]netip.Prefix, 0, len(addresses))
 	for _, addr := range addresses {
 		if !strings.Contains(addr, "/") {
+			suffix := "/32"
 			if strings.Contains(addr, ":") {
-				addr = addr + "/128"
-			} else {
-				addr = addr + "/32"
+				suffix = "/128"
 			}
+			addr = addr + suffix
 		}
 
 		prefix, err := netip.ParsePrefix(addr)

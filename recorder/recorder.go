@@ -25,6 +25,10 @@ type Metrics struct {
 	CaptchaPendingChallenges      prometheus.Gauge
 	CaptchaExpiredChallengesTotal prometheus.Counter
 	CaptchaErrorsTotal            prometheus.Counter
+
+	requestsTotalChildren     map[string]prometheus.Counter
+	wafRequestsTotalChildren  map[string]prometheus.Counter
+	componentDurationChildren map[string]prometheus.Observer
 }
 
 type Recorder struct {
@@ -147,6 +151,24 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 		}
 	}
 
+	m.requestsTotalChildren = map[string]prometheus.Counter{
+		"allow":   m.RequestsTotal.WithLabelValues("allow"),
+		"ban":     m.RequestsTotal.WithLabelValues("ban"),
+		"captcha": m.RequestsTotal.WithLabelValues("captcha"),
+		"error":   m.RequestsTotal.WithLabelValues("error"),
+	}
+	m.wafRequestsTotalChildren = map[string]prometheus.Counter{
+		"allow":   m.WAFRequestsTotal.WithLabelValues("allow"),
+		"ban":     m.WAFRequestsTotal.WithLabelValues("ban"),
+		"captcha": m.WAFRequestsTotal.WithLabelValues("captcha"),
+		"error":   m.WAFRequestsTotal.WithLabelValues("error"),
+	}
+	m.componentDurationChildren = map[string]prometheus.Observer{
+		"decision_cache": m.ComponentDuration.WithLabelValues("decision_cache"),
+		"captcha":        m.ComponentDuration.WithLabelValues("captcha"),
+		"waf":            m.ComponentDuration.WithLabelValues("waf"),
+	}
+
 	return m, nil
 }
 
@@ -179,6 +201,10 @@ func (r *Recorder) ObserveDuration() func() {
 
 func (r *Recorder) IncRequestsTotal(action string) {
 	if r.m == nil {
+		return
+	}
+	if c, ok := r.m.requestsTotalChildren[action]; ok {
+		c.Inc()
 		return
 	}
 	r.m.RequestsTotal.WithLabelValues(action).Inc()
@@ -234,6 +260,10 @@ func (r *Recorder) IncWAFRequestsTotal(action string) {
 	if r.m == nil {
 		return
 	}
+	if c, ok := r.m.wafRequestsTotalChildren[action]; ok {
+		c.Inc()
+		return
+	}
 	r.m.WAFRequestsTotal.WithLabelValues(action).Inc()
 }
 
@@ -249,8 +279,12 @@ func (r *Recorder) ObserveComponentDuration(component string) func() {
 		return func() {}
 	}
 	start := r.now()
+	obs, ok := r.m.componentDurationChildren[component]
+	if !ok {
+		obs = r.m.ComponentDuration.WithLabelValues(component)
+	}
 	return func() {
-		r.m.ComponentDuration.WithLabelValues(component).Observe(r.now().Sub(start).Seconds())
+		obs.Observe(r.now().Sub(start).Seconds())
 	}
 }
 
