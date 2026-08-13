@@ -69,14 +69,14 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
-		logger.Debug("failed to forward request to CrowdSec", "url", forwardReq.URL.String(), "method", forwardReq.Method, "headers", forwardReq.Header, "error", err)
+		logger.Debug("failed to forward request to CrowdSec", "url", forwardReq.URL.String(), "method", forwardReq.Method, "error", err)
 		return result, err
 	}
 	defer resp.Body.Close()
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Debug("failed to read CrowdSec response", "url", forwardReq.URL.String(), "method", forwardReq.Method, "headers", forwardReq.Header, "error", err)
+		logger.Debug("failed to read CrowdSec response", "url", forwardReq.URL.String(), "method", forwardReq.Method, "error", err)
 		return result, err
 	}
 
