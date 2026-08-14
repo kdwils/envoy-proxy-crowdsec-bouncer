@@ -64,14 +64,13 @@ var ServeCmd = &cobra.Command{
 			gatherer = reg
 		}
 
-		httpClient := &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:        config.HTTP.MaxIdleConns,
-				MaxIdleConnsPerHost: config.HTTP.MaxIdleConnsPerHost,
-				IdleConnTimeout:     config.HTTP.IdleConnTimeout,
-				TLSHandshakeTimeout: config.HTTP.TLSHandshakeTimeout,
-			},
-		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.MaxIdleConns = config.HTTP.MaxIdleConns
+		transport.MaxIdleConnsPerHost = config.HTTP.MaxIdleConnsPerHost
+		transport.IdleConnTimeout = config.HTTP.IdleConnTimeout
+		transport.TLSHandshakeTimeout = config.HTTP.TLSHandshakeTimeout
+
+		httpClient := &http.Client{Transport: transport}
 
 		bouncer, err := bouncer.New(config, rec, httpClient)
 		if err != nil {
