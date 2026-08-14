@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/spf13/viper"
@@ -26,6 +27,23 @@ type HTTP struct {
 	MaxIdleConnsPerHost int           `yaml:"maxIdleConnsPerHost" json:"maxIdleConnsPerHost"`
 	IdleConnTimeout     time.Duration `yaml:"idleConnTimeout" json:"idleConnTimeout"`
 	TLSHandshakeTimeout time.Duration `yaml:"tlsHandshakeTimeout" json:"tlsHandshakeTimeout"`
+}
+
+func (h HTTP) NewClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if h.MaxIdleConns != 0 {
+		transport.MaxIdleConns = h.MaxIdleConns
+	}
+	if h.MaxIdleConnsPerHost != 0 {
+		transport.MaxIdleConnsPerHost = h.MaxIdleConnsPerHost
+	}
+	if h.IdleConnTimeout != 0 {
+		transport.IdleConnTimeout = h.IdleConnTimeout
+	}
+	if h.TLSHandshakeTimeout != 0 {
+		transport.TLSHandshakeTimeout = h.TLSHandshakeTimeout
+	}
+	return &http.Client{Transport: transport}
 }
 
 type Server struct {

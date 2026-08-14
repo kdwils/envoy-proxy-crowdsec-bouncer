@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -126,5 +127,53 @@ func TestNew(t *testing.T) {
 			},
 		}
 		assert.Equal(t, want, c)
+	})
+}
+
+func TestHTTP_NewClient(t *testing.T) {
+	defaultTransport := http.DefaultTransport.(*http.Transport)
+
+	t.Run("applies configured transport settings", func(t *testing.T) {
+		cfg := HTTP{
+			MaxIdleConns:        42,
+			MaxIdleConnsPerHost: 7,
+			IdleConnTimeout:     5 * time.Second,
+			TLSHandshakeTimeout: 2 * time.Second,
+		}
+
+		client := cfg.NewClient()
+		require.NotNil(t, client)
+
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.Equal(t, 42, transport.MaxIdleConns)
+		assert.Equal(t, 7, transport.MaxIdleConnsPerHost)
+		assert.Equal(t, 5*time.Second, transport.IdleConnTimeout)
+		assert.Equal(t, 2*time.Second, transport.TLSHandshakeTimeout)
+	})
+
+	t.Run("unset fields preserve standard library defaults", func(t *testing.T) {
+		client := HTTP{}.NewClient()
+		require.NotNil(t, client)
+
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.Equal(t, defaultTransport.MaxIdleConns, transport.MaxIdleConns)
+		assert.Equal(t, defaultTransport.MaxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
+		assert.Equal(t, defaultTransport.IdleConnTimeout, transport.IdleConnTimeout)
+		assert.Equal(t, defaultTransport.TLSHandshakeTimeout, transport.TLSHandshakeTimeout)
+	})
+
+	t.Run("partially configured settings keep defaults for the rest", func(t *testing.T) {
+		cfg := HTTP{MaxIdleConns: 500}
+
+		client := cfg.NewClient()
+
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.Equal(t, 500, transport.MaxIdleConns)
+		assert.Equal(t, defaultTransport.MaxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
+		assert.Equal(t, defaultTransport.IdleConnTimeout, transport.IdleConnTimeout)
+		assert.Equal(t, defaultTransport.TLSHandshakeTimeout, transport.TLSHandshakeTimeout)
 	})
 }

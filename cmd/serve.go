@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -64,13 +63,7 @@ var ServeCmd = &cobra.Command{
 			gatherer = reg
 		}
 
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.MaxIdleConns = config.HTTP.MaxIdleConns
-		transport.MaxIdleConnsPerHost = config.HTTP.MaxIdleConnsPerHost
-		transport.IdleConnTimeout = config.HTTP.IdleConnTimeout
-		transport.TLSHandshakeTimeout = config.HTTP.TLSHandshakeTimeout
-
-		httpClient := &http.Client{Transport: transport}
+		httpClient := config.HTTP.NewClient()
 
 		bouncer, err := bouncer.New(config, rec, httpClient)
 		if err != nil {
