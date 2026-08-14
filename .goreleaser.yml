@@ -67,8 +67,14 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    # Bugfixes
-    * Fixed a panic on every request when captcha is disabled (#221, #222)
+    # Features
+
+    Performance and reliability improvements for the bouncer check path (#227, #230).
+
+    * Bouncer check optimizations: reworked IP extraction and request parsing around `netip` to cut allocations and lock contention on the hot path; real-IP lookup now handles IPv4-mapped IPv6 correctly
+    * Decision cache: replaced the read/write mutex with atomics so `GetDecision` no longer blocks on decision-stream syncs under load
+    * WAF: the AppSec URL is parsed once at startup, so a misconfigured URL now fails fast instead of erroring per request
+    * Metrics: recorder pre-caches label children to reduce per-request overhead
 
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}

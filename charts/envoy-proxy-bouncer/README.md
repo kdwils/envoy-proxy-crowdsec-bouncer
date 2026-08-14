@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.7.1](https://img.shields.io/badge/Version-0.7.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.7.1](https://img.shields.io/badge/AppVersion-v0.7.1-informational?style=flat-square)
+![Version: 0.7.2](https://img.shields.io/badge/Version-0.7.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.7.2](https://img.shields.io/badge/AppVersion-v0.7.2-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -48,6 +48,10 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.captcha.siteKey | string | `""` |  |
 | config.captcha.timeout | string | `"10s"` |  |
 | config.exemptIPs | list | `[]` |  |
+| config.http.idleConnTimeout | string | `"90s"` |  |
+| config.http.maxIdleConns | int | `1000` |  |
+| config.http.maxIdleConnsPerHost | int | `100` |  |
+| config.http.tlsHandshakeTimeout | string | `"10s"` |  |
 | config.prometheus.enabled | bool | `false` |  |
 | config.prometheus.port | int | `9090` |  |
 | config.prometheus.serviceMonitor.enabled | bool | `false` |  |

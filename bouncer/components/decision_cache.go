@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"strings"
-	"sync"
+	"sync/atomic"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
@@ -22,12 +22,11 @@ import (
 type DecisionCache struct {
 	stream         *csbouncer.StreamBouncer
 	decisions      *cache.Cache[string, models.Decision]
-	mu             *sync.RWMutex
 	MetricsService *crowdsec.MetricsService
 	prom           *recorder.Recorder
 	knownOrigins   *cache.Cache[string, struct{}]
-	syncComplete   bool
-	cidrs          *bart.Table[models.Decision]
+	syncComplete   atomic.Bool
+	cidrs          atomic.Pointer[bart.Table[models.Decision]]
 }
 
 func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom *recorder.Recorder) (*DecisionCache, error) {
@@ -42,7 +41,6 @@ func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsServic
 	dc := &DecisionCache{
 		stream:         stream,
 		decisions:      cache.New[string, models.Decision](),
-		mu:             new(sync.RWMutex),
 		MetricsService: metricsService,
 		prom:           prom,
 		knownOrigins:   cache.New[string, struct{}](),
@@ -100,33 +98,29 @@ func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
 }
 
 func (dc *DecisionCache) GetDecision(ctx context.Context, ip string) (*models.Decision, error) {
-	logger := logger.FromContext(ctx).With(slog.String("method", "get_decision"))
+	log := logger.FromContext(ctx)
 	if ip == "" {
-		logger.Debug("no ip provided")
+		log.Debug("no ip provided")
 		return nil, errors.New("no ip found")
 	}
 
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
-		logger.Debug("invalid ip format", slog.String("ip", ip))
-		return nil, nil
-	}
-	addr = addr.Unmap()
-
-	logger = logger.With(slog.String("ip", ip))
-	logger.Debug("checking for decision")
-
-	dc.mu.RLock()
-	defer dc.mu.RUnlock()
+	log.Debug("checking for decision", slog.String("ip", ip))
 
 	if decision, ok := dc.decisions.Get(ip); ok {
-		logger.Debug("decision found", "type", *decision.Type)
+		log.Debug("decision found", "type", *decision.Type)
 		return &decision, nil
 	}
 
-	if dc.cidrs != nil {
-		if decision, ok := dc.cidrs.Lookup(addr); ok {
-			logger.Debug("decision found", "type", *decision.Type)
+	if cidrs := dc.cidrs.Load(); cidrs != nil {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			log.Debug("invalid ip format", slog.String("ip", ip))
+			return nil, nil
+		}
+		addr = addr.Unmap()
+
+		if decision, ok := cidrs.Lookup(addr); ok {
+			log.Debug("decision found", "type", *decision.Type)
 			return &decision, nil
 		}
 	}
@@ -142,9 +136,7 @@ func (dc *DecisionCache) Size() int {
 }
 
 func (dc *DecisionCache) IsReady() bool {
-	dc.mu.RLock()
-	defer dc.mu.RUnlock()
-	return dc.syncComplete
+	return dc.syncComplete.Load()
 }
 
 func (dc *DecisionCache) GetOriginCounts() map[string]int {
@@ -292,17 +284,14 @@ func (dc *DecisionCache) Sync(ctx context.Context) error {
 
 			dc.prom.SetLAPILastSyncTimestamp()
 
-			dc.mu.Lock()
 			if cidrChanged {
-				dc.cidrs = dc.buildIndex(ctx)
+				dc.cidrs.Store(dc.buildIndex(ctx))
 			}
 
-			if !dc.syncComplete {
-				dc.syncComplete = true
+			if dc.syncComplete.CompareAndSwap(false, true) {
 				dc.prom.SetLAPIStreamConnected(true)
 				logger.Info("initial decision sync complete")
 			}
-			dc.mu.Unlock()
 		}
 	}
 }

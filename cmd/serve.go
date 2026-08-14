@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -64,7 +63,9 @@ var ServeCmd = &cobra.Command{
 			gatherer = reg
 		}
 
-		bouncer, err := bouncer.New(config, rec)
+		httpClient := config.HTTP.NewClient()
+
+		bouncer, err := bouncer.New(config, rec, httpClient)
 		if err != nil {
 			return err
 		}
@@ -90,7 +91,7 @@ var ServeCmd = &cobra.Command{
 
 		var notifier server.Notifier = webhook.NewNoopNotifier()
 		if len(config.Webhook.Subscriptions) > 0 {
-			webhookService := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
+			webhookService := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, httpClient)
 			go webhookService.Start(ctx)
 			notifier = webhookService
 		}

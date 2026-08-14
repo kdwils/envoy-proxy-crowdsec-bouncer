@@ -1,7 +1,9 @@
 package config
 
 import (
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -90,6 +92,10 @@ func TestNew(t *testing.T) {
 		v.Set("waf.enabled", true)
 		v.Set("waf.apiKey", "test-key")
 		v.Set("waf.appSecURL", "http://test.com")
+		v.Set("http.maxIdleConns", 42)
+		v.Set("http.maxIdleConnsPerHost", 7)
+		v.Set("http.idleConnTimeout", "5s")
+		v.Set("http.tlsHandshakeTimeout", "2s")
 
 		c, err := New(v)
 		assert.NoError(t, err)
@@ -113,7 +119,59 @@ func TestNew(t *testing.T) {
 			},
 			TrustedProxies: []string{"127.0.0.1"},
 			ExemptIPs:      []string{"10.0.0.0/8"},
+			HTTP: HTTP{
+				MaxIdleConns:        42,
+				MaxIdleConnsPerHost: 7,
+				IdleConnTimeout:     5 * time.Second,
+				TLSHandshakeTimeout: 2 * time.Second,
+			},
 		}
 		assert.Equal(t, want, c)
+	})
+}
+
+func TestHTTP_NewClient(t *testing.T) {
+	t.Run("applies configured transport settings", func(t *testing.T) {
+		cfg := HTTP{
+			MaxIdleConns:        42,
+			MaxIdleConnsPerHost: 7,
+			IdleConnTimeout:     5 * time.Second,
+			TLSHandshakeTimeout: 2 * time.Second,
+		}
+
+		client := cfg.NewClient()
+		require.NotNil(t, client)
+
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.Equal(t, 42, transport.MaxIdleConns)
+		assert.Equal(t, 7, transport.MaxIdleConnsPerHost)
+		assert.Equal(t, 5*time.Second, transport.IdleConnTimeout)
+		assert.Equal(t, 2*time.Second, transport.TLSHandshakeTimeout)
+	})
+
+	t.Run("unset fields use Go transport semantics", func(t *testing.T) {
+		client := HTTP{}.NewClient()
+		require.NotNil(t, client)
+
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.Zero(t, transport.MaxIdleConns)
+		assert.Zero(t, transport.MaxIdleConnsPerHost)
+		assert.Zero(t, transport.IdleConnTimeout)
+		assert.Zero(t, transport.TLSHandshakeTimeout)
+	})
+
+	t.Run("partially configured settings use Go semantics for the rest", func(t *testing.T) {
+		cfg := HTTP{MaxIdleConns: 500}
+
+		client := cfg.NewClient()
+
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.Equal(t, 500, transport.MaxIdleConns)
+		assert.Zero(t, transport.MaxIdleConnsPerHost)
+		assert.Zero(t, transport.IdleConnTimeout)
+		assert.Zero(t, transport.TLSHandshakeTimeout)
 	})
 }

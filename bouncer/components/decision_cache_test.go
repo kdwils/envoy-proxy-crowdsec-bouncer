@@ -3,7 +3,6 @@ package components
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
@@ -18,7 +17,6 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("empty ip", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		got, err := dc.GetDecision(ctx, "")
 		require.Error(t, err)
@@ -28,9 +26,8 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("empty cache returns nil", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 		got, err := dc.GetDecision(ctx, "192.168.1.1")
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -43,9 +40,8 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 
 		dc := &DecisionCache{
 			decisions: testCache,
-			mu:        &sync.RWMutex{},
 		}
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 		got, err := dc.GetDecision(ctx, "192.168.1.100")
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -58,9 +54,8 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 
 		dc := &DecisionCache{
 			decisions: testCache,
-			mu:        &sync.RWMutex{},
 		}
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 		got, err := dc.GetDecision(ctx, "192.168.1.99")
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -69,11 +64,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("exact ipv4 match", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		want := models.Decision{Value: new("192.168.1.100"), Type: new("ban")}
 		dc.decisions.Set("192.168.1.100", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "192.168.1.100")
 		require.NoError(t, err)
@@ -84,11 +78,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("exact ipv6 match", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		want := models.Decision{Value: new("2001:db8::1"), Type: new("captcha")}
 		dc.decisions.Set("2001:db8::1", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "2001:db8::1")
 		require.NoError(t, err)
@@ -99,11 +92,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("ipv4 cidr match", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		want := models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")}
 		dc.decisions.Set("10.0.0.0/8", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.1.2.3")
 		require.NoError(t, err)
@@ -114,11 +106,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("ipv6 cidr match", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		want := models.Decision{Value: new("2001:db8::/32"), Type: new("ban"), Scope: new("Range")}
 		dc.decisions.Set("2001:db8::/32", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "2001:db8::abcd")
 		require.NoError(t, err)
@@ -129,10 +120,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("no match", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "172.16.0.1")
 		require.NoError(t, err)
@@ -142,12 +132,11 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("exact ip overrides cidr", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
 		want := models.Decision{Value: new("10.0.0.50"), Type: new("captcha"), Scope: new("Ip")}
 		dc.decisions.Set("10.0.0.50", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.0.0.50")
 		require.NoError(t, err)
@@ -158,12 +147,11 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("more specific cidr overrides broader", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
 		want := models.Decision{Value: new("10.1.0.0/16"), Type: new("captcha"), Scope: new("Range")}
 		dc.decisions.Set("10.1.0.0/16", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.1.5.5")
 		require.NoError(t, err)
@@ -174,12 +162,11 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("invalid decision value is ignored", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		want := models.Decision{Value: new("1.2.3.4"), Type: new("ban")}
 		dc.decisions.Set("1.2.3.4", want)
 		dc.decisions.Set("bad-key", models.Decision{Value: new("not-an-ip"), Type: new("ban")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "1.2.3.4")
 		require.NoError(t, err)
@@ -194,10 +181,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("invalid ip format returns nil", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("1.2.3.4", models.Decision{Value: new("1.2.3.4"), Type: new("ban")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "not-an-ip")
 		require.NoError(t, err)
@@ -207,12 +193,11 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("rebuild after delete removes entry", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("192.168.1.100", models.Decision{Value: new("192.168.1.100"), Type: new("ban")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 		dc.decisions.Delete("192.168.1.100")
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "192.168.1.100")
 		require.NoError(t, err)
@@ -222,11 +207,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("ipv4 mapped ipv6 cidr normalized", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		want := models.Decision{Value: new("::ffff:10.0.0.0/104"), Type: new("ban"), Scope: new("Range")}
 		dc.decisions.Set("::ffff:10.0.0.0/104", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.5.5.5")
 		require.NoError(t, err)
@@ -237,10 +221,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("ipv4 mapped ipv6 cidr with bits less than 96 skipped", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("::ffff:10.0.0.0/64", models.Decision{Value: new("::ffff:10.0.0.0/64"), Type: new("ban"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.5.5.5")
 		require.NoError(t, err)
@@ -250,10 +233,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("host prefix range decision skipped from cidr index", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("10.0.0.1/32", models.Decision{Value: new("10.0.0.1/32"), Type: new("ban"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.0.0.1")
 		require.NoError(t, err)
@@ -263,10 +245,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("ipv6 host prefix range decision skipped from cidr index", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("2001:db8::1/128", models.Decision{Value: new("2001:db8::1/128"), Type: new("ban"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "2001:db8::1")
 		require.NoError(t, err)
@@ -276,10 +257,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("ip scope decision with cidr value excluded from cidr index", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Ip")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.5.5.5")
 		require.NoError(t, err)
@@ -289,10 +269,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("nil decision value skipped", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("nil-key", models.Decision{Value: nil, Type: new("ban"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.0.0.1")
 		require.NoError(t, err)
@@ -302,10 +281,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("empty decision value skipped", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("empty-key", models.Decision{Value: new(""), Type: new("ban"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.0.0.1")
 		require.NoError(t, err)
@@ -315,10 +293,9 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("whitespace decision value skipped", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("ws-key", models.Decision{Value: new("   "), Type: new("ban"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.0.0.1")
 		require.NoError(t, err)
@@ -328,11 +305,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("host bits normalized in cidr value", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		want := models.Decision{Value: new("10.5.0.0/8"), Type: new("ban"), Scope: new("Range")}
 		dc.decisions.Set("10.5.0.0/8", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.1.2.3")
 		require.NoError(t, err)
@@ -343,12 +319,11 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("overlapping ipv6 cidrs longest prefix match", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("2001:db8::/32", models.Decision{Value: new("2001:db8::/32"), Type: new("ban"), Scope: new("Range")})
 		want := models.Decision{Value: new("2001:db8:1::/48"), Type: new("captcha"), Scope: new("Range")}
 		dc.decisions.Set("2001:db8:1::/48", want)
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "2001:db8:1::5")
 		require.NoError(t, err)
@@ -359,7 +334,6 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("nil cidrs table falls through to nil result", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
 
@@ -371,11 +345,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("rebuild after cidr deletion removes from index", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("10.0.0.0/8", models.Decision{Value: new("10.0.0.0/8"), Type: new("ban"), Scope: new("Range")})
 		dc.decisions.Set("172.16.0.0/12", models.Decision{Value: new("172.16.0.0/12"), Type: new("captcha"), Scope: new("Range")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "10.1.1.1")
 		require.NoError(t, err)
@@ -388,7 +361,7 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 		assert.Equal(t, "captcha", *got2.Type)
 
 		dc.decisions.Delete("10.0.0.0/8")
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got3, err := dc.GetDecision(ctx, "10.1.1.1")
 		require.NoError(t, err)
@@ -403,11 +376,10 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 	t.Run("buildIndex with only non-range decisions returns empty cidr index", func(t *testing.T) {
 		dc := &DecisionCache{
 			decisions: cache.New[string, models.Decision](),
-			mu:        &sync.RWMutex{},
 		}
 		dc.decisions.Set("1.2.3.4", models.Decision{Value: new("1.2.3.4"), Type: new("ban"), Scope: new("Ip")})
 		dc.decisions.Set("5.6.7.8", models.Decision{Value: new("5.6.7.8"), Type: new("captcha"), Scope: new("Ip")})
-		dc.cidrs = dc.buildIndex(ctx)
+		dc.cidrs.Store(dc.buildIndex(ctx))
 
 		got, err := dc.GetDecision(ctx, "1.2.3.4")
 		require.NoError(t, err)
@@ -423,7 +395,6 @@ func TestDecisionCache_GetDecision(t *testing.T) {
 func makeDecisions(count int, cidrRatio float64) *DecisionCache {
 	dc := &DecisionCache{
 		decisions: cache.New[string, models.Decision](),
-		mu:        &sync.RWMutex{},
 	}
 
 	cidrCount := int(float64(count) * cidrRatio)
@@ -439,7 +410,7 @@ func makeDecisions(count int, cidrRatio float64) *DecisionCache {
 		dc.decisions.Set(cidr, dec)
 	}
 
-	dc.cidrs = dc.buildIndex(context.Background())
+	dc.cidrs.Store(dc.buildIndex(context.Background()))
 	return dc
 }
 

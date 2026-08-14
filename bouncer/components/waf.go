@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
@@ -23,6 +24,7 @@ type Config struct {
 type WAF struct {
 	APIKey string
 	APIURL string
+	apiURL *url.URL
 	http   HTTPClient
 }
 
@@ -45,12 +47,17 @@ type AppSecRequest struct {
 	ProtoMinor int
 }
 
-func NewWAF(appsecURL, apiKey string, http *http.Client) WAF {
+func NewWAF(appsecURL, apiKey string, http *http.Client) (WAF, error) {
+	apiURL, err := url.Parse(appsecURL)
+	if err != nil {
+		return WAF{}, fmt.Errorf("failed to parse API URL: %w", err)
+	}
 	return WAF{
 		APIURL: appsecURL,
+		apiURL: apiURL,
 		http:   http,
 		APIKey: apiKey,
-	}
+	}, nil
 }
 
 // Inspect forwards the request to the CrowdSec AppSec component and returns the action.
@@ -61,70 +68,65 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 		return result, fmt.Errorf("method cannot be empty")
 	}
 
-	apiURL, err := url.Parse(w.APIURL)
-	if err != nil {
-		logger.Error("failed to parse API URL", slog.String("url", w.APIURL), slog.Any("error", err))
-		return result, fmt.Errorf("failed to parse API URL: %w", err)
-	}
-
-	var bodyReader io.Reader
-	if len(req.Body) > 0 {
-		bodyReader = bytes.NewReader(req.Body)
-	}
-
-	forwardReqMethod := http.MethodGet
-	if len(req.Body) > 0 {
-		forwardReqMethod = http.MethodPost
-	}
-
-	forwardReq, err := http.NewRequestWithContext(ctx, forwardReqMethod, apiURL.String(), bodyReader)
-	if err != nil {
-		return result, fmt.Errorf("failed to create request to CrowdSec: %w", err)
-	}
-
-	forwardReq.Header = make(http.Header)
-	for k, v := range req.Headers {
-		if len(k) > 0 && k[0] == ':' {
-			continue
-		}
-		forwardReq.Header.Set(k, v)
-	}
-
-	for k, v := range buildAppSecHeaders(req, req.RealIP, w.APIKey) {
-		forwardReq.Header.Set(k, v)
-	}
-
-	logger.Debug("forwarding request to CrowdSec", "url", forwardReq.URL.String(), "method", forwardReq.Method, "headers", forwardReq.Header)
+	forwardReq := newForwardRequest(ctx, w.apiURL, req, w.APIKey)
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
+		logger.Debug("failed to forward request to CrowdSec", "url", forwardReq.URL.String(), "method", forwardReq.Method, "error", err)
 		return result, err
 	}
 	defer resp.Body.Close()
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.Debug("failed to read CrowdSec response", "url", forwardReq.URL.String(), "method", forwardReq.Method, "error", err)
 		return result, err
 	}
 
 	err = json.Unmarshal(b, &result)
-	return result, err
+	if err != nil {
+		logger.Debug("failed to parse CrowdSec response", "error", err)
+		return result, err
+	}
+
+	return result, nil
 }
 
-// buildAppSecHeaders returns a map of the required CrowdSec AppSec headers for the outgoing request.
-func buildAppSecHeaders(req AppSecRequest, realIP, apiKey string) map[string]string {
-	headers := map[string]string{
-		"X-Crowdsec-Appsec-Ip":         realIP,
-		"X-Crowdsec-Appsec-Uri":        req.URL.Path,
-		"X-Crowdsec-Appsec-Host":       req.URL.Host,
-		"X-Crowdsec-Appsec-Verb":       req.Method,
-		"X-Crowdsec-Appsec-Api-Key":    apiKey,
-		"X-Crowdsec-Appsec-User-Agent": req.Headers["user-agent"],
+func newForwardRequest(ctx context.Context, apiURL *url.URL, request AppSecRequest, apiKey string) *http.Request {
+	headers := make(http.Header, len(request.Headers)+7)
+	for k, v := range request.Headers {
+		if len(k) > 0 && k[0] == ':' {
+			continue
+		}
+		headers.Set(k, v)
 	}
 
-	if req.ProtoMajor > 0 {
-		headers["X-Crowdsec-Appsec-Http-Version"] = fmt.Sprintf("%d%d", req.ProtoMajor, req.ProtoMinor)
+	headers.Set("X-Crowdsec-Appsec-Ip", request.RealIP)
+	headers.Set("X-Crowdsec-Appsec-Uri", request.URL.Path)
+	headers.Set("X-Crowdsec-Appsec-Host", request.URL.Host)
+	headers.Set("X-Crowdsec-Appsec-Verb", request.Method)
+	headers.Set("X-Crowdsec-Appsec-Api-Key", apiKey)
+	headers.Set("X-Crowdsec-Appsec-User-Agent", request.Headers["user-agent"])
+	if request.ProtoMajor > 0 {
+		headers.Set("X-Crowdsec-Appsec-Http-Version", strconv.Itoa(request.ProtoMajor)+strconv.Itoa(request.ProtoMinor))
 	}
 
-	return headers
+	httpRequest := &http.Request{
+		Method: http.MethodGet,
+		URL:    apiURL,
+		Host:   apiURL.Host,
+		Header: headers,
+		Body:   http.NoBody,
+	}
+
+	if len(request.Body) > 0 {
+		httpRequest.Method = http.MethodPost
+		httpRequest.Body = io.NopCloser(bytes.NewReader(request.Body))
+		httpRequest.ContentLength = int64(len(request.Body))
+		httpRequest.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(request.Body)), nil
+		}
+	}
+
+	return httpRequest.WithContext(ctx)
 }

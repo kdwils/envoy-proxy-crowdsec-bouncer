@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -53,15 +54,63 @@ type Bouncer struct {
 	DecisionCache      DecisionCache
 	WAF                WAF
 	CaptchaService     CaptchaService
-	TrustedProxies     []*net.IPNet
+	TrustedProxies     []netip.Prefix
 	TrustedIPHeader    string
-	ExemptIPs          []*net.IPNet
+	ExemptIPs          []netip.Prefix
 	MetricsService     *crowdsec.MetricsService
 	PrometheusRecorder *recorder.Recorder
+	remediationMetrics map[string]remediationMetric
 	config             config.Config
 }
 
-func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
+type remediationMetric struct {
+	key    string
+	name   string
+	labels map[string]string
+}
+
+func newRemediationMetrics() map[string]remediationMetric {
+	return map[string]remediationMetric{
+		"allow": {
+			key:  "CAPI:bypass",
+			name: "processed",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "bypass",
+			},
+		},
+		"ban": {
+			key:  "CAPI:ban",
+			name: "dropped",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "ban",
+			},
+		},
+		"captcha": {
+			key:  "CAPI:captcha",
+			name: "dropped",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "captcha",
+			},
+		},
+		"challenge": {
+			key:  "CAPI:challenge",
+			name: "dropped",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "challenge",
+			},
+		},
+	}
+}
+
+func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client) (*Bouncer, error) {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	trustedProxies, err := parseIPNets(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
@@ -77,12 +126,13 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 		TrustedIPHeader:    cfg.TrustedIPHeader,
 		ExemptIPs:          exemptIPs,
 		PrometheusRecorder: recorder,
+		remediationMetrics: newRemediationMetrics(),
 		config:             cfg,
 	}
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
 		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
-		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent)
+		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -109,12 +159,15 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		w = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
+		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, httpClient)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var c *components.CaptchaService
 	if cfg.Captcha.Enabled {
-		c, err = components.NewCaptchaService(cfg.Captcha, http.DefaultClient, recorder)
+		c, err = components.NewCaptchaService(cfg.Captcha, httpClient, recorder)
 		if err != nil {
 			return nil, err
 		}
@@ -151,101 +204,100 @@ func (b *Bouncer) IsReady() bool {
 	return b.DecisionCache.IsReady()
 }
 
-func (b *Bouncer) incRemediationMetric(name, remediationType string) {
-	if b.MetricsService == nil {
-		return
-	}
-	origin := "CAPI"
-	key := origin + ":" + remediationType
-	b.MetricsService.Inc(key, name, "request", map[string]string{
-		"origin":      origin,
-		"remediation": remediationType,
-	})
-}
-
 func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
 	b.PrometheusRecorder.IncRequestsTotal(result.Action)
 
-	switch result.Action {
-	case "allow":
-		b.incRemediationMetric("processed", "bypass")
-	case "ban":
-		b.incRemediationMetric("dropped", "ban")
-	case "captcha":
-		b.incRemediationMetric("dropped", "captcha")
-	case "challenge":
-		b.incRemediationMetric("dropped", "challenge")
+	if b.MetricsService == nil {
+		return
+	}
+	if m, ok := b.remediationMetrics[result.Action]; ok {
+		b.MetricsService.Inc(m.key, m.name, "request", m.labels)
 	}
 }
 
 // ExtractRealIPFromHTTP extracts the real client IP from an HTTP request using trusted proxy logic.
 func (b *Bouncer) ExtractRealIPFromHTTP(r *http.Request) string {
-	headers := make(map[string]string)
+	var xForwardedFor, xRealIP, trustedValue string
 	for k, v := range r.Header {
-		if len(v) > 0 {
-			headers[k] = v[0]
+		if len(v) == 0 {
+			continue
+		}
+		if b.TrustedIPHeader != "" && strings.EqualFold(k, b.TrustedIPHeader) {
+			trustedValue = v[0]
+		}
+		switch strings.ToLower(k) {
+		case "x-forwarded-for":
+			xForwardedFor = v[0]
+		case "x-real-ip":
+			xRealIP = v[0]
 		}
 	}
 
 	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	return ExtractRealIP(host, headers, b.TrustedProxies, b.TrustedIPHeader)
+	realIP, _ := ExtractRealIP(host, xForwardedFor, xRealIP, trustedValue, b.TrustedProxies)
+	return realIP
 }
 
-// ExtractRealIP determines the real client IP from headers and socket address, matching bouncer logic.
-// Headers are checked case-insensitively to handle both normalized and original casing.
+// ExtractRealIP determines the real client IP from the socket address and the extracted header
+// values, matching bouncer logic.
 //
-// If trustedIPHeader is set, it is checked first and, if present with a valid IP, returned
-// directly - no X-Forwarded-For parsing or trustedProxies matching involved. This is for
-// deployments where an upstream proxy (e.g. an Envoy edge gateway with numTrustedProxies
-// configured) has already resolved the real client IP itself and stamped it into a single,
-// dedicated header (e.g. X-Envoy-External-Address), so the bouncer doesn't need its own
-// external-proxy IP-range allowlist to re-derive the same answer. Falls back to the existing
-// X-Forwarded-For/X-Real-IP/trustedProxies logic if the header is unset or absent from the
-// request, so this is fully backward compatible.
-func ExtractRealIP(ip string, headers map[string]string, trustedProxies []*net.IPNet, trustedIPHeader string) string {
-	if trustedIPHeader != "" {
-		for k, v := range headers {
-			if strings.EqualFold(k, trustedIPHeader) && v != "" && isValidIP(v) {
-				return v
+// If trustedIPValue is set (the value of the configured trustedIPHeader), it is checked first and,
+// if present with a valid IP, returned directly - no X-Forwarded-For parsing or trustedProxies
+// matching involved. This is for deployments where an upstream proxy (e.g. an Envoy edge gateway
+// with numTrustedProxies configured) has already resolved the real client IP itself and stamped it
+// into a single, dedicated header (e.g. X-Envoy-External-Address), so the bouncer doesn't need its
+// own external-proxy IP-range allowlist to re-derive the same answer. Falls back to the existing
+// X-Forwarded-For/X-Real-IP/trustedProxies logic if the header is unset or absent from the request,
+// so this is fully backward compatible.
+func ExtractRealIP(ip, xForwardedFor, xRealIP, trustedIPValue string, trustedProxies []netip.Prefix) (string, netip.Addr) {
+	if trustedIPValue != "" {
+		if addr, err := netip.ParseAddr(trustedIPValue); err == nil {
+			return trustedIPValue, addr
+		}
+	}
+
+	if xForwardedFor != "" {
+		ips := strings.Split(xForwardedFor, ",")
+		if len(ips) > 20 {
+			ips = ips[len(ips)-20:]
+		}
+		for i := len(ips) - 1; i >= 0; i-- {
+			addr, err := netip.ParseAddr(strings.TrimSpace(ips[i]))
+			if err != nil {
+				continue
+			}
+			if !isTrustedProxyAddr(addr, trustedProxies) {
+				return strings.TrimSpace(ips[i]), addr
 			}
 		}
 	}
 
-	for k, v := range headers {
-		if strings.EqualFold(k, "x-forwarded-for") && v != "" {
-			ips := strings.Split(v, ",")
-			if len(ips) > 20 {
-				ips = ips[len(ips)-20:]
-			}
-			for i := len(ips) - 1; i >= 0; i-- {
-				parsedIP := strings.TrimSpace(ips[i])
-				if !isTrustedProxy(parsedIP, trustedProxies) && isValidIP(parsedIP) {
-					return parsedIP
-				}
-			}
+	if xRealIP != "" {
+		if addr, err := netip.ParseAddr(xRealIP); err == nil {
+			return xRealIP, addr
 		}
 	}
 
-	for k, v := range headers {
-		if strings.EqualFold(k, "x-real-ip") && v != "" && isValidIP(v) {
-			return v
-		}
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip, netip.Addr{}
 	}
-
-	return ip
+	return ip, addr
 }
 
 // isTrustedProxy returns true if the IP is in the trusted proxies list.
-func isTrustedProxy(ip string, trustedProxies []*net.IPNet) bool {
-	if len(trustedProxies) == 0 {
+func isTrustedProxy(ip string, trustedProxies []netip.Prefix) bool {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
 		return false
 	}
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		return false
-	}
-	for _, net := range trustedProxies {
-		if net.Contains(parsed) {
+	return isTrustedProxyAddr(addr, trustedProxies)
+}
+
+func isTrustedProxyAddr(addr netip.Addr, trustedProxies []netip.Prefix) bool {
+	addr = addr.Unmap()
+	for _, prefix := range trustedProxies {
+		if prefix.Contains(addr) {
 			return true
 		}
 	}
@@ -253,21 +305,17 @@ func isTrustedProxy(ip string, trustedProxies []*net.IPNet) bool {
 }
 
 // isExemptIP returns true if the IP falls within any CIDR range in the exempt IPs list.
-func (b *Bouncer) isExemptIP(ip net.IP) bool {
-	if ip == nil {
+func (b *Bouncer) isExemptIP(ip netip.Addr) bool {
+	if !ip.IsValid() {
 		return false
 	}
-	for _, cidr := range b.ExemptIPs {
-		if cidr.Contains(ip) {
+	ip = ip.Unmap()
+	for _, prefix := range b.ExemptIPs {
+		if prefix.Contains(ip) {
 			return true
 		}
 	}
 	return false
-}
-
-// isValidIP returns true if the string is a valid IPv4 or IPv6 address.
-func isValidIP(ip string) bool {
-	return net.ParseIP(ip) != nil
 }
 
 // ParseError is returned when parsing the CheckRequest fails.
@@ -277,7 +325,7 @@ type ParseError struct{ Reason string }
 type ParsedRequest struct {
 	IP           string
 	RealIP       string
-	ParsedRealIP net.IP
+	ParsedRealIP netip.Addr
 	Headers      map[string]string
 	Cookies      map[string]string
 	URL          url.URL
@@ -316,36 +364,35 @@ func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *mode
 	}
 }
 
-func parseIPNets(addresses []string) ([]*net.IPNet, error) {
-	ipNets := make([]*net.IPNet, 0, len(addresses))
+func parseIPNets(addresses []string) ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(addresses))
 	for _, addr := range addresses {
 		if !strings.Contains(addr, "/") {
+			suffix := "/32"
 			if strings.Contains(addr, ":") {
-				addr = addr + "/128"
-			} else {
-				addr = addr + "/32"
+				suffix = "/128"
 			}
+			addr = addr + suffix
 		}
 
-		_, ipNet, err := net.ParseCIDR(addr)
+		prefix, err := netip.ParsePrefix(addr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid address %s: %v", addr, err)
 		}
-		ipNets = append(ipNets, ipNet)
+		prefixes = append(prefixes, prefix.Masked())
 	}
 
-	return ipNets, nil
+	return prefixes, nil
 }
 
 // Check runs bouncer first, then captcha if enabled, then WAF if enabled, and returns the result.
 func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequest {
 
 	parsed := b.ParseCheckRequest(ctx, req)
-	log := logger.FromContext(ctx).With(slog.String("ip", parsed.RealIP))
-	ctx = logger.WithContext(ctx, log)
+	log := logger.FromContext(ctx)
 
 	if b.isExemptIP(parsed.ParsedRealIP) {
-		log.Debug("ip is in exempt list, skipping request check")
+		log.Debug("ip is in exempt list, skipping request check", slog.String("ip", parsed.RealIP))
 		result := NewCheckedRequest(parsed.RealIP, "allow", "ip is in exempt list", http.StatusOK, nil, "", parsed, nil)
 		b.recordFinalMetric(result)
 		return result
@@ -410,25 +457,25 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	stop := b.PrometheusRecorder.ObserveComponentDuration("decision_cache")
 	defer stop()
 
-	logger.Debug("running decision cache")
+	logger.Debug("running decision cache", slog.String("ip", parsed.RealIP))
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
-		logger.Error("decision cache error", "error", err)
+		logger.Error("decision cache error", "error", err, slog.String("ip", parsed.RealIP))
 		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
 	if decision == nil {
-		logger.Debug("no decision found")
+		logger.Debug("no decision found", slog.String("ip", parsed.RealIP))
 		return NewCheckedRequest(parsed.RealIP, "allow", "no decision", http.StatusOK, nil, "", parsed, nil)
 	}
 
 	if decision.Type == nil {
-		logger.Debug("decision has no type")
+		logger.Debug("decision has no type", slog.String("ip", parsed.RealIP))
 		return NewCheckedRequest(parsed.RealIP, "allow", "no decision type", http.StatusOK, nil, "", parsed, nil)
 	}
 
 	decisionType := strings.ToLower(*decision.Type)
-	logger.Debug("decision found", "type", decisionType)
+	logger.Debug("decision found", "type", decisionType, slog.String("ip", parsed.RealIP))
 
 	switch decisionType {
 	case "ban":
@@ -459,14 +506,14 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
 	defer stop()
 
-	logger.Debug("running captcha")
+	logger.Debug("running captcha", slog.String("ip", parsed.RealIP))
 	originalURL := parsed.URL.String()
 
 	sessionToken := parsed.Cookies[b.CaptchaService.CookieName()]
 
 	session, err := b.CaptchaService.CreateSession(parsed.RealIP, originalURL, sessionToken)
 	if err != nil {
-		logger.Error("error creating session", "error", err)
+		logger.Error("error creating session", "error", err, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncCaptchaErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
@@ -484,8 +531,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
 	defer stop()
 
-	logger.Debug("running WAF")
-	logger.Debug("headers", "headers", parsed.Headers)
+	logger.Debug("running WAF", slog.String("ip", parsed.RealIP))
 
 	wafReq := components.AppSecRequest{
 		Method:     parsed.Method,
@@ -499,7 +545,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
-		logger.Error("waf error", "error", wafErr)
+		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncWAFErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
@@ -543,10 +589,7 @@ func (b *Bouncer) buildChallengeResponse(parsed *ParsedRequest, wafResult compon
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.
 func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest) *ParsedRequest {
-	parsedRequest := &ParsedRequest{
-		Headers: make(map[string]string),
-		Cookies: make(map[string]string),
-	}
+	parsedRequest := &ParsedRequest{}
 	if req == nil {
 		return parsedRequest
 	}
@@ -575,26 +618,47 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		return parsedRequest
 	}
 
-	if httpRequest.Headers != nil {
-		for k, v := range httpRequest.Headers {
-			parsedRequest.Headers[strings.ToLower(k)] = v
+	var xForwardedFor, xRealIP, trustedValue, cookieHeader string
+	for k, v := range httpRequest.Headers {
+		lower := strings.ToLower(k)
+		if b.TrustedIPHeader != "" && strings.EqualFold(k, b.TrustedIPHeader) {
+			trustedValue = v
+		}
+		switch lower {
+		case ":scheme":
+			parsedRequest.URL.Scheme = v
+		case ":authority":
+			parsedRequest.URL.Host = v
+		case ":path":
+			parsedRequest.URL.Path = v
+		case ":method":
+			parsedRequest.Method = v
+		case "user-agent":
+			parsedRequest.UserAgent = v
+		case "cookie":
+			cookieHeader = v
+		case "x-forwarded-for":
+			xForwardedFor = v
+		case "x-real-ip":
+			xRealIP = v
+		}
+		if b.WAF != nil {
+			if parsedRequest.Headers == nil {
+				parsedRequest.Headers = make(map[string]string, len(httpRequest.Headers))
+			}
+			parsedRequest.Headers[lower] = v
 		}
 	}
 
-	parsedRequest.Cookies = parseCookies(parsedRequest.Headers["cookie"])
-
-	parsedRequest.RealIP = ExtractRealIP(parsedRequest.IP, parsedRequest.Headers, b.TrustedProxies, b.TrustedIPHeader)
-	parsedRequest.ParsedRealIP = net.ParseIP(parsedRequest.RealIP)
-
-	url := url.URL{
-		Scheme: parsedRequest.Headers[":scheme"],
-		Host:   parsedRequest.Headers[":authority"],
-		Path:   parsedRequest.Headers[":path"],
+	if b.CaptchaService != nil && cookieHeader != "" {
+		parsedRequest.Cookies = parseCookies(cookieHeader)
 	}
 
-	parsedRequest.Method = parsedRequest.Headers[":method"]
-	parsedRequest.Body = []byte(httpRequest.GetBody())
-	parsedRequest.UserAgent = parsedRequest.Headers["user-agent"]
+	parsedRequest.RealIP, parsedRequest.ParsedRealIP = ExtractRealIP(parsedRequest.IP, xForwardedFor, xRealIP, trustedValue, b.TrustedProxies)
+
+	if b.WAF != nil && len(httpRequest.GetBody()) > 0 {
+		parsedRequest.Body = []byte(httpRequest.GetBody())
+	}
 
 	if proto := httpRequest.GetProtocol(); proto != "" {
 		maj, min := parseHTTPVersion(proto)
@@ -602,22 +666,20 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		parsedRequest.ProtoMinor = min
 	}
 
-	parsedRequest.URL = url
-
 	return parsedRequest
 }
 
 func parseCookies(cookieHeader string) map[string]string {
-	m := make(map[string]string)
 	if cookieHeader == "" {
-		return m
+		return nil
 	}
 
 	cookies, err := http.ParseCookie(cookieHeader)
 	if err != nil {
-		return m
+		return nil
 	}
 
+	m := make(map[string]string, len(cookies))
 	for _, c := range cookies {
 		m[c.Name] = c.Value
 	}
