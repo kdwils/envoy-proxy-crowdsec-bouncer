@@ -141,6 +141,27 @@ func TestNewClient(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, client)
 	})
+
+	t.Run("tls cert auth reuses configured transport settings", func(t *testing.T) {
+		certPath, keyPath, _ := generateTestClientCert(t)
+		cfg := config.Bouncer{
+			LAPIURL: "https://localhost:8080",
+			TLS:     config.BouncerTLS{Enabled: true, CertPath: certPath, KeyPath: keyPath, InsecureSkipVerify: true},
+		}
+		shared := &http.Client{Transport: &http.Transport{MaxIdleConns: 42, MaxIdleConnsPerHost: 7, IdleConnTimeout: 5 * time.Second}}
+
+		client, err := NewClient(cfg, "test-agent", shared)
+		require.NoError(t, err)
+
+		transport, ok := client.GetClient().Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.Equal(t, 42, transport.MaxIdleConns)
+		assert.Equal(t, 7, transport.MaxIdleConnsPerHost)
+		assert.Equal(t, 5*time.Second, transport.IdleConnTimeout)
+		require.NotNil(t, transport.TLSClientConfig)
+		require.Len(t, transport.TLSClientConfig.Certificates, 1)
+		assert.True(t, transport.TLSClientConfig.InsecureSkipVerify)
+	})
 }
 
 func TestLoadCACertPool(t *testing.T) {
