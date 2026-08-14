@@ -281,7 +281,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	recorder, err := recorder.New(reg)
 	require.NoError(t, err)
 
-	bouncer, err := bouncer.New(config, recorder)
+	bouncer, err := bouncer.New(config, recorder, http.DefaultClient)
 	require.NoError(t, err)
 	go bouncer.Sync(ctx)
 
@@ -715,7 +715,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	recorder, err := recorder.New(reg)
 	require.NoError(t, err)
 
-	testBouncer, err := bouncer.New(config, recorder)
+	testBouncer, err := bouncer.New(config, recorder, http.DefaultClient)
 	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
 

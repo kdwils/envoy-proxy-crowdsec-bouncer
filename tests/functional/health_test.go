@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -117,7 +118,7 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 
 	recorder := recorder.NewNoOp()
 
-	bouncer, err := bouncer.New(config, recorder)
+	bouncer, err := bouncer.New(config, recorder, http.DefaultClient)
 	require.NoError(t, err)
 	go bouncer.Sync(ctx)
 
@@ -215,7 +216,7 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 
 	recorder := recorder.NewNoOp()
 
-	bouncer, err := bouncer.New(config, recorder)
+	bouncer, err := bouncer.New(config, recorder, http.DefaultClient)
 	require.NoError(t, err)
 
 	templateStore, err := template.NewStore(template.Config{})

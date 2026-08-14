@@ -64,7 +64,16 @@ var ServeCmd = &cobra.Command{
 			gatherer = reg
 		}
 
-		bouncer, err := bouncer.New(config, rec)
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:        config.HTTP.MaxIdleConns,
+				MaxIdleConnsPerHost: config.HTTP.MaxIdleConnsPerHost,
+				IdleConnTimeout:     config.HTTP.IdleConnTimeout,
+				TLSHandshakeTimeout: config.HTTP.TLSHandshakeTimeout,
+			},
+		}
+
+		bouncer, err := bouncer.New(config, rec, httpClient)
 		if err != nil {
 			return err
 		}

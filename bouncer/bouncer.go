@@ -30,7 +30,7 @@ type WAF interface {
 	Inspect(ctx context.Context, req components.AppSecRequest) (components.WAFResponse, error)
 }
 
-//go:generate mockgen -destination=mocks/mock_decision_cache.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer DecisionCache
+//go:generate mockgen -destination=mocks/mock_decision_cache.go -package=mocks github.com/kdwils/envoy-proxy-crowdsec-bouncer/bouncer DecisionCache
 type DecisionCache interface {
 	GetDecision(ctx context.Context, ip string) (*models.Decision, error)
 	Sync(ctx context.Context) error
@@ -98,7 +98,11 @@ func newRemediationMetrics() map[string]remediationMetric {
 	}
 }
 
-func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
+func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client) (*Bouncer, error) {
+	if httpClient == nil {
+		return nil, errors.New("http client is required")
+	}
+
 	trustedProxies, err := parseIPNets(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
@@ -147,7 +151,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
+		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +159,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	var c *components.CaptchaService
 	if cfg.Captcha.Enabled {
-		c, err = components.NewCaptchaService(cfg.Captcha, http.DefaultClient, recorder)
+		c, err = components.NewCaptchaService(cfg.Captcha, httpClient, recorder)
 		if err != nil {
 			return nil, err
 		}

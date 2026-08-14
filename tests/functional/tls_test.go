@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -140,7 +141,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 
 	recorder := recorder.NewNoOp()
 
-	b, err := bouncer.New(cfg, recorder)
+	b, err := bouncer.New(cfg, recorder, http.DefaultClient)
 	require.NoError(t, err)
 
 	go b.Sync(ctx)

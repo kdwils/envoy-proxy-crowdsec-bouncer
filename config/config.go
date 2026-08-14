@@ -18,6 +18,14 @@ type Config struct {
 	TrustedIPHeader string     `yaml:"trustedIPHeader" json:"trustedIPHeader"`
 	ExemptIPs       []string   `yaml:"exemptIPs" json:"exemptIPs"`
 	Templates       Templates  `yaml:"templates" json:"templates"`
+	HTTP            HTTP       `yaml:"http" json:"http"`
+}
+
+type HTTP struct {
+	MaxIdleConns        int           `yaml:"maxIdleConns" json:"maxIdleConns"`
+	MaxIdleConnsPerHost int           `yaml:"maxIdleConnsPerHost" json:"maxIdleConnsPerHost"`
+	IdleConnTimeout     time.Duration `yaml:"idleConnTimeout" json:"idleConnTimeout"`
+	TLSHandshakeTimeout time.Duration `yaml:"tlsHandshakeTimeout" json:"tlsHandshakeTimeout"`
 }
 
 type Server struct {
@@ -119,6 +127,12 @@ func New(v *viper.Viper) (Config, error) {
 	if v == nil {
 		return c, errors.New("viper not initialized")
 	}
+
+	v.SetDefault("http.maxIdleConns", 1000)
+	v.SetDefault("http.maxIdleConnsPerHost", 100)
+	v.SetDefault("http.idleConnTimeout", 90*time.Second)
+	v.SetDefault("http.tlsHandshakeTimeout", 10*time.Second)
+
 	if v.ConfigFileUsed() != "" {
 		err := v.ReadInConfig()
 		if err != nil {

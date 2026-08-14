@@ -1534,7 +1534,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		require.NoError(t, err)
 
 		rec := recorder.NewNoOp()
-		r, err := New(config.Config{}, rec)
+		r, err := New(config.Config{}, rec, http.DefaultClient)
 		require.NoError(t, err)
 		r.MetricsService = collector
 		req := mkReq("1.1.1.1", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
@@ -2220,7 +2220,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		require.NoError(t, err)
 
 		rec := recorder.NewNoOp()
-		r, err := New(config.Config{}, rec)
+		r, err := New(config.Config{}, rec, http.DefaultClient)
 		require.NoError(t, err)
 		r.DecisionCache = mb
 		r.MetricsService = collector

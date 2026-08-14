@@ -1,15 +1,18 @@
 package components
 
 import (
+	"bytes"
 	"context"
 	errors "errors"
 	io "io"
+	"log/slog"
 	nethttp "net/http"
 	"net/url"
 	"strings"
 	"testing"
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -88,11 +91,11 @@ func TestNewForwardRequest(t *testing.T) {
 
 	t.Run("post request copies body and sets content length", func(t *testing.T) {
 		areq := AppSecRequest{
-			Method: "POST",
-			URL:    url.URL{Path: "/test", Host: "example.com"},
+			Method:  "POST",
+			URL:     url.URL{Path: "/test", Host: "example.com"},
 			Headers: map[string]string{"user-agent": "test-agent"},
-			Body:   []byte("test"),
-			RealIP: "1.2.3.4",
+			Body:    []byte("test"),
+			RealIP:  "1.2.3.4",
 		}
 		r := newForwardRequest(ctx, apiURL, areq, "key")
 
@@ -148,6 +151,24 @@ func TestWAF_Inspect(t *testing.T) {
 		ctx := context.Background()
 		_, err := waf.Inspect(ctx, areq)
 		assert.Error(t, err)
+	})
+
+	t.Run("http error is logged at error level", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		waf := newTestWAF("http://test", "", mockHTTP)
+		mockHTTP.EXPECT().Do(gomock.Any()).Return(nil, errors.New("dial tcp: resource temporarily unavailable")).Times(1)
+
+		var buf bytes.Buffer
+		l := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		ctx := logger.WithContext(context.Background(), l)
+
+		_, err := waf.Inspect(ctx, AppSecRequest{Method: "GET"})
+		assert.Error(t, err)
+		assert.Contains(t, buf.String(), `"msg":"failed to forward request to CrowdSec"`)
+		assert.Contains(t, buf.String(), `"level":"ERROR"`)
+		assert.Contains(t, buf.String(), `"error":"dial tcp: resource temporarily unavailable"`)
 	})
 
 	t.Run("non-OK status", func(t *testing.T) {
