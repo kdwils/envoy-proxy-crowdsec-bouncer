@@ -31,18 +31,10 @@ type HTTP struct {
 
 func (h HTTP) NewClient() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if h.MaxIdleConns != 0 {
-		transport.MaxIdleConns = h.MaxIdleConns
-	}
-	if h.MaxIdleConnsPerHost != 0 {
-		transport.MaxIdleConnsPerHost = h.MaxIdleConnsPerHost
-	}
-	if h.IdleConnTimeout != 0 {
-		transport.IdleConnTimeout = h.IdleConnTimeout
-	}
-	if h.TLSHandshakeTimeout != 0 {
-		transport.TLSHandshakeTimeout = h.TLSHandshakeTimeout
-	}
+	transport.MaxIdleConns = h.MaxIdleConns
+	transport.MaxIdleConnsPerHost = h.MaxIdleConnsPerHost
+	transport.IdleConnTimeout = h.IdleConnTimeout
+	transport.TLSHandshakeTimeout = h.TLSHandshakeTimeout
 	return &http.Client{Transport: transport}
 }
 

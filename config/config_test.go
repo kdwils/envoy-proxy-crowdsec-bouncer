@@ -131,8 +131,6 @@ func TestNew(t *testing.T) {
 }
 
 func TestHTTP_NewClient(t *testing.T) {
-	defaultTransport := http.DefaultTransport.(*http.Transport)
-
 	t.Run("applies configured transport settings", func(t *testing.T) {
 		cfg := HTTP{
 			MaxIdleConns:        42,
@@ -152,19 +150,19 @@ func TestHTTP_NewClient(t *testing.T) {
 		assert.Equal(t, 2*time.Second, transport.TLSHandshakeTimeout)
 	})
 
-	t.Run("unset fields preserve standard library defaults", func(t *testing.T) {
+	t.Run("unset fields use Go transport semantics", func(t *testing.T) {
 		client := HTTP{}.NewClient()
 		require.NotNil(t, client)
 
 		transport, ok := client.Transport.(*http.Transport)
 		require.True(t, ok)
-		assert.Equal(t, defaultTransport.MaxIdleConns, transport.MaxIdleConns)
-		assert.Equal(t, defaultTransport.MaxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
-		assert.Equal(t, defaultTransport.IdleConnTimeout, transport.IdleConnTimeout)
-		assert.Equal(t, defaultTransport.TLSHandshakeTimeout, transport.TLSHandshakeTimeout)
+		assert.Zero(t, transport.MaxIdleConns)
+		assert.Zero(t, transport.MaxIdleConnsPerHost)
+		assert.Zero(t, transport.IdleConnTimeout)
+		assert.Zero(t, transport.TLSHandshakeTimeout)
 	})
 
-	t.Run("partially configured settings keep defaults for the rest", func(t *testing.T) {
+	t.Run("partially configured settings use Go semantics for the rest", func(t *testing.T) {
 		cfg := HTTP{MaxIdleConns: 500}
 
 		client := cfg.NewClient()
@@ -172,8 +170,8 @@ func TestHTTP_NewClient(t *testing.T) {
 		transport, ok := client.Transport.(*http.Transport)
 		require.True(t, ok)
 		assert.Equal(t, 500, transport.MaxIdleConns)
-		assert.Equal(t, defaultTransport.MaxIdleConnsPerHost, transport.MaxIdleConnsPerHost)
-		assert.Equal(t, defaultTransport.IdleConnTimeout, transport.IdleConnTimeout)
-		assert.Equal(t, defaultTransport.TLSHandshakeTimeout, transport.TLSHandshakeTimeout)
+		assert.Zero(t, transport.MaxIdleConnsPerHost)
+		assert.Zero(t, transport.IdleConnTimeout)
+		assert.Zero(t, transport.TLSHandshakeTimeout)
 	})
 }
