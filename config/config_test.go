@@ -114,28 +114,11 @@ func TestNew(t *testing.T) {
 			},
 			TrustedProxies: []string{"127.0.0.1"},
 			ExemptIPs:      []string{"10.0.0.0/8"},
-			HTTP: HTTP{
-				MaxIdleConns:        1000,
-				MaxIdleConnsPerHost: 100,
-				IdleConnTimeout:     90 * time.Second,
-				TLSHandshakeTimeout: 10 * time.Second,
-			},
 		}
 		assert.Equal(t, want, c)
 	})
 
-	t.Run("http defaults applied when unset", func(t *testing.T) {
-		c, err := New(viper.New())
-		assert.NoError(t, err)
-		assert.Equal(t, HTTP{
-			MaxIdleConns:        1000,
-			MaxIdleConnsPerHost: 100,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-		}, c.HTTP)
-	})
-
-	t.Run("http values override defaults", func(t *testing.T) {
+	t.Run("http values are unmarshaled", func(t *testing.T) {
 		v := viper.New()
 		v.Set("http.maxIdleConns", 42)
 		v.Set("http.maxIdleConnsPerHost", 7)
@@ -150,5 +133,11 @@ func TestNew(t *testing.T) {
 			IdleConnTimeout:     5 * time.Second,
 			TLSHandshakeTimeout: 2 * time.Second,
 		}, c.HTTP)
+	})
+
+	t.Run("http values default to zero when unset", func(t *testing.T) {
+		c, err := New(viper.New())
+		assert.NoError(t, err)
+		assert.Equal(t, HTTP{}, c.HTTP)
 	})
 }

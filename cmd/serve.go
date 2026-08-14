@@ -99,7 +99,7 @@ var ServeCmd = &cobra.Command{
 
 		var notifier server.Notifier = webhook.NewNoopNotifier()
 		if len(config.Webhook.Subscriptions) > 0 {
-			webhookService := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, http.DefaultClient)
+			webhookService := webhook.New(config.Webhook.Subscriptions, config.Webhook.SigningKey, config.Webhook.Timeout, config.Webhook.BufferSize, httpClient)
 			go webhookService.Start(ctx)
 			notifier = webhookService
 		}

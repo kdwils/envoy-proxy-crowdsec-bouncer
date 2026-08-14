@@ -128,11 +128,6 @@ func New(v *viper.Viper) (Config, error) {
 		return c, errors.New("viper not initialized")
 	}
 
-	v.SetDefault("http.maxIdleConns", 1000)
-	v.SetDefault("http.maxIdleConnsPerHost", 100)
-	v.SetDefault("http.idleConnTimeout", 90*time.Second)
-	v.SetDefault("http.tlsHandshakeTimeout", 10*time.Second)
-
 	if v.ConfigFileUsed() != "" {
 		err := v.ReadInConfig()
 		if err != nil {

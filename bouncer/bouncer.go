@@ -30,7 +30,7 @@ type WAF interface {
 	Inspect(ctx context.Context, req components.AppSecRequest) (components.WAFResponse, error)
 }
 
-//go:generate mockgen -destination=mocks/mock_decision_cache.go -package=mocks github.com/kdwils/envoy-proxy-crowdsec-bouncer/bouncer DecisionCache
+//go:generate mockgen -destination=mocks/mock_decision_cache.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer DecisionCache
 type DecisionCache interface {
 	GetDecision(ctx context.Context, ip string) (*models.Decision, error)
 	Sync(ctx context.Context) error
@@ -100,7 +100,7 @@ func newRemediationMetrics() map[string]remediationMetric {
 
 func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client) (*Bouncer, error) {
 	if httpClient == nil {
-		return nil, errors.New("http client is required")
+		httpClient = http.DefaultClient
 	}
 
 	trustedProxies, err := parseIPNets(cfg.TrustedProxies)
@@ -124,7 +124,7 @@ func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
 		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
-		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent)
+		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -532,7 +532,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
-		logger.Error("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
+		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncWAFErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
