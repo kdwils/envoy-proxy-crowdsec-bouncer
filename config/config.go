@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/spf13/viper"
@@ -18,6 +19,23 @@ type Config struct {
 	TrustedIPHeader string     `yaml:"trustedIPHeader" json:"trustedIPHeader"`
 	ExemptIPs       []string   `yaml:"exemptIPs" json:"exemptIPs"`
 	Templates       Templates  `yaml:"templates" json:"templates"`
+	HTTP            HTTP       `yaml:"http" json:"http"`
+}
+
+type HTTP struct {
+	MaxIdleConns        int           `yaml:"maxIdleConns" json:"maxIdleConns"`
+	MaxIdleConnsPerHost int           `yaml:"maxIdleConnsPerHost" json:"maxIdleConnsPerHost"`
+	IdleConnTimeout     time.Duration `yaml:"idleConnTimeout" json:"idleConnTimeout"`
+	TLSHandshakeTimeout time.Duration `yaml:"tlsHandshakeTimeout" json:"tlsHandshakeTimeout"`
+}
+
+func (h HTTP) NewClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = h.MaxIdleConns
+	transport.MaxIdleConnsPerHost = h.MaxIdleConnsPerHost
+	transport.IdleConnTimeout = h.IdleConnTimeout
+	transport.TLSHandshakeTimeout = h.TLSHandshakeTimeout
+	return &http.Client{Transport: transport}
 }
 
 type Server struct {
@@ -119,6 +137,7 @@ func New(v *viper.Viper) (Config, error) {
 	if v == nil {
 		return c, errors.New("viper not initialized")
 	}
+
 	if v.ConfigFileUsed() != "" {
 		err := v.ReadInConfig()
 		if err != nil {

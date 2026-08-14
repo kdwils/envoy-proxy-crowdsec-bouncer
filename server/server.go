@@ -379,6 +379,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 		s.logger.Error("failed to evaluate request", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return nil, status.Error(codes.Unavailable, result.Reason)
 	default:
+		s.logger.Error("unknown action", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return nil, status.Error(codes.Internal, "unknown action")
 	}
 }

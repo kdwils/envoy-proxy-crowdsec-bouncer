@@ -150,7 +150,7 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	require.NoError(t, err)
 	captchaService.Provider = mockProvider
 
-	testBouncer, err := bouncer.New(cfg, recorder)
+	testBouncer, err := bouncer.New(cfg, recorder, http.DefaultClient)
 	require.NoError(t, err)
 	testBouncer.CaptchaService = captchaService
 	go testBouncer.Sync(ctx)

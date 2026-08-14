@@ -205,6 +205,27 @@
                     "default": [],
                     "type": "array"
                 },
+                "http": {
+                    "type": "object",
+                    "properties": {
+                        "idleConnTimeout": {
+                            "default": "90s",
+                            "type": "string"
+                        },
+                        "maxIdleConns": {
+                            "default": 1000,
+                            "type": "integer"
+                        },
+                        "maxIdleConnsPerHost": {
+                            "default": 100,
+                            "type": "integer"
+                        },
+                        "tlsHandshakeTimeout": {
+                            "default": "10s",
+                            "type": "string"
+                        }
+                    }
+                },
                 "prometheus": {
                     "type": "object",
                     "properties": {

@@ -78,3 +78,9 @@ templates:
   showDeniedPage: true
   captchaTemplatePath: ""
   captchaTemplateHeaders: "text/html; charset=utf-8"
+
+http:
+  maxIdleConns: 1000
+  maxIdleConnsPerHost: 100
+  idleConnTimeout: "90s"
+  tlsHandshakeTimeout: "10s"

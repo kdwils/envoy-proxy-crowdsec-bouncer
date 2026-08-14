@@ -82,7 +82,7 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 
 	err = json.Unmarshal(b, &result)
 	if err != nil {
-		logger.Debug("failed to parse CrowdSec response", "body", string(b), "error", err)
+		logger.Debug("failed to parse CrowdSec response", "error", err)
 		return result, err
 	}
 

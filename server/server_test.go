@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -523,7 +525,8 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 	})
 
 	t.Run("remediator returns unknown action", func(t *testing.T) {
-		log := logger.FromContext(t.Context())
+		var buf bytes.Buffer
+		log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -540,6 +543,8 @@ func TestServer_Check_WithBouncer(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, resp)
 		assert.Contains(t, err.Error(), "unknown action")
+		assert.Contains(t, buf.String(), `"msg":"unknown action"`)
+		assert.Contains(t, buf.String(), `"level":"ERROR"`)
 	})
 
 	t.Run("show denied page disabled returns reason without template", func(t *testing.T) {

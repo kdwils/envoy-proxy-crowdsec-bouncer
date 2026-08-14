@@ -135,6 +135,12 @@ config:
     captchaTemplatePath: "" # @schema default: ""
     captchaTemplateHeaders: "" # @schema default: ""
 
+  http:
+    maxIdleConns: 1000 # @schema default: 1000
+    maxIdleConnsPerHost: 100 # @schema default: 100
+    idleConnTimeout: "90s" # @schema default: "90s"
+    tlsHandshakeTimeout: "10s" # @schema default: "10s"
+
 probes:
   liveness:
     enabled: true # @schema default: true

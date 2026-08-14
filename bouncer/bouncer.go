@@ -98,7 +98,11 @@ func newRemediationMetrics() map[string]remediationMetric {
 	}
 }
 
-func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
+func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client) (*Bouncer, error) {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	trustedProxies, err := parseIPNets(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
@@ -120,7 +124,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
 		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
-		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent)
+		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -147,7 +151,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
+		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +159,7 @@ func New(cfg config.Config, recorder *recorder.Recorder) (*Bouncer, error) {
 
 	var c *components.CaptchaService
 	if cfg.Captcha.Enabled {
-		c, err = components.NewCaptchaService(cfg.Captcha, http.DefaultClient, recorder)
+		c, err = components.NewCaptchaService(cfg.Captcha, httpClient, recorder)
 		if err != nil {
 			return nil, err
 		}
@@ -528,7 +532,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
-		logger.Error("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
+		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncWAFErrorsTotal()
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}

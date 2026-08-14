@@ -88,11 +88,11 @@ func TestNewForwardRequest(t *testing.T) {
 
 	t.Run("post request copies body and sets content length", func(t *testing.T) {
 		areq := AppSecRequest{
-			Method: "POST",
-			URL:    url.URL{Path: "/test", Host: "example.com"},
+			Method:  "POST",
+			URL:     url.URL{Path: "/test", Host: "example.com"},
 			Headers: map[string]string{"user-agent": "test-agent"},
-			Body:   []byte("test"),
-			RealIP: "1.2.3.4",
+			Body:    []byte("test"),
+			RealIP:  "1.2.3.4",
 		}
 		r := newForwardRequest(ctx, apiURL, areq, "key")
 

@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: functional-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   functional-tests:
     runs-on: ubuntu-latest

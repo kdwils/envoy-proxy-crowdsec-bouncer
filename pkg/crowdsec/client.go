@@ -32,7 +32,7 @@ func loadCACertPool(caPath string) (*x509.CertPool, error) {
 	return cp, nil
 }
 
-func buildCertClient(certPath, keyPath, caPath string, insecureSkipVerify bool) (*http.Client, error) {
+func buildCertClient(client *http.Client, certPath, keyPath, caPath string, insecureSkipVerify bool) (*http.Client, error) {
 	certificate, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load certificate '%s' and key '%s': %w", certPath, keyPath, err)
@@ -41,18 +41,23 @@ func buildCertClient(certPath, keyPath, caPath string, insecureSkipVerify bool) 
 	if err != nil {
 		return nil, err
 	}
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs:            caCertPool,
-				Certificates:       []tls.Certificate{certificate},
-				InsecureSkipVerify: insecureSkipVerify,
-			},
-		},
-	}, nil
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if client != nil && client.Transport != nil {
+		if t, ok := client.Transport.(*http.Transport); ok {
+			transport = t.Clone()
+		}
+	}
+	transport.TLSClientConfig = &tls.Config{
+		RootCAs:            caCertPool,
+		Certificates:       []tls.Certificate{certificate},
+		InsecureSkipVerify: insecureSkipVerify,
+	}
+
+	return &http.Client{Transport: transport}, nil
 }
 
-func NewClient(cfg config.Bouncer, userAgent string) (*apiclient.ApiClient, error) {
+func NewClient(cfg config.Bouncer, userAgent string, client *http.Client) (*apiclient.ApiClient, error) {
 	if err := cfg.ValidateAuth(); err != nil {
 		return nil, err
 	}
@@ -73,12 +78,15 @@ func NewClient(cfg config.Bouncer, userAgent string) (*apiclient.ApiClient, erro
 
 	if cfg.ApiKey != "" {
 		transport := &apiclient.APIKeyTransport{APIKey: cfg.ApiKey}
+		if client != nil && client.Transport != nil {
+			transport.Transport = client.Transport
+		}
 		return apiclient.NewDefaultClient(parsedURL, "v1", userAgent, transport.Client())
 	}
 
-	client, err := buildCertClient(cfg.TLS.CertPath, cfg.TLS.KeyPath, cfg.TLS.CAPath, cfg.TLS.InsecureSkipVerify)
+	certClient, err := buildCertClient(client, cfg.TLS.CertPath, cfg.TLS.KeyPath, cfg.TLS.CAPath, cfg.TLS.InsecureSkipVerify)
 	if err != nil {
 		return nil, err
 	}
-	return apiclient.NewDefaultClient(parsedURL, "v1", userAgent, client)
+	return apiclient.NewDefaultClient(parsedURL, "v1", userAgent, certClient)
 }
