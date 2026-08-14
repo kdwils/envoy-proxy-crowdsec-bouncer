@@ -93,4 +93,9 @@ func initConfig() {
 	viper.SetDefault("templates.showDeniedPage", true)
 	viper.SetDefault("templates.captchaTemplatePath", "")
 	viper.SetDefault("templates.captchaTemplateHeaders", "text/html; charset=utf-8")
+
+	viper.SetDefault("http.maxIdleConns", 1000)
+	viper.SetDefault("http.maxIdleConnsPerHost", 100)
+	viper.SetDefault("http.idleConnTimeout", "90s")
+	viper.SetDefault("http.tlsHandshakeTimeout", "10s")
 }
