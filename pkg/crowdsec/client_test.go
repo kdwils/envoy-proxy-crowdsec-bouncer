@@ -67,7 +67,7 @@ func TestNewClient(t *testing.T) {
 		assert.Same(t, shared.Transport, keyTransport.Transport)
 	})
 
-	t.Run("nil client defaults to http.DefaultClient", func(t *testing.T) {
+	t.Run("nil client falls back to default transport", func(t *testing.T) {
 		cfg := config.Bouncer{ApiKey: "test-key", LAPIURL: "http://localhost:8080"}
 		client, err := NewClient(cfg, "test-agent", nil)
 		require.NoError(t, err)
