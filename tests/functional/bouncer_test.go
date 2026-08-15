@@ -3,10 +3,8 @@
 package functional
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -22,6 +20,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
@@ -31,19 +30,9 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"gopkg.in/yaml.v3"
 )
-
-type credFile struct {
-	Login    string `yaml:"login"`
-	Password string `yaml:"password"`
-	URL      string `yaml:"url"`
-}
 
 func createCheckRequest(ip string, httpRequest *auth.AttributeContext_HttpRequest) *auth.CheckRequest {
 	return &auth.CheckRequest{
@@ -81,238 +70,61 @@ func createHttpRequest(method, path, authority string, extraHeaders map[string]s
 	}
 }
 
-func TestBouncer(t *testing.T) {
-	for _, image := range CrowdsecImages {
-		t.Run(image, func(t *testing.T) {
-			testBouncerWithVersion(t, image)
-		})
-	}
-}
-
-func testBouncerWithVersion(t *testing.T, image string) {
-	network, err := network.New(t.Context(), network.WithDriver("bridge"))
-	if err != nil {
-		t.Fatalf("failed to create network: %v", err)
-	}
-	defer network.Remove(t.Context())
-
-	lapiReq := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{"8080/tcp"},
-		Env: map[string]string{
-			"DISABLE_LOCAL_API":               "false",
-			"DISABLE_AGENT":                   "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Networks:       []string{network.Name},
-		NetworkAliases: map[string][]string{network.Name: {"lapi"}},
-		WaitingFor:     wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	lapiContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: lapiReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start container: %v", err)
-	}
-	defer lapiContainer.Terminate(t.Context())
-
-	lapiHost, err := lapiContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	lapiPort, err := lapiContainer.MappedPort(t.Context(), "8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	hostLAPI := url.URL{
-		Scheme: "http",
-		Host:   lapiHost + ":" + lapiPort.Port(),
-	}
-
-	appsecLAPI := url.URL{
-		Scheme: "http",
-		Host:   "lapi:8080",
-	}
-
-	_, out, err := lapiContainer.Exec(t.Context(), []string{
-		"cscli", "bouncers", "add", "testBouncer",
-	})
-	if err != nil {
-		t.Fatalf("failed to exec: %v", err)
-	}
-	b, err := io.ReadAll(out)
-	if err != nil {
-		t.Fatalf("failed to read output: %v", err)
-	}
-
-	key, err := extractAPIKey(string(b))
-	if err != nil {
-		t.Fatalf("failed to extract api key: %v", err)
-	}
-
-	_, _, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "decisions", "add", "--type", "ban", "--value", "192.168.1.100",
-	})
-	if err != nil {
-		t.Fatalf("failed to exec: %v", err)
-	}
-
-	agentUser := "appsec-agent"
-	agentPass := "appsec-pass"
-	_, out, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "machines", "add", agentUser, "--password", agentPass, "-f", "/tmp/creds.yaml",
-	})
-	if err != nil {
-		t.Fatalf("failed to add machine: %v", err)
-	}
-
-	creds := credFile{
-		URL:      appsecLAPI.String(),
-		Login:    agentUser,
-		Password: agentPass,
-	}
-
-	b, err = yaml.Marshal(creds)
-	if err != nil {
-		t.Fatalf("failed to marshal creds")
-	}
-
-	tmpFile, err := os.CreateTemp("", "local_api_creds-*.yaml")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write([]byte(b)); err != nil {
-		t.Fatalf("failed to write creds to temp file: %v", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		t.Fatalf("failed to close temp file: %v", err)
-	}
-
-	appsecReq := testcontainers.ContainerRequest{
-		Image:        image,
-		Networks:     []string{network.Name},
-		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
-		Env: map[string]string{
-			"LOCAL_API_URL":                   appsecLAPI.String(),
-			"DISABLE_LOCAL_API":               "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Files: []testcontainers.ContainerFile{
-			{
-				HostFilePath:      "./configs/acquis.yaml",
-				ContainerFilePath: "/etc/crowdsec/acquis.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      "./configs/appsec-ban.yaml",
-				ContainerFilePath: "/etc/crowdsec/appsec-configs/appsec-config.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      "./configs/appsec-generic-test.yaml",
-				ContainerFilePath: "/etc/crowdsec/appsec-rules/appsec-generic-test.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      tmpFile.Name(),
-				ContainerFilePath: "/staging/etc/crowdsec/local_api_credentials.yaml",
-				FileMode:          0644,
-			},
-		},
-		WaitingFor: wait.ForHTTP("/metrics").WithPort("6060/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	appsecContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: appsecReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start appsec container: %v", err)
-	}
-	defer appsecContainer.Terminate(t.Context())
-
-	appsecHost, err := appsecContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	appsecPort, err := appsecContainer.MappedPort(t.Context(), "7422")
-	if err != nil {
-		t.Fatal(err)
-		t.FailNow()
-	}
-
-	appsecURL := url.URL{
-		Scheme: "http",
-		Host:   appsecHost + ":" + appsecPort.Port(),
-	}
-
-	trustedProxies := []string{"10.0.0.1"}
+func testBouncer(t *testing.T, env *testEnv) {
+	env.resetDecisions(t)
+	env.addDecision(t, "--type", "ban", "--value", "192.168.1.100")
 
 	v := viper.New()
 	v.Set("server.grpcPort", 8080)
 	v.Set("server.logLevel", "debug")
-	v.Set("bouncer.apiKey", key)
-	v.Set("bouncer.lapiURL", hostLAPI.String())
-	v.Set("trustedProxies", trustedProxies)
+	v.Set("bouncer.apiKey", env.apiKey)
+	v.Set("bouncer.lapiURL", env.lapiURL)
+	v.Set("trustedProxies", []string{"10.0.0.1"})
 	v.Set("bouncer.tickerInterval", "1s")
 	v.Set("bouncer.enabled", true)
 	v.Set("bouncer.metrics", true)
 	v.Set("waf.enabled", true)
-	v.Set("waf.apiKey", key)
-	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.apiKey", env.apiKey)
+	v.Set("waf.appsecURL", env.appsecBanURL)
 	v.Set("exemptIPs", []string{"172.16.0.0/12"})
 	v.Set("captcha.enabled", false)
 
-	config, err := config.New(v)
+	cfg, err := config.New(v)
 	require.NoError(t, err)
 
-	level := logger.LevelFromString(config.Server.LogLevel)
+	level := logger.LevelFromString(cfg.Server.LogLevel)
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	slogger := slog.New(handler)
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
 	reg := prometheus.NewRegistry()
-	recorder, err := recorder.New(reg)
+	rec, err := recorder.New(reg)
 	require.NoError(t, err)
 
-	bouncer, err := bouncer.New(config, recorder, http.DefaultClient)
+	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 	require.NoError(t, err)
-	go bouncer.Sync(ctx)
+	go testBouncer.Sync(ctx)
 
-	if config.Bouncer.Metrics {
+	if cfg.Bouncer.Metrics {
 		go func() {
-			if err := bouncer.Metrics(ctx); err != nil {
+			if err := testBouncer.Metrics(ctx); err != nil {
 				slogger.Error("metrics error", "error", err)
 			}
 		}()
 	}
 
+	waitForDecision(t, testBouncer.DecisionCache, "192.168.1.100", true, 10*time.Second)
+
 	templateStore, err := template.NewStore(template.Config{})
-	if err != nil {
-		log.Fatalf("failed to create template store: %v", err)
-	}
+	require.NoError(t, err)
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, reg)
-
-	go func() {
-		err := server.ServeDual(ctx)
-		if err != nil && err != context.Canceled {
-			log.Fatalf("failed to start server: %v", err)
-		}
-	}()
-
-	time.Sleep(5 * time.Second)
+	srv := server.NewServer(cfg, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, reg)
+	stop := startServer(t, ctx, srv, "localhost:8080")
+	defer stop()
 
 	conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial grpc: %v", err)
-	}
+	require.NoError(t, err)
 	defer conn.Close()
 
 	client := auth.NewAuthorizationClient(conn)
@@ -322,8 +134,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("Test banned decision", func(t *testing.T) {
@@ -331,8 +142,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(403), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantForbiddenResponse()), marshalProto(t, check))
 	})
 
 	t.Run("xff with trusted proxy", func(t *testing.T) {
@@ -342,8 +152,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(403), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantForbiddenResponse()), marshalProto(t, check))
 	})
 
 	t.Run("ban decision removed", func(t *testing.T) {
@@ -351,24 +160,16 @@ func testBouncerWithVersion(t *testing.T, image string) {
 			"x-forwarded-for": "192.168.1.100,10.0.0.1",
 		}))
 
-		originCounts := bouncer.DecisionCache.GetOriginCounts()
-		require.NotEmpty(t, originCounts, "should have active decisions")
-		require.Contains(t, originCounts, "cscli", "should have cscli origin")
-		require.Equal(t, 1, originCounts["cscli"], "should have 1 decision from cscli origin")
+		originCounts := testBouncer.DecisionCache.GetOriginCounts()
+		assert.Equal(t, map[string]int{"cscli": 1}, originCounts)
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "delete", "-i", "192.168.1.100",
-		})
-		if err != nil {
-			t.Fatalf("failed to exec: %v", err)
-		}
+		env.deleteDecision(t, "-i", "192.168.1.100")
 
-		time.Sleep(2 * time.Second)
+		waitForDecision(t, testBouncer.DecisionCache, "192.168.1.100", false, 10*time.Second)
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("trigger inline", func(t *testing.T) {
@@ -378,46 +179,36 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(403), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantForbiddenResponse()), marshalProto(t, check))
 	})
 
 	t.Run("ipv4 cidr range ban", func(t *testing.T) {
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "add", "--range", "10.0.0.0/8",
-		})
-		require.NoError(t, err, "failed to add ipv4 cidr decision")
+		env.addDecision(t, "--range", "10.0.0.0/8")
 
-		time.Sleep(2 * time.Second)
+		waitForDecision(t, testBouncer.DecisionCache, "10.50.100.200", true, 10*time.Second)
 
 		req := createCheckRequest("10.50.100.200", createHttpRequest("GET", "/testing", "my-host.com", nil))
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(403), check.Status.Code, "expected IP within CIDR range to be banned")
+		assert.Equal(t, marshalProto(t, wantForbiddenResponse()), marshalProto(t, check))
 	})
 
 	t.Run("ipv4 cidr range outside not banned", func(t *testing.T) {
 		req := createCheckRequest("172.16.0.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code, "expected IP outside CIDR range to be allowed")
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("ipv4 cidr range delete allows traffic", func(t *testing.T) {
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "delete", "--range", "10.0.0.0/8",
-		})
-		require.NoError(t, err, "failed to delete ipv4 cidr decision")
+		env.deleteDecision(t, "--range", "10.0.0.0/8")
 
-		time.Sleep(2 * time.Second)
+		waitForDecision(t, testBouncer.DecisionCache, "10.50.100.200", false, 10*time.Second)
 
 		req := createCheckRequest("10.50.100.200", createHttpRequest("GET", "/testing", "my-host.com", nil))
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code, "expected IP to be allowed after CIDR deletion")
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("Test captcha decision with disabled captcha service", func(t *testing.T) {
@@ -425,271 +216,105 @@ func testBouncerWithVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("Verify metrics after basic scenarios", func(t *testing.T) {
-		snapshot := bouncer.MetricsService.GetSnapshot()
+		snapshot := testBouncer.MetricsService.GetSnapshot()
 
 		bypassMetric, ok := snapshot["CAPI:bypass"]
 		require.True(t, ok, "expected CAPI:bypass metric to exist")
-		require.Equal(t, int64(5), bypassMetric.Value)
+		assert.Equal(t, crowdsec.Metric{
+			Name:   "processed",
+			Unit:   "request",
+			Value:  5,
+			Labels: map[string]string{"origin": "CAPI", "remediation": "bypass"},
+		}, bypassMetric)
 
 		banMetric, ok := snapshot["CAPI:ban"]
 		require.True(t, ok, "expected CAPI:ban metric to exist")
-		require.Equal(t, int64(4), banMetric.Value)
+		assert.Equal(t, crowdsec.Metric{
+			Name:   "dropped",
+			Unit:   "request",
+			Value:  4,
+			Labels: map[string]string{"origin": "CAPI", "remediation": "ban"},
+		}, banMetric)
 
-		originCounts := bouncer.DecisionCache.GetOriginCounts()
-		require.NotEmpty(t, originCounts, "should have active decisions")
-		require.Contains(t, originCounts, "cscli", "should have cscli origin")
-		require.Equal(t, 0, originCounts["cscli"], "should have 0 decision from cscli origin after deletion")
+		originCounts := testBouncer.DecisionCache.GetOriginCounts()
+		assert.Equal(t, map[string]int{"cscli": 0}, originCounts)
 
-		metrics := recorder.GetMetrics()
+		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 5 allowed requests")
 		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 4 banned requests")
 	})
 
 	t.Run("Test exempt IP bypasses all checks", func(t *testing.T) {
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "add", "--type", "ban", "--value", "172.16.0.1",
-		})
-		require.NoError(t, err)
+		env.addDecision(t, "--type", "ban", "--value", "172.16.0.1")
+		env.addDecision(t, "--range", "10.0.0.0/8")
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "add", "--range", "10.0.0.0/8",
-		})
-		require.NoError(t, err)
-
-		time.Sleep(2 * time.Second)
+		waitForDecision(t, testBouncer.DecisionCache, "10.0.0.1", true, 10*time.Second)
 
 		req := createCheckRequest("172.16.0.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code, "exempt IP should bypass ban")
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 
 		reqWAF := createCheckRequest("172.16.0.1", createHttpRequest("GET", "/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", "my-host.com", nil))
 		checkWAF, err := client.Check(t.Context(), reqWAF)
 		require.NoError(t, err)
-		require.NotNil(t, checkWAF.HttpResponse)
-		require.Equal(t, int32(0), checkWAF.Status.Code, "exempt IP should bypass WAF")
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, checkWAF))
 
 		reqBanned := createCheckRequest("10.0.0.1", createHttpRequest("GET", "/testing", "my-host.com", nil))
 		checkBanned, err := client.Check(t.Context(), reqBanned)
 		require.NoError(t, err)
-		require.NotNil(t, checkBanned.HttpResponse)
-		require.Equal(t, int32(403), checkBanned.Status.Code, "non-exempt IP in banned CIDR should be banned")
+		assert.Equal(t, marshalProto(t, wantForbiddenResponse()), marshalProto(t, checkBanned))
 
-		snapshot := bouncer.MetricsService.GetSnapshot()
+		snapshot := testBouncer.MetricsService.GetSnapshot()
 
 		bypassMetric, ok := snapshot["CAPI:bypass"]
 		require.True(t, ok, "expected CAPI:bypass metric to exist")
-		require.Equal(t, int64(7), bypassMetric.Value)
+		assert.Equal(t, crowdsec.Metric{
+			Name:   "processed",
+			Unit:   "request",
+			Value:  7,
+			Labels: map[string]string{"origin": "CAPI", "remediation": "bypass"},
+		}, bypassMetric)
 
 		banMetric, ok := snapshot["CAPI:ban"]
 		require.True(t, ok, "expected CAPI:ban metric to exist")
-		require.Equal(t, int64(5), banMetric.Value)
+		assert.Equal(t, crowdsec.Metric{
+			Name:   "dropped",
+			Unit:   "request",
+			Value:  5,
+			Labels: map[string]string{"origin": "CAPI", "remediation": "ban"},
+		}, banMetric)
 
-		metrics := recorder.GetMetrics()
+		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(7), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 7 allowed requests")
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("ban")), "expected 5 banned requests")
 
-		_, _, _ = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "delete", "-i", "172.16.0.1",
-		})
-		_, _, _ = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "delete", "--range", "10.0.0.0/8",
-		})
+		env.deleteDecision(t, "-i", "172.16.0.1")
+		env.deleteDecision(t, "--range", "10.0.0.0/8")
 	})
 }
 
-func TestBouncerWithCaptcha(t *testing.T) {
-	for _, image := range CrowdsecImages {
-		t.Run(image, func(t *testing.T) {
-			testBouncerWithCaptchaVersion(t, image)
-		})
-	}
-}
-
-func testBouncerWithCaptchaVersion(t *testing.T, image string) {
-	network, err := network.New(t.Context(), network.WithDriver("bridge"))
-	if err != nil {
-		t.Fatalf("failed to create network: %v", err)
-	}
-	defer network.Remove(t.Context())
-
-	lapiReq := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{"8080/tcp"},
-		Env: map[string]string{
-			"DISABLE_LOCAL_API":               "false",
-			"DISABLE_AGENT":                   "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Networks:       []string{network.Name},
-		NetworkAliases: map[string][]string{network.Name: {"lapi"}},
-		WaitingFor:     wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	lapiContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: lapiReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start container: %v", err)
-	}
-	defer lapiContainer.Terminate(t.Context())
-
-	lapiHost, err := lapiContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	lapiPort, err := lapiContainer.MappedPort(t.Context(), "8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	hostLAPI := url.URL{
-		Scheme: "http",
-		Host:   lapiHost + ":" + lapiPort.Port(),
-	}
-
-	appsecLAPI := url.URL{
-		Scheme: "http",
-		Host:   "lapi:8080",
-	}
-
-	_, out, err := lapiContainer.Exec(t.Context(), []string{
-		"cscli", "bouncers", "add", "testBouncer",
-	})
-	if err != nil {
-		t.Fatalf("failed to exec: %v", err)
-	}
-	b, err := io.ReadAll(out)
-	if err != nil {
-		t.Fatalf("failed to read output: %v", err)
-	}
-
-	key, err := extractAPIKey(string(b))
-	if err != nil {
-		t.Fatalf("failed to extract api key: %v", err)
-	}
-
-	_, _, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "decisions", "add", "--type", "captcha", "--value", "192.168.1.100",
-	})
-	if err != nil {
-		t.Fatalf("failed to exec: %v", err)
-	}
-
-	agentUser := "appsec-agent"
-	agentPass := "appsec-pass"
-	_, out, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "machines", "add", agentUser, "--password", agentPass, "-f", "/tmp/creds.yaml",
-	})
-	if err != nil {
-		t.Fatalf("failed to add machine: %v", err)
-	}
-
-	creds := credFile{
-		URL:      appsecLAPI.String(),
-		Login:    agentUser,
-		Password: agentPass,
-	}
-
-	b, err = yaml.Marshal(creds)
-	if err != nil {
-		t.Fatalf("failed to marshal creds")
-	}
-
-	tmpFile, err := os.CreateTemp("", "local_api_creds-*.yaml")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write([]byte(b)); err != nil {
-		t.Fatalf("failed to write creds to temp file: %v", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		t.Fatalf("failed to close temp file: %v", err)
-	}
-
-	appsecReq := testcontainers.ContainerRequest{
-		Image:        image,
-		Networks:     []string{network.Name},
-		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
-		Env: map[string]string{
-			"LOCAL_API_URL":                   appsecLAPI.String(),
-			"DISABLE_LOCAL_API":               "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Files: []testcontainers.ContainerFile{
-			{
-				HostFilePath:      "./configs/acquis.yaml",
-				ContainerFilePath: "/etc/crowdsec/acquis.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      "./configs/appsec-captcha.yaml",
-				ContainerFilePath: "/etc/crowdsec/appsec-configs/appsec-config.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      "./configs/appsec-generic-test.yaml",
-				ContainerFilePath: "/etc/crowdsec/appsec-rules/appsec-generic-test.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      tmpFile.Name(),
-				ContainerFilePath: "/staging/etc/crowdsec/local_api_credentials.yaml",
-				FileMode:          0644,
-			},
-		},
-		WaitingFor: wait.ForHTTP("/metrics").WithPort("6060/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	appsecContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: appsecReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start appsec container: %v", err)
-	}
-	defer appsecContainer.Terminate(t.Context())
-
-	appsecHost, err := appsecContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	appsecPort, err := appsecContainer.MappedPort(t.Context(), "7422")
-	if err != nil {
-		t.Fatal(err)
-		t.FailNow()
-	}
-
-	appsecURL := url.URL{
-		Scheme: "http",
-		Host:   appsecHost + ":" + appsecPort.Port(),
-	}
-
-	trustedProxies := []string{"10.0.0.1"}
+func testBouncerCaptcha(t *testing.T, env *testEnv) {
+	env.resetDecisions(t)
+	env.addDecision(t, "--type", "captcha", "--value", "192.168.1.100")
 
 	v := viper.New()
 	v.Set("server.grpcPort", 8080)
 	v.Set("server.httpPort", 8081)
 	v.Set("server.logLevel", "debug")
-	v.Set("bouncer.apiKey", key)
-	v.Set("bouncer.lapiURL", hostLAPI.String())
-	v.Set("trustedProxies", trustedProxies)
+	v.Set("bouncer.apiKey", env.apiKey)
+	v.Set("bouncer.lapiURL", env.lapiURL)
+	v.Set("trustedProxies", []string{"10.0.0.1"})
 	v.Set("bouncer.tickerInterval", "1s")
 	v.Set("bouncer.enabled", true)
 	v.Set("bouncer.metrics", true)
 	v.Set("waf.enabled", true)
-	v.Set("waf.apiKey", key)
-	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.apiKey", env.apiKey)
+	v.Set("waf.appsecURL", env.appsecCaptchaURL)
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")
@@ -702,24 +327,24 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	v.Set("captcha.challengeDuration", "5m")
 	v.Set("captcha.sessionDuration", "1h")
 
-	config, err := config.New(v)
+	cfg, err := config.New(v)
 	require.NoError(t, err)
 
-	level := logger.LevelFromString(config.Server.LogLevel)
+	level := logger.LevelFromString(cfg.Server.LogLevel)
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	slogger := slog.New(handler)
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
 	reg := prometheus.NewRegistry()
-	recorder, err := recorder.New(reg)
+	rec, err := recorder.New(reg)
 	require.NoError(t, err)
 
-	testBouncer, err := bouncer.New(config, recorder, http.DefaultClient)
+	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
 
-	if config.Bouncer.Metrics {
+	if cfg.Bouncer.Metrics {
 		go func() {
 			if err := testBouncer.Metrics(ctx); err != nil {
 				slogger.Error("metrics error", "error", err)
@@ -727,75 +352,54 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 		}()
 	}
 
+	waitForDecision(t, testBouncer.DecisionCache, "192.168.1.100", true, 10*time.Second)
+
 	templateStore, err := template.NewStore(template.Config{})
-	if err != nil {
-		log.Fatalf("failed to create template store: %v", err)
-	}
+	require.NoError(t, err)
 
-	server := server.NewServer(config, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, reg)
-
-	log.Printf("TestBouncerWithCaptcha: Created context, about to start goroutine")
-	go func() {
-		log.Printf("TestBouncerWithCaptcha: Goroutine starting server")
-		err := server.ServeDual(ctx)
-		if err != nil && err != context.Canceled {
-			log.Fatalf("failed to start server: %v", err)
-		}
-	}()
-
-	time.Sleep(5 * time.Second)
+	srv := server.NewServer(cfg, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, reg)
+	stop := startServer(t, ctx, srv, "localhost:8080")
+	defer stop()
 
 	conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial grpc: %v", err)
-	}
+	require.NoError(t, err)
 	defer conn.Close()
 
 	client := auth.NewAuthorizationClient(conn)
 
-	var captchaSessionID string
-
 	t.Run("Test captcha decision triggers captcha challenge and page is served", func(t *testing.T) {
-		time.Sleep(2 * time.Second)
-
 		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/protected", "my-host.com", nil))
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(302), check.Status.Code)
 
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse)
-		require.Len(t, deniedResponse.Headers, 1)
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-		require.Equal(t, "localhost", locationURL.Host)
-		require.Equal(t, "/captcha/challenge", locationURL.Path)
-		require.Equal(t, "http", locationURL.Scheme)
-
-		captchaSessionID = locationURL.Query().Get("challengeToken")
-		t.Logf("Parsed location URL: %s", locationHeader)
-		t.Logf("Extracted challenge token: %s", captchaSessionID)
-		require.NotEmpty(t, captchaSessionID)
-
-		session, exists := testBouncer.CaptchaService.GetSession(captchaSessionID)
+		session, exists := testBouncer.CaptchaService.GetSession(challengeToken)
 		require.True(t, exists)
-		require.Equal(t, "http://my-host.com/protected", session.OriginalURL)
-		require.Equal(t, "http://my-host.com/protected", session.RedirectURL)
+		require.NotNil(t, session)
+		require.NotEmpty(t, session.CreatedAt)
+		require.NotEmpty(t, session.ExpiresAt)
 
-		challengeURL := fmt.Sprintf("http://localhost:8081/captcha/challenge?challengeToken=%s", captchaSessionID)
-		t.Logf("Making HTTP request to: %s", challengeURL)
+		redirectParams := make(url.Values)
+		redirectParams.Set("challengeToken", challengeToken)
+		assert.Equal(t, components.CaptchaSession{
+			ID:           challengeToken,
+			OriginalURL:  "http://my-host.com/protected",
+			CreatedAt:    session.CreatedAt,
+			ExpiresAt:    session.ExpiresAt,
+			Provider:     "recaptcha",
+			SiteKey:      "test-site-key",
+			CallbackURL:  "http://localhost/captcha",
+			RedirectURL:  "http://my-host.com/protected",
+			ChallengeURL: "http://localhost/captcha/challenge?" + redirectParams.Encode(),
+		}, *session)
+
+		challengeURL := fmt.Sprintf("http://localhost:8081/captcha/challenge?challengeToken=%s", challengeToken)
 		resp, err := http.Get(challengeURL)
 		require.NoError(t, err, "Failed to make HTTP request to challenge page")
 		defer resp.Body.Close()
-		t.Logf("HTTP response status: %d", resp.StatusCode)
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			t.Logf("HTTP response body: %s", string(body))
-		}
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
@@ -809,27 +413,29 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(302), check.Status.Code)
 
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse)
-		require.Len(t, deniedResponse.Headers, 1)
-
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-		require.Equal(t, "localhost", locationURL.Host)
-		require.Equal(t, "/captcha/challenge", locationURL.Path)
-		require.Equal(t, "http", locationURL.Scheme)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
-		require.NotEmpty(t, challengeToken)
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		session, exists := testBouncer.CaptchaService.GetSession(challengeToken)
 		require.True(t, exists)
-		require.Equal(t, "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", session.OriginalURL)
-		require.Equal(t, "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl", session.RedirectURL)
+		require.NotNil(t, session)
+		require.NotEmpty(t, session.CreatedAt)
+		require.NotEmpty(t, session.ExpiresAt)
+
+		redirectParams := make(url.Values)
+		redirectParams.Set("challengeToken", challengeToken)
+		assert.Equal(t, components.CaptchaSession{
+			ID:           challengeToken,
+			OriginalURL:  "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl",
+			CreatedAt:    session.CreatedAt,
+			ExpiresAt:    session.ExpiresAt,
+			Provider:     "recaptcha",
+			SiteKey:      "test-site-key",
+			CallbackURL:  "http://localhost/captcha",
+			RedirectURL:  "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl",
+			ChallengeURL: "http://localhost/captcha/challenge?" + redirectParams.Encode(),
+		}, *session)
 	})
 
 	t.Run("Test non-captcha decision allows through", func(t *testing.T) {
@@ -837,12 +443,11 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("Test invalid redirect URL is rejected", func(t *testing.T) {
-		captchaService, err := components.NewCaptchaService(config.Captcha, &http.Client{}, recorder)
+		captchaService, err := components.NewCaptchaService(cfg.Captcha, &http.Client{}, rec)
 		require.NoError(t, err)
 
 		session, err := captchaService.CreateSession("192.168.1.100", "javascript:alert('xss')", "")
@@ -866,19 +471,9 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(302), check.Status.Code)
 
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse)
-		require.Len(t, deniedResponse.Headers, 1)
-
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
-		require.NotEmpty(t, challengeToken)
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		form := url.Values{}
 		form.Add("challengeToken", challengeToken)
@@ -903,19 +498,9 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 
 		check, err := client.Check(t.Context(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(302), check.Status.Code)
 
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse)
-		require.Len(t, deniedResponse.Headers, 1)
-
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
-		require.NotEmpty(t, challengeToken)
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		challengeURL := "http://localhost:8081/captcha/challenge?challengeToken=" + challengeToken
 		httpClient := &http.Client{}
@@ -945,36 +530,50 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	})
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
-		snapshot := testBouncer.MetricsService.GetSnapshot()
+		assert.Equal(t, map[string]crowdsec.Metric{
+			"CAPI:bypass": {
+				Name:   "processed",
+				Unit:   "request",
+				Value:  1,
+				Labels: map[string]string{"origin": "CAPI", "remediation": "bypass"},
+			},
+			"CAPI:captcha": {
+				Name:   "dropped",
+				Unit:   "request",
+				Value:  4,
+				Labels: map[string]string{"origin": "CAPI", "remediation": "captcha"},
+			},
+			"active_decisions:cscli": {
+				Name:   "active_decisions",
+				Unit:   "ip",
+				Value:  1,
+				Labels: map[string]string{"origin": "cscli"},
+			},
+		}, testBouncer.MetricsService.GetSnapshot())
 
-		bypassMetric, ok := snapshot["CAPI:bypass"]
-		require.True(t, ok, "expected CAPI:bypass metric to exist")
-		require.Equal(t, int64(1), bypassMetric.Value)
-
-		captchaMetric, ok := snapshot["CAPI:captcha"]
-		require.True(t, ok, "expected CAPI:captcha metric to exist")
-		require.Equal(t, int64(4), captchaMetric.Value)
-
-		activeDecisionsFound := false
-		for key, metric := range snapshot {
-			if metric.Name == "active_decisions" {
-				activeDecisionsFound = true
-				origin, hasOrigin := metric.Labels["origin"]
-				require.True(t, hasOrigin, "active_decisions metric should have origin label")
-				require.NotEmpty(t, origin, "active_decisions origin should not be empty")
-				require.Equal(t, "ip", metric.Unit)
-				require.GreaterOrEqual(t, metric.Value, int64(0), "active_decisions count should be non-negative for key %s", key)
-			}
-		}
-		require.True(t, activeDecisionsFound, "should have active_decisions metrics from decision cache")
-
-		metrics := recorder.GetMetrics()
+		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(4), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 4 captcha requests")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 1 allowed request")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaVerificationsTotal.WithLabelValues("failure")), "expected 1 captcha verification failure")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 		assert.Equal(t, float64(5), testutil.ToFloat64(metrics.RateLimitedTotal), "expected 5 rate limited requests (25 requests - 20 burst)")
 	})
+}
+
+func extractChallengeToken(t *testing.T, check *auth.CheckResponse) string {
+	t.Helper()
+
+	deniedResponse := check.GetDeniedResponse()
+	require.NotNil(t, deniedResponse)
+	require.Len(t, deniedResponse.Headers, 1)
+
+	locationURL, err := url.Parse(deniedResponse.Headers[0].Header.Value)
+	require.NoError(t, err)
+
+	challengeToken := locationURL.Query().Get("challengeToken")
+	require.NotEmpty(t, challengeToken)
+
+	return challengeToken
 }
 
 func extractAPIKey(output string) (string, error) {

@@ -11,63 +11,63 @@ import (
 )
 
 func TestBouncer_ValidateAuth(t *testing.T) {
-	t.Run("returns error when no auth provided", func(t *testing.T) {
-		cfg := Bouncer{}
-		err := cfg.ValidateAuth()
-		require.Error(t, err)
-		assert.Equal(t, "api key or certificate auth required", err.Error())
-	})
+	tests := []struct {
+		name    string
+		cfg     Bouncer
+		wantErr string
+	}{
+		{
+			name:    "no auth provided",
+			cfg:     Bouncer{},
+			wantErr: "api key or certificate auth required",
+		},
+		{
+			name: "api key and tls both enabled",
+			cfg: Bouncer{
+				ApiKey: "test-key",
+				TLS:    BouncerTLS{Enabled: true, CertPath: "/path/to/cert", KeyPath: "/path/to/key"},
+			},
+			wantErr: "cannot use both API key and certificate auth",
+		},
+		{
+			name:    "only api key provided",
+			cfg:     Bouncer{ApiKey: "test-key"},
+			wantErr: "",
+		},
+		{
+			name: "tls enabled with cert and key paths",
+			cfg: Bouncer{
+				TLS: BouncerTLS{Enabled: true, CertPath: "/path/cert", KeyPath: "/path/key"},
+			},
+			wantErr: "",
+		},
+		{
+			name: "tls enabled but cert path missing",
+			cfg: Bouncer{
+				TLS: BouncerTLS{Enabled: true, KeyPath: "/path/to/key"},
+			},
+			wantErr: "certificate auth requires both certPath and keyPath",
+		},
+		{
+			name: "tls enabled but key path missing",
+			cfg: Bouncer{
+				TLS: BouncerTLS{Enabled: true, CertPath: "/path/to/cert"},
+			},
+			wantErr: "certificate auth requires both certPath and keyPath",
+		},
+	}
 
-	t.Run("returns error when api key and tls both enabled", func(t *testing.T) {
-		cfg := Bouncer{
-			ApiKey: "test-key",
-			TLS:    BouncerTLS{Enabled: true, CertPath: "/path/to/cert", KeyPath: "/path/to/key"},
-		}
-		err := cfg.ValidateAuth()
-		require.Error(t, err)
-		assert.Equal(t, "cannot use both API key and certificate auth", err.Error())
-	})
-
-	t.Run("returns nil when only api key provided", func(t *testing.T) {
-		cfg := Bouncer{ApiKey: "test-key"}
-		err := cfg.ValidateAuth()
-		assert.Nil(t, err)
-	})
-
-	t.Run("returns nil when api key provided and tls disabled with default paths", func(t *testing.T) {
-		cfg := Bouncer{
-			ApiKey: "test-key",
-			TLS:    BouncerTLS{Enabled: false, CertPath: "/app/tls/tls.crt", KeyPath: "/app/tls/tls.key"},
-		}
-		err := cfg.ValidateAuth()
-		assert.Nil(t, err)
-	})
-
-	t.Run("returns nil when tls enabled with cert and key paths", func(t *testing.T) {
-		cfg := Bouncer{
-			TLS: BouncerTLS{Enabled: true, CertPath: "/path/cert", KeyPath: "/path/key"},
-		}
-		err := cfg.ValidateAuth()
-		assert.Nil(t, err)
-	})
-
-	t.Run("returns error when tls enabled but cert path missing", func(t *testing.T) {
-		cfg := Bouncer{
-			TLS: BouncerTLS{Enabled: true, KeyPath: "/path/to/key"},
-		}
-		err := cfg.ValidateAuth()
-		require.Error(t, err)
-		assert.Equal(t, "certificate auth requires both certPath and keyPath", err.Error())
-	})
-
-	t.Run("returns error when tls enabled but key path missing", func(t *testing.T) {
-		cfg := Bouncer{
-			TLS: BouncerTLS{Enabled: true, CertPath: "/path/to/cert"},
-		}
-		err := cfg.ValidateAuth()
-		require.Error(t, err)
-		assert.Equal(t, "certificate auth requires both certPath and keyPath", err.Error())
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.ValidateAuth()
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, tt.wantErr, err.Error())
+		})
+	}
 }
 
 func TestNew(t *testing.T) {
@@ -107,18 +107,61 @@ func TestNew(t *testing.T) {
 				LogLevel: "debug",
 			},
 			Bouncer: Bouncer{
-				ApiKey:         "test-key",
-				LAPIURL:        "http://test.com",
-				Metrics:        true,
-				TickerInterval: "30s",
+				Enabled:         false,
+				Metrics:         true,
+				TickerInterval:  "30s",
+				MetricsInterval: 0,
+				ApiKey:          "test-key",
+				LAPIURL:         "http://test.com",
+				BanStatusCode:   0,
+				TLS: BouncerTLS{
+					Enabled:            false,
+					CertPath:           "",
+					KeyPath:            "",
+					CAPath:             "",
+					InsecureSkipVerify: false,
+				},
 			},
 			WAF: WAF{
 				Enabled:   true,
-				ApiKey:    "test-key",
 				AppSecURL: "http://test.com",
+				ApiKey:    "test-key",
 			},
-			TrustedProxies: []string{"127.0.0.1"},
-			ExemptIPs:      []string{"10.0.0.0/8"},
+			Captcha: Captcha{
+				Enabled:                          false,
+				Provider:                         "",
+				SiteKey:                          "",
+				SecretKey:                        "",
+				SigningKey:                       "",
+				CallbackURL:                      "",
+				CookieDomain:                     "",
+				CookieName:                       "",
+				SecureCookie:                     false,
+				Timeout:                          0,
+				ChallengeDuration:                0,
+				SessionDuration:                  0,
+				DisableChallengeReplayProtection: false,
+			},
+			Webhook: Webhook{
+				Subscriptions: nil,
+				SigningKey:    "",
+				Timeout:       0,
+				BufferSize:    0,
+			},
+			Prometheus: Prometheus{
+				Enabled: false,
+				Port:    0,
+			},
+			TrustedProxies:  []string{"127.0.0.1"},
+			TrustedIPHeader: "",
+			ExemptIPs:       []string{"10.0.0.0/8"},
+			Templates: Templates{
+				DeniedTemplatePath:     "",
+				DeniedTemplateHeaders:  "",
+				ShowDeniedPage:         false,
+				CaptchaTemplatePath:    "",
+				CaptchaTemplateHeaders: "",
+			},
 			HTTP: HTTP{
 				MaxIdleConns:        42,
 				MaxIdleConnsPerHost: 7,

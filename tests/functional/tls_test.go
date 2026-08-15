@@ -11,7 +11,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"log/slog"
 	"math/big"
 	"net"
@@ -30,9 +29,9 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -46,33 +45,19 @@ type tlsCerts struct {
 	clientKeyPath  string
 }
 
-func TestBouncerWithTLS(t *testing.T) {
-	for _, image := range CrowdsecImages {
-		t.Run(image, func(t *testing.T) {
-			testBouncerWithTLSVersion(t, image)
-		})
-	}
-}
-
-func testBouncerWithTLSVersion(t *testing.T, image string) {
+func testBouncerTLS(t *testing.T, env *testEnv) {
 	certs := generateTLSTestCerts(t)
 
-	net, err := network.New(t.Context(), network.WithDriver("bridge"))
-	if err != nil {
-		t.Fatalf("failed to create network: %v", err)
-	}
-	defer net.Remove(t.Context())
-
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        image,
+		Image:        env.image,
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",
 			"DISABLE_AGENT":                   "true",
+			"DISABLE_ONLINE_API":              "true",
 			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
 		},
-		Networks:       []string{net.Name},
-		NetworkAliases: map[string][]string{net.Name: {"lapi"}},
+		Networks: []string{env.network},
 		Files: []testcontainers.ContainerFile{
 			{HostFilePath: certs.serverCertPath, ContainerFilePath: "/etc/crowdsec/ssl/server.crt", FileMode: 0644},
 			{HostFilePath: certs.serverKeyPath, ContainerFilePath: "/etc/crowdsec/ssl/server.key", FileMode: 0600},
@@ -89,19 +74,13 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 		ContainerRequest: lapiReq,
 		Started:          true,
 	})
-	if err != nil {
-		t.Fatalf("failed to start container: %v", err)
-	}
-	defer lapiContainer.Terminate(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() { lapiContainer.Terminate(t.Context()) })
 
 	lapiHost, err := lapiContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	lapiPort, err := lapiContainer.MappedPort(t.Context(), "8080")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	hostLAPI := url.URL{
 		Scheme: "https",
@@ -111,9 +90,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 	_, _, err = lapiContainer.Exec(t.Context(), []string{
 		"cscli", "decisions", "add", "--type", "ban", "--value", "192.168.1.100",
 	})
-	if err != nil {
-		t.Fatalf("failed to add decision: %v", err)
-	}
+	require.NoError(t, err)
 
 	v := viper.New()
 	v.Set("server.grpcPort", 8082)
@@ -139,9 +116,9 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder := recorder.NewNoOp()
+	rec := recorder.NewNoOp()
 
-	b, err := bouncer.New(cfg, recorder, http.DefaultClient)
+	b, err := bouncer.New(cfg, rec, http.DefaultClient)
 	require.NoError(t, err)
 
 	go b.Sync(ctx)
@@ -154,26 +131,17 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 		}()
 	}
 
+	waitForDecision(t, b.DecisionCache, "192.168.1.100", true, 10*time.Second)
+
 	templateStore, err := template.NewStore(template.Config{})
-	if err != nil {
-		log.Fatalf("failed to create template store: %v", err)
-	}
+	require.NoError(t, err)
 
-	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
-
-	go func() {
-		err := srv.ServeDual(ctx)
-		if err != nil && err != context.Canceled {
-			log.Fatalf("failed to start server: %v", err)
-		}
-	}()
-
-	time.Sleep(5 * time.Second)
+	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
+	stop := startServer(t, ctx, srv, "localhost:8082")
+	defer stop()
 
 	conn, err := grpc.NewClient("localhost:8082", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial grpc: %v", err)
-	}
+	require.NoError(t, err)
 	defer conn.Close()
 
 	client := auth.NewAuthorizationClient(conn)
@@ -183,8 +151,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("blocks banned ip with tls auth", func(t *testing.T) {
@@ -192,25 +159,21 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(403), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantForbiddenResponse()), marshalProto(t, check))
 	})
 
 	t.Run("ban decision removed with tls auth", func(t *testing.T) {
 		_, _, err = lapiContainer.Exec(t.Context(), []string{
 			"cscli", "decisions", "delete", "-i", "192.168.1.100",
 		})
-		if err != nil {
-			t.Fatalf("failed to delete decision: %v", err)
-		}
+		require.NoError(t, err)
 
-		time.Sleep(2 * time.Second)
+		waitForDecision(t, b.DecisionCache, "192.168.1.100", false, 10*time.Second)
 
 		req := createCheckRequest("192.168.1.100", createHttpRequest("GET", "/testing", "my-host.com", nil))
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(0), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 	})
 
 	t.Run("metrics sent to lapi with tls auth", func(t *testing.T) {
@@ -224,7 +187,7 @@ func testBouncerWithTLSVersion(t *testing.T, image string) {
 		require.Greater(t, bypassMetric.Value, int64(0), "expected bypass count to be non-zero")
 
 		allMetrics := b.MetricsService.Calculate(time.Second)
-		err := b.MetricsService.Send(context.Background(), allMetrics)
+		err := b.MetricsService.Send(t.Context(), allMetrics)
 		require.NoError(t, err, "expected metrics to be sent to LAPI over TLS")
 	})
 }

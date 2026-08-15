@@ -4,11 +4,8 @@ package functional
 
 import (
 	"context"
-	"io"
-	"log"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -23,125 +20,47 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
-func TestHealthProbes(t *testing.T) {
-	for _, image := range CrowdsecImages {
-		t.Run(image, func(t *testing.T) {
-			testHealthProbesWithVersion(t, image)
-		})
-	}
-}
-
-func testHealthProbesWithVersion(t *testing.T, image string) {
-	network, err := network.New(t.Context(), network.WithDriver("bridge"))
-	if err != nil {
-		t.Fatalf("failed to create network: %v", err)
-	}
-	defer network.Remove(t.Context())
-
-	lapiReq := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{"8080/tcp"},
-		Env: map[string]string{
-			"DISABLE_LOCAL_API":               "false",
-			"DISABLE_AGENT":                   "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Networks:       []string{network.Name},
-		NetworkAliases: map[string][]string{network.Name: {"lapi"}},
-		WaitingFor:     wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	lapiContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: lapiReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start container: %v", err)
-	}
-	defer lapiContainer.Terminate(t.Context())
-
-	lapiHost, err := lapiContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	lapiPort, err := lapiContainer.MappedPort(t.Context(), "8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	hostLAPI := url.URL{
-		Scheme: "http",
-		Host:   lapiHost + ":" + lapiPort.Port(),
-	}
-
-	_, out, err := lapiContainer.Exec(t.Context(), []string{
-		"cscli", "bouncers", "add", "testBouncer",
-	})
-	if err != nil {
-		t.Fatalf("failed to exec: %v", err)
-	}
-	b, err := io.ReadAll(out)
-	if err != nil {
-		t.Fatalf("failed to read output: %v", err)
-	}
-
-	key, err := extractAPIKey(string(b))
-	if err != nil {
-		t.Fatalf("failed to extract api key: %v", err)
-	}
-
+func testHealthProbes(t *testing.T, env *testEnv) {
 	v := viper.New()
 	v.Set("server.grpcPort", 8080)
 	v.Set("server.logLevel", "debug")
-	v.Set("bouncer.apiKey", key)
-	v.Set("bouncer.lapiURL", hostLAPI.String())
+	v.Set("bouncer.apiKey", env.apiKey)
+	v.Set("bouncer.lapiURL", env.lapiURL)
 	v.Set("bouncer.tickerInterval", "1s")
 	v.Set("bouncer.enabled", true)
 	v.Set("captcha.enabled", false)
 
-	config, err := config.New(v)
+	cfg, err := config.New(v)
 	require.NoError(t, err)
 
-	level := logger.LevelFromString(config.Server.LogLevel)
+	level := logger.LevelFromString(cfg.Server.LogLevel)
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	slogger := slog.New(handler)
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder := recorder.NewNoOp()
+	rec := recorder.NewNoOp()
 
-	bouncer, err := bouncer.New(config, recorder, http.DefaultClient)
+	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 	require.NoError(t, err)
-	go bouncer.Sync(ctx)
+	go testBouncer.Sync(ctx)
+
+	waitForDecisionCache(t, testBouncer.DecisionCache, 10*time.Second)
 
 	templateStore, err := template.NewStore(template.Config{})
-	if err != nil {
-		log.Fatalf("failed to create template store: %v", err)
-	}
+	require.NoError(t, err)
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
-
-	go func() {
-		err := server.ServeDual(ctx)
-		if err != nil && err != context.Canceled {
-			log.Fatalf("failed to start server: %v", err)
-		}
-	}()
-
-	time.Sleep(2 * time.Second)
+	srv := server.NewServer(cfg, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
+	stop := startServer(t, ctx, srv, "localhost:8080")
+	defer stop()
 
 	conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial grpc: %v", err)
-	}
+	require.NoError(t, err)
 	defer conn.Close()
 
 	healthClient := grpc_health_v1.NewHealthClient(conn)
@@ -151,26 +70,22 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 			Service: "liveness",
 		})
 		require.NoError(t, err)
-		assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+		assert.Equal(t, marshalProto(t, &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}), marshalProto(t, resp))
 	})
 
-	t.Run("Readiness returns not_serving initially then serving after sync", func(t *testing.T) {
-		resp, err := healthClient.Check(context.TODO(), &grpc_health_v1.HealthCheckRequest{
-			Service: "readiness",
-		})
-		require.NoError(t, err)
-
-		status := resp.Status
-		if status != grpc_health_v1.HealthCheckResponse_SERVING {
-			assert.Equal(t, grpc_health_v1.HealthCheckResponse_NOT_SERVING, status)
-			time.Sleep(3 * time.Second)
-
+	t.Run("Readiness returns serving once decision cache is synced", func(t *testing.T) {
+		deadline := time.Now().Add(5 * time.Second)
+		var resp *grpc_health_v1.HealthCheckResponse
+		for time.Now().Before(deadline) && (resp == nil || resp.Status != grpc_health_v1.HealthCheckResponse_SERVING) {
 			resp, err = healthClient.Check(context.TODO(), &grpc_health_v1.HealthCheckRequest{
 				Service: "readiness",
 			})
 			require.NoError(t, err)
-			assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+			if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+				time.Sleep(100 * time.Millisecond)
+			}
 		}
+		assert.Equal(t, marshalProto(t, &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}), marshalProto(t, resp))
 	})
 
 	t.Run("Liveness remains serving throughout lifecycle", func(t *testing.T) {
@@ -179,20 +94,18 @@ func testHealthProbesWithVersion(t *testing.T, image string) {
 				Service: "liveness",
 			})
 			require.NoError(t, err)
-			assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+			assert.Equal(t, marshalProto(t, &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}), marshalProto(t, resp))
 			time.Sleep(500 * time.Millisecond)
 		}
 	})
 
 	t.Run("Readiness stays serving after decision cache is ready", func(t *testing.T) {
-		time.Sleep(5 * time.Second)
-
 		for range 5 {
 			resp, err := healthClient.Check(context.TODO(), &grpc_health_v1.HealthCheckRequest{
 				Service: "readiness",
 			})
 			require.NoError(t, err)
-			assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+			assert.Equal(t, marshalProto(t, &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}), marshalProto(t, resp))
 			time.Sleep(500 * time.Millisecond)
 		}
 	})
@@ -205,40 +118,29 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 	v.Set("bouncer.enabled", false)
 	v.Set("captcha.enabled", false)
 
-	config, err := config.New(v)
+	cfg, err := config.New(v)
 	require.NoError(t, err)
 
-	level := logger.LevelFromString(config.Server.LogLevel)
+	level := logger.LevelFromString(cfg.Server.LogLevel)
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 	slogger := slog.New(handler)
 
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	recorder := recorder.NewNoOp()
+	rec := recorder.NewNoOp()
 
-	bouncer, err := bouncer.New(config, recorder, http.DefaultClient)
+	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 	require.NoError(t, err)
 
 	templateStore, err := template.NewStore(template.Config{})
-	if err != nil {
-		log.Fatalf("failed to create template store: %v", err)
-	}
+	require.NoError(t, err)
 
-	server := server.NewServer(config, bouncer, bouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, recorder, nil)
-
-	go func() {
-		err := server.ServeDual(ctx)
-		if err != nil && err != context.Canceled {
-			log.Fatalf("failed to start server: %v", err)
-		}
-	}()
-
-	time.Sleep(2 * time.Second)
+	srv := server.NewServer(cfg, testBouncer, testBouncer.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
+	stop := startServer(t, ctx, srv, "localhost:8082")
+	defer stop()
 
 	conn, err := grpc.NewClient("localhost:8082", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		t.Fatalf("failed to dial grpc: %v", err)
-	}
+	require.NoError(t, err)
 	defer conn.Close()
 
 	healthClient := grpc_health_v1.NewHealthClient(conn)
@@ -248,14 +150,21 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 			Service: "liveness",
 		})
 		require.NoError(t, err)
-		assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+		assert.Equal(t, marshalProto(t, &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}), marshalProto(t, resp))
 	})
 
 	t.Run("Readiness returns serving immediately when bouncer disabled", func(t *testing.T) {
-		resp, err := healthClient.Check(context.TODO(), &grpc_health_v1.HealthCheckRequest{
-			Service: "readiness",
-		})
-		require.NoError(t, err)
-		assert.Equal(t, grpc_health_v1.HealthCheckResponse_SERVING, resp.Status)
+		deadline := time.Now().Add(3 * time.Second)
+		var resp *grpc_health_v1.HealthCheckResponse
+		for time.Now().Before(deadline) && (resp == nil || resp.Status != grpc_health_v1.HealthCheckResponse_SERVING) {
+			resp, err = healthClient.Check(context.TODO(), &grpc_health_v1.HealthCheckRequest{
+				Service: "readiness",
+			})
+			require.NoError(t, err)
+			if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+		assert.Equal(t, marshalProto(t, &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}), marshalProto(t, resp))
 	})
 }

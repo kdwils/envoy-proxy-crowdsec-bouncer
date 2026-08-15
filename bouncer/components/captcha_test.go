@@ -1,7 +1,6 @@
 package components
 
 import (
-	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -288,7 +287,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "test-captcha-response", "192.168.1.1").Return(true, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-captcha-response")
+		got, err := service.VerifyResponse(t.Context(), "192.168.1.1", session.ID, "test-captcha-response")
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -326,7 +325,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "invalid-token", "192.168.1.1").Return(false, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "invalid-token")
+		got, err := service.VerifyResponse(t.Context(), "192.168.1.1", session.ID, "invalid-token")
 
 		assert.ErrorIs(t, err, ErrFailedChallenge)
 		require.NotNil(t, got)
@@ -341,7 +340,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
 		require.NoError(t, err)
 
-		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", "invalid-token", "test-response")
+		got, err := service.VerifyResponse(t.Context(), "192.168.1.1", "invalid-token", "test-response")
 
 		assert.Error(t, err)
 		require.NotNil(t, got)
@@ -370,7 +369,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 		session, err := service.CreateSession("192.168.1.1", "http://example.com", "")
 		require.NoError(t, err)
 
-		got, err := service.VerifyResponse(context.Background(), "192.168.1.2", session.ID, "test-response")
+		got, err := service.VerifyResponse(t.Context(), "192.168.1.2", session.ID, "test-response")
 
 		assert.Error(t, err)
 		require.NotNil(t, got)
@@ -401,11 +400,11 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "test-response", "192.168.1.1").Return(true, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		got, err := service.VerifyResponse(t.Context(), "192.168.1.1", session.ID, "test-response")
 		require.NoError(t, err)
 		assert.True(t, got.Success)
 
-		got2, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		got2, err := service.VerifyResponse(t.Context(), "192.168.1.1", session.ID, "test-response")
 		assert.Error(t, err)
 		assert.False(t, got2.Success)
 		assert.Equal(t, "Challenge already used or expired", got2.Message)
@@ -443,7 +442,7 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "test-response", "192.168.1.1").Return(true, nil).Times(1)
 
-		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		got, err := service.VerifyResponse(t.Context(), "192.168.1.1", session.ID, "test-response")
 		require.NoError(t, err)
 		assert.True(t, got.Success, "expected verification to succeed")
 
@@ -476,11 +475,11 @@ func TestCaptchaService_VerifyResponse(t *testing.T) {
 
 		mockProvider.EXPECT().Verify(gomock.Any(), "test-response", "192.168.1.1").Return(true, nil).Times(2)
 
-		got, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		got, err := service.VerifyResponse(t.Context(), "192.168.1.1", session.ID, "test-response")
 		require.NoError(t, err)
 		assert.True(t, got.Success, "expected first verification to succeed")
 
-		got2, err := service.VerifyResponse(context.Background(), "192.168.1.1", session.ID, "test-response")
+		got2, err := service.VerifyResponse(t.Context(), "192.168.1.1", session.ID, "test-response")
 		require.NoError(t, err)
 		assert.True(t, got2.Success, "expected second verification to succeed when replay protection is disabled")
 	})
