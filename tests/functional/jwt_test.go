@@ -255,6 +255,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.httpTimeout", "5s")
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")
