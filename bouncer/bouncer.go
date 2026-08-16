@@ -151,7 +151,7 @@ func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, httpClient)
+		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, httpClient)
 		if err != nil {
 			return nil, err
 		}
@@ -416,7 +416,11 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 
 	switch wafResult.Action {
 	case "allow":
-		finalResult := NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, bouncerResult.Decision, "", parsed, nil)
+		reason := "ok"
+		if wafResult.Reason == wafFailOpenReason {
+			reason = wafResult.Reason
+		}
+		finalResult := NewCheckedRequest(parsed.RealIP, "allow", reason, http.StatusOK, bouncerResult.Decision, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	case "captcha":
@@ -533,17 +537,33 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
-		b.PrometheusRecorder.IncWAFErrorsTotal()
-		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
+		return b.wafFailure(parsed)
 	}
 
+	wafResult.Action = strings.ToLower(wafResult.Action)
+
 	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
+
+	if wafResult.Action == "error" {
+		logger.Debug("waf returned error action", slog.String("ip", parsed.RealIP))
+		return b.wafFailure(parsed)
+	}
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
 	}
 
 	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)
+}
+
+const wafFailOpenReason = "waf-unavailable"
+
+func (b *Bouncer) wafFailure(parsed *ParsedRequest) CheckedRequest {
+	b.PrometheusRecorder.IncWAFErrorsTotal()
+	if b.config.WAF.FailOpen {
+		return NewCheckedRequest(parsed.RealIP, "allow", wafFailOpenReason, http.StatusOK, nil, "", parsed, nil)
+	}
+	return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.

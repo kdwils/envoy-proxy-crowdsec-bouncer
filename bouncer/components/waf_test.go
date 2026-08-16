@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/stretchr/testify/assert"
@@ -90,14 +91,18 @@ func TestNewForwardRequest(t *testing.T) {
 
 func TestWAF_Inspect(t *testing.T) {
 	t.Run("error on request build", func(t *testing.T) {
-		_, err := NewWAF(":badurl", "", nethttp.DefaultClient)
+		_, err := NewWAF(":badurl", "", time.Second, nethttp.DefaultClient)
 		assert.Error(t, err)
 	})
 
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+<<<<<<< HEAD
 		waf, err := NewWAF("http://test", "", nethttp.DefaultClient)
+=======
+		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 		require.NoError(t, err)
 		waf.http = mockHTTP
 		expectedHeaders := map[string]string{
@@ -124,7 +129,11 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+<<<<<<< HEAD
 		waf, err := NewWAF("http://test", "", nethttp.DefaultClient)
+=======
+		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 		require.NoError(t, err)
 		waf.http = mockHTTP
 		response := &nethttp.Response{StatusCode: 500, Status: "500 error", Body: io.NopCloser(strings.NewReader(""))}
@@ -152,7 +161,11 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+<<<<<<< HEAD
 		waf, err := NewWAF("http://test", "key", nethttp.DefaultClient)
+=======
+		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 		require.NoError(t, err)
 		waf.http = mockHTTP
 		respBody := `{"action":"ban","http_status":403}`
@@ -173,6 +186,7 @@ func TestWAF_Inspect(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "ban", result.Action)
 		assert.Equal(t, 403, result.HTTPStatus)
+<<<<<<< HEAD
 
 		require.NotNil(t, gotReq)
 		assert.Equal(t, nethttp.MethodGet, gotReq.Method)
@@ -181,11 +195,24 @@ func TestWAF_Inspect(t *testing.T) {
 			assert.Equal(t, want, gotReq.Header.Get(k), "header %q", k)
 		}
 	})
+=======
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 
+		require.NotNil(t, gotReq)
+		assert.Equal(t, nethttp.MethodGet, gotReq.Method)
+		assert.Equal(t, "http://test", gotReq.URL.String())
+		for k, want := range expectedHeaders {
+			assert.Equal(t, want, gotReq.Header.Get(k), "header %q", k)
+		}
+	})
 	t.Run("with body", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+<<<<<<< HEAD
 		waf, err := NewWAF("http://test", "key", nethttp.DefaultClient)
+=======
+		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 		require.NoError(t, err)
 		waf.http = mockHTTP
 		respBody := `{"action":"captcha"}`
@@ -213,6 +240,27 @@ func TestWAF_Inspect(t *testing.T) {
 		for k, want := range expectedHeaders {
 			assert.Equal(t, want, gotReq.Header.Get(k), "header %q", k)
 		}
+<<<<<<< HEAD
+=======
+	})
+
+	t.Run("hung appsec returns an error once the timeout elapses", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		waf, err := NewWAF("http://test", "", 50*time.Millisecond, nethttp.DefaultClient)
+		require.NoError(t, err)
+		waf.http = mockHTTP
+
+		mockHTTP.EXPECT().Do(gomock.Any()).DoAndReturn(func(r *nethttp.Request) (*nethttp.Response, error) {
+			<-r.Context().Done()
+			return nil, r.Context().Err()
+		}).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
+		_, err = waf.Inspect(context.Background(), areq)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 	})
 
 }

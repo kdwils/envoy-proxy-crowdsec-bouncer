@@ -92,6 +92,8 @@ func TestNew(t *testing.T) {
 		v.Set("waf.enabled", true)
 		v.Set("waf.apiKey", "test-key")
 		v.Set("waf.appSecURL", "http://test.com")
+		v.Set("waf.httpTimeout", "1s")
+		v.Set("waf.failOpen", true)
 		v.Set("http.maxIdleConns", 42)
 		v.Set("http.maxIdleConnsPerHost", 7)
 		v.Set("http.idleConnTimeout", "5s")
@@ -123,6 +125,7 @@ func TestNew(t *testing.T) {
 				},
 			},
 			WAF: WAF{
+<<<<<<< HEAD
 				Enabled:   true,
 				AppSecURL: "http://test.com",
 				ApiKey:    "test-key",
@@ -161,6 +164,13 @@ func TestNew(t *testing.T) {
 				ShowDeniedPage:         false,
 				CaptchaTemplatePath:    "",
 				CaptchaTemplateHeaders: "",
+=======
+				Enabled:     true,
+				ApiKey:      "test-key",
+				AppSecURL:   "http://test.com",
+				HTTPTimeout: time.Second,
+				FailOpen:    true,
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 			},
 			HTTP: HTTP{
 				MaxIdleConns:        42,

@@ -31,7 +31,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+<<<<<<< HEAD
+=======
+	"google.golang.org/grpc/status"
+	"gopkg.in/yaml.v3"
+>>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 )
 
 func createCheckRequest(ip string, httpRequest *auth.AttributeContext_HttpRequest) *auth.CheckRequest {
@@ -295,6 +301,32 @@ func testBouncer(t *testing.T, env *testEnv) {
 
 		env.deleteDecision(t, "-i", "172.16.0.1")
 		env.deleteDecision(t, "--range", "10.0.0.0/8")
+	})
+
+	t.Run("hung AppSec fails closed after waf.httpTimeout", func(t *testing.T) {
+		stalledClient, rec := startStalledAppSecServer(t, 8082, appsecURL.String(), key, false, slogger, templateStore)
+
+		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := stalledClient.Check(t.Context(), req)
+
+		require.Error(t, err)
+		require.Nil(t, check)
+		require.Equal(t, codes.Unavailable, status.Code(err))
+
+		assert.Equal(t, float64(1), testutil.ToFloat64(rec.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+	})
+
+	t.Run("hung AppSec passes after waf.httpTimeout with failOpen", func(t *testing.T) {
+		stalledClient, rec := startStalledAppSecServer(t, 8083, appsecURL.String(), key, true, slogger, templateStore)
+
+		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := stalledClient.Check(t.Context(), req)
+
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(0), check.Status.Code)
+
+		assert.Equal(t, float64(1), testutil.ToFloat64(rec.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
 	})
 }
 

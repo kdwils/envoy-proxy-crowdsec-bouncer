@@ -22,10 +22,11 @@ type Config struct {
 }
 
 type WAF struct {
-	APIKey string
-	APIURL string
-	apiURL *url.URL
-	http   HTTPClient
+	APIKey      string
+	APIURL      string
+	apiURL      *url.URL
+	http        HTTPClient
+	httpTimeout time.Duration
 }
 
 type WAFResponse struct {
@@ -44,26 +45,32 @@ type AppSecRequest struct {
 	ProtoMinor int
 }
 
-func NewWAF(appsecURL, apiKey string, http *http.Client) (WAF, error) {
+func NewWAF(appsecURL, apiKey string, httpTimeout time.Duration, http *http.Client) (WAF, error) {
 	apiURL, err := url.Parse(appsecURL)
 	if err != nil {
 		return WAF{}, fmt.Errorf("failed to parse API URL: %w", err)
 	}
 	return WAF{
-		APIURL: appsecURL,
-		apiURL: apiURL,
-		http:   http,
-		APIKey: apiKey,
+		APIURL:      appsecURL,
+		apiURL:      apiURL,
+		http:        http,
+		APIKey:      apiKey,
+		httpTimeout: httpTimeout,
 	}, nil
 }
 
 // Inspect forwards the request to the CrowdSec AppSec component and returns the action.
+// The call is bounded by the configured timeout via context cancellation, so a hung
+// AppSec instance surfaces as an error instead of stalling the request indefinitely.
 func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error) {
 	logger := logger.FromContext(ctx).With(slog.String("component", "waf"))
 	var result WAFResponse
 	if req.Method == "" {
 		return result, fmt.Errorf("method cannot be empty")
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, w.httpTimeout)
+	defer cancel()
 
 	forwardReq := newForwardRequest(ctx, w.apiURL, req, w.APIKey)
 

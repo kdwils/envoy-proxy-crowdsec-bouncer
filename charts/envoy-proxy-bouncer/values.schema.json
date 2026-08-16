@@ -333,6 +333,14 @@
                         "enabled": {
                             "default": false,
                             "type": "boolean"
+                        },
+                        "failOpen": {
+                            "default": false,
+                            "type": "boolean"
+                        },
+                        "httpTimeout": {
+                            "default": "5s",
+                            "type": "string"
                         }
                     }
                 },
