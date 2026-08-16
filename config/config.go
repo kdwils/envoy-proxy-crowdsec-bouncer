@@ -102,10 +102,10 @@ func (b Bouncer) ValidateAuth() error {
 }
 
 type WAF struct {
-	Enabled   bool          `yaml:"enabled" json:"enabled"`
-	AppSecURL string        `yaml:"appSecURL" json:"appSecURL"`
-	ApiKey    string        `yaml:"apiKey" json:"apiKey"`
-	Timeout   time.Duration `yaml:"timeout" json:"timeout"`
+	Enabled     bool          `yaml:"enabled" json:"enabled"`
+	AppSecURL   string        `yaml:"appSecURL" json:"appSecURL"`
+	ApiKey      string        `yaml:"apiKey" json:"apiKey"`
+	HTTPTimeout time.Duration `yaml:"httpTimeout" json:"httpTimeout"`
 }
 
 type Webhook struct {

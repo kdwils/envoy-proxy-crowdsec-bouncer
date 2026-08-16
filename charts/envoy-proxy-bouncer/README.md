@@ -72,6 +72,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.waf.apiKeySecretRef.name | string | `""` |  |
 | config.waf.appSecURL | string | `""` |  |
 | config.waf.enabled | bool | `false` |  |
+| config.waf.httpTimeout | string | `"1s"` |  |
 | config.webhook.bufferSize | int | `100` |  |
 | config.webhook.signingKey | string | `""` |  |
 | config.webhook.signingKeySecretRef.key | string | `""` |  |
