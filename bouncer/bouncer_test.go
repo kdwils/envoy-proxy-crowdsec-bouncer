@@ -1266,6 +1266,62 @@ func TestBouncer_Check(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
+	t.Run("waf error action with failOpen enabled allows request", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{
+			DecisionCache:      mb,
+			WAF:                mw,
+			MetricsService:     collector,
+			PrometheusRecorder: rec,
+			remediationMetrics: newRemediationMetrics(),
+			config: config.Config{
+				WAF: config.WAF{
+					FailOpen: true,
+				},
+			},
+		}
+
+		req := mkReq("10.0.0.4", "http", "h", "/p", "GET", "HTTP/1.0", "")
+
+		mb.EXPECT().GetDecision(gomock.Any(), "10.0.0.4").Return(nil, nil)
+		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:         "10.0.0.4",
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:           "10.0.0.4",
+				RealIP:       "10.0.0.4",
+				ParsedRealIP: netip.MustParseAddr("10.0.0.4"),
+				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			},
+		}
+		require.Equal(t, want, got)
+	})
+
 	t.Run("waf error with failOpen enabled still enforces LAPI ban", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1457,8 +1513,8 @@ func TestBouncer_Check(t *testing.T) {
 		want := CheckedRequest{
 			IP:         "11.11.11.11",
 			Action:     "error",
-			Reason:     "ban",
-			HTTPStatus: 403,
+			Reason:     "error",
+			HTTPStatus: 500,
 			ParsedRequest: &ParsedRequest{
 				IP:           "11.11.11.11",
 				RealIP:       "11.11.11.11",
@@ -1997,7 +2053,65 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
-	t.Run("bouncer allows - waf returns error action", func(t *testing.T) {
+	t.Run("bouncer allows - waf returns error action - fail open", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+		mc := remediationmocks.NewMockCaptchaService(ctrl)
+
+		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
+			BouncerType: "test-bouncer",
+			Version:     "v1.0.0",
+		})
+		require.NoError(t, err)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{
+			DecisionCache:      mb,
+			WAF:                mw,
+			CaptchaService:     mc,
+			MetricsService:     collector,
+			PrometheusRecorder: rec,
+			remediationMetrics: newRemediationMetrics(),
+			config: config.Config{
+				WAF: config.WAF{
+					FailOpen: true,
+				},
+			},
+		}
+
+		req := mkReq("7.7.7.8", "https", "example.com", "/test", "GET", "HTTP/1.1", "")
+
+		mb.EXPECT().GetDecision(gomock.Any(), "7.7.7.8").Return(nil, nil)
+		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:         "7.7.7.8",
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:           "7.7.7.8",
+				RealIP:       "7.7.7.8",
+				ParsedRealIP: netip.MustParseAddr("7.7.7.8"),
+				Headers:      map[string]string{":authority": "example.com", ":method": "GET", ":path": "/test", ":scheme": "https"},
+
+				URL:        url.URL{Scheme: "https", Host: "example.com", Path: "/test"},
+				Method:     "GET",
+				UserAgent:  "",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+			},
+		}
+		require.Equal(t, want, got)
+	})
+
+	t.Run("bouncer fails closed - waf returns error action", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -2021,7 +2135,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(context.Background(), req)
-		if got.Action != "error" || got.Reason != "ban" || got.HTTPStatus != 403 || got.IP != "7.7.7.7" {
+		if got.Action != "error" || got.Reason != "error" || got.HTTPStatus != 500 || got.IP != "7.7.7.7" {
 			t.Fatalf("unexpected result: %+v", got)
 		}
 	})

@@ -43,7 +43,8 @@ waf:
   appSecURL: "http://appsec:7422"
   httpTimeout: "5s"
   # failOpen: allows requests to proceed when AppSec inspection returns an
-  # error, instead of failing closed. IP-based LAPI decisions are still enforced.
+  # error (transport error or AppSec error action), instead of failing closed.
+  # IP-based LAPI decisions are still enforced.
   # failOpen: false
 
 captcha:

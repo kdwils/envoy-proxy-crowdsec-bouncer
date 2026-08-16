@@ -106,8 +106,9 @@ type WAF struct {
 	AppSecURL   string        `yaml:"appSecURL" json:"appSecURL"`
 	ApiKey      string        `yaml:"apiKey" json:"apiKey"`
 	HTTPTimeout time.Duration `yaml:"httpTimeout" json:"httpTimeout"`
-	// FailOpen allows requests to proceed when AppSec inspection returns an error,
-	// instead of failing closed. IP-based LAPI decisions are still enforced.
+	// FailOpen allows requests to proceed when AppSec inspection returns an
+	// error (transport error or AppSec error action), instead of failing
+	// closed. IP-based LAPI decisions are still enforced.
 	FailOpen bool `yaml:"failOpen" json:"failOpen"`
 }
 

@@ -35,7 +35,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
 
@@ -88,10 +90,21 @@ func (stalledRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	return nil, r.Context().Err()
 }
 
-func newStalledAppSecBouncer(t *testing.T, appsecURL, apiKey string, failOpen bool) *bouncer.Bouncer {
+func stalledWAF(t *testing.T, appsecURL, apiKey string) components.WAF {
+	t.Helper()
+
+	w, err := components.NewWAF(appsecURL, apiKey, 500*time.Millisecond, &http.Client{Transport: stalledRoundTripper{}})
+	require.NoError(t, err)
+
+	return w
+}
+
+func startStalledAppSecServer(t *testing.T, port int, appsecURL, apiKey string, failOpen bool, slogger *slog.Logger, templateStore *template.Store) (auth.AuthorizationClient, *recorder.Recorder) {
 	t.Helper()
 
 	v := viper.New()
+	v.Set("server.grpcPort", port)
+	v.Set("server.logLevel", "debug")
 	v.Set("bouncer.enabled", false)
 	v.Set("waf.enabled", true)
 	v.Set("waf.appsecURL", appsecURL)
@@ -103,6 +116,8 @@ func newStalledAppSecBouncer(t *testing.T, appsecURL, apiKey string, failOpen bo
 	cfg, err := config.New(v)
 	require.NoError(t, err)
 
+	ctx := logger.WithContext(t.Context(), slogger)
+
 	reg := prometheus.NewRegistry()
 	rec, err := recorder.New(reg)
 	require.NoError(t, err)
@@ -110,7 +125,22 @@ func newStalledAppSecBouncer(t *testing.T, appsecURL, apiKey string, failOpen bo
 	b, err := bouncer.New(cfg, rec, &http.Client{Transport: stalledRoundTripper{}})
 	require.NoError(t, err)
 
-	return b
+	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, reg)
+
+	go func() {
+		if err := srv.ServeDual(ctx); err != nil && err != context.Canceled {
+			slogger.Error("stalled appsec server error", "error", err)
+		}
+	}()
+
+	addr := fmt.Sprintf("localhost:%d", port)
+	waitForServer(t, addr, 10*time.Second)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	return auth.NewAuthorizationClient(conn), rec
 }
 
 func TestBouncer(t *testing.T) {
@@ -538,29 +568,33 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	})
 
 	t.Run("hung AppSec fails closed after waf.httpTimeout", func(t *testing.T) {
-		b := newStalledAppSecBouncer(t, appsecURL.String(), key, false)
+		origWAF := bouncer.WAF
+		bouncer.WAF = stalledWAF(t, appsecURL.String(), key)
+		defer func() { bouncer.WAF = origWAF }()
+
+		wafErrorsBefore := testutil.ToFloat64(recorder.GetMetrics().WAFErrorsTotal)
 
 		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
-		result := b.Check(t.Context(), req)
+		check, err := client.Check(t.Context(), req)
 
-		require.Equal(t, "error", result.Action)
-		require.Equal(t, http.StatusInternalServerError, result.HTTPStatus)
+		require.Error(t, err)
+		require.Nil(t, check)
+		require.Equal(t, codes.Unavailable, status.Code(err))
 
-		metrics := b.PrometheusRecorder.GetMetrics()
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+		assert.Equal(t, wafErrorsBefore+1, testutil.ToFloat64(recorder.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
 	})
 
 	t.Run("hung AppSec passes after waf.httpTimeout with openFail", func(t *testing.T) {
-		b := newStalledAppSecBouncer(t, appsecURL.String(), key, true)
+		stalledClient, rec := startStalledAppSecServer(t, 8082, appsecURL.String(), key, true, slogger, templateStore)
 
 		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
-		result := b.Check(t.Context(), req)
+		check, err := stalledClient.Check(t.Context(), req)
 
-		require.Equal(t, "allow", result.Action)
-		require.Equal(t, http.StatusOK, result.HTTPStatus)
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(0), check.Status.Code)
 
-		metrics := b.PrometheusRecorder.GetMetrics()
-		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+		assert.Equal(t, float64(1), testutil.ToFloat64(rec.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
 	})
 }
 

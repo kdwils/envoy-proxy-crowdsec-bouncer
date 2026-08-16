@@ -533,20 +533,31 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
 	if wafErr != nil {
 		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
-		b.PrometheusRecorder.IncWAFErrorsTotal()
-		if b.config.WAF.FailOpen {
-			return NewCheckedRequest(parsed.RealIP, "allow", "", http.StatusOK, nil, "", parsed, nil)
-		}
-		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
+		return b.wafFailure(parsed)
 	}
 
 	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
+
+	if strings.EqualFold(wafResult.Action, "error") {
+		logger.Debug("waf returned error action", slog.String("ip", parsed.RealIP))
+		return b.wafFailure(parsed)
+	}
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
 	}
 
 	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)
+}
+
+// wafFailure returns the result for a WAF that could not complete inspection,
+// whether due to a transport error or an "error" action from AppSec
+func (b *Bouncer) wafFailure(parsed *ParsedRequest) CheckedRequest {
+	b.PrometheusRecorder.IncWAFErrorsTotal()
+	if b.config.WAF.FailOpen {
+		return NewCheckedRequest(parsed.RealIP, "allow", "", http.StatusOK, nil, "", parsed, nil)
+	}
+	return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.
