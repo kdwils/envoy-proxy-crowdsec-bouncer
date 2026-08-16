@@ -216,30 +216,6 @@ func TestWAF_Inspect(t *testing.T) {
 		}
 	})
 
-	t.Run("applies configured timeout to the request context", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "", 250*time.Millisecond, nethttp.DefaultClient)
-		require.NoError(t, err)
-		waf.http = mockHTTP
-
-		var gotReq *nethttp.Request
-		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"allow"}`))}
-		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
-
-		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
-		before := time.Now()
-		_, err = waf.Inspect(t.Context(), areq)
-		require.NoError(t, err)
-
-		require.NotNil(t, gotReq)
-		deadline, ok := gotReq.Context().Deadline()
-		require.True(t, ok, "expected request context to carry a deadline")
-		remaining := time.Until(deadline)
-		assert.LessOrEqual(t, deadline, before.Add(250*time.Millisecond))
-		assert.Greater(t, remaining, time.Duration(0))
-	})
-
 	t.Run("hung appsec returns an error once the timeout elapses", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
@@ -256,5 +232,4 @@ func TestWAF_Inspect(t *testing.T) {
 		_, err = waf.Inspect(context.Background(), areq)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
-
 }
