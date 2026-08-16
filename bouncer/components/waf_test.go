@@ -16,6 +16,34 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+// httpReqMatcher validates the HTTP request sent to AppSec matches expectations.
+type httpReqMatcher struct {
+	method  string
+	urlStr  string
+	headers map[string]string // subset to verify
+}
+
+func (m httpReqMatcher) Matches(x any) bool {
+	r, ok := x.(*nethttp.Request)
+	if !ok || r == nil {
+		return false
+	}
+	if m.method != "" && r.Method != m.method {
+		return false
+	}
+	if m.urlStr != "" && r.URL.String() != m.urlStr {
+		return false
+	}
+	for k, v := range m.headers {
+		if got := r.Header.Get(k); got != v {
+			return false
+		}
+	}
+	return true
+}
+
+func (m httpReqMatcher) String() string { return "httpReqMatcher" }
+
 func TestNewForwardRequest(t *testing.T) {
 	apiURL, err := url.Parse("http://crowdsec:8080/v1/")
 	assert.NoError(t, err)
