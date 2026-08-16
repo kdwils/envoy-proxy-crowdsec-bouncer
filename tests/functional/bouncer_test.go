@@ -35,7 +35,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
 
@@ -79,6 +81,60 @@ func createHttpRequest(method, path, authority string, extraHeaders map[string]s
 		Headers:  headers,
 		Protocol: "HTTP/1.1",
 	}
+}
+
+type stalledRoundTripper struct{}
+
+func (stalledRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	<-r.Context().Done()
+	return nil, r.Context().Err()
+}
+
+func startStalledAppSecServer(t *testing.T, port int, appsecURL, apiKey string, failOpen bool, slogger *slog.Logger, templateStore *template.Store) (auth.AuthorizationClient, *recorder.Recorder) {
+	t.Helper()
+
+	v := viper.New()
+	v.Set("server.grpcPort", port)
+	v.Set("server.logLevel", "debug")
+	v.Set("bouncer.enabled", false)
+	v.Set("waf.enabled", true)
+	v.Set("waf.appsecURL", appsecURL)
+	v.Set("waf.apiKey", apiKey)
+	v.Set("waf.httpTimeout", "500ms")
+	v.Set("waf.failOpen", failOpen)
+	v.Set("captcha.enabled", false)
+
+	cfg, err := config.New(v)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(logger.WithContext(t.Context(), slogger))
+
+	reg := prometheus.NewRegistry()
+	rec, err := recorder.New(reg)
+	require.NoError(t, err)
+
+	b, err := bouncer.New(cfg, rec, &http.Client{Transport: stalledRoundTripper{}})
+	require.NoError(t, err)
+
+	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, reg)
+
+	go func() {
+		if err := srv.ServeDual(ctx); err != nil && err != context.Canceled {
+			slogger.Error("stalled appsec server error", "error", err)
+		}
+	}()
+
+	addr := fmt.Sprintf("localhost:%d", port)
+	waitForServer(t, addr, 10*time.Second)
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cancel()
+		conn.Close()
+	})
+
+	return auth.NewAuthorizationClient(conn), rec
 }
 
 func TestBouncer(t *testing.T) {
@@ -265,6 +321,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.httpTimeout", "5s")
 	v.Set("exemptIPs", []string{"172.16.0.0/12"})
 	v.Set("captcha.enabled", false)
 
@@ -503,6 +560,32 @@ func testBouncerWithVersion(t *testing.T, image string) {
 			"cscli", "decisions", "delete", "--range", "10.0.0.0/8",
 		})
 	})
+
+	t.Run("hung AppSec fails closed after waf.httpTimeout", func(t *testing.T) {
+		stalledClient, rec := startStalledAppSecServer(t, 8082, appsecURL.String(), key, false, slogger, templateStore)
+
+		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := stalledClient.Check(t.Context(), req)
+
+		require.Error(t, err)
+		require.Nil(t, check)
+		require.Equal(t, codes.Unavailable, status.Code(err))
+
+		assert.Equal(t, float64(1), testutil.ToFloat64(rec.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+	})
+
+	t.Run("hung AppSec passes after waf.httpTimeout with failOpen", func(t *testing.T) {
+		stalledClient, rec := startStalledAppSecServer(t, 8083, appsecURL.String(), key, true, slogger, templateStore)
+
+		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		check, err := stalledClient.Check(t.Context(), req)
+
+		require.NoError(t, err)
+		require.NotNil(t, check.HttpResponse)
+		require.Equal(t, int32(0), check.Status.Code)
+
+		assert.Equal(t, float64(1), testutil.ToFloat64(rec.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+	})
 }
 
 func TestBouncerWithCaptcha(t *testing.T) {
@@ -690,6 +773,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.httpTimeout", "5s")
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")

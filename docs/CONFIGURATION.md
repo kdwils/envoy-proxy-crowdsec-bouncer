@@ -90,6 +90,7 @@ export ENVOY_BOUNCER_BOUNCER_TLS_INSECURESKIPVERIFY=false
 | `apiKey` | string | `""` | Yes (when enabled) | CrowdSec AppSec API key |
 | `appSecURL` | string | `""` | Yes (when enabled) | CrowdSec AppSec service URL |
 | `httpTimeout` | duration | `5s` | No | Max time to wait for an AppSec inspection before returning an error |
+| `failOpen` | bool | `false` | No | On WAF error (transport error or AppSec `error` action), allow the request and treat the WAF as unavailable instead of failing closed. IP-based LAPI decisions are still enforced. Allowed requests carry reason `waf-unavailable` |
 
 ```yaml
 waf:
@@ -97,6 +98,7 @@ waf:
   apiKey: "<lapi-key>"
   appSecURL: "http://appsec:7422"
   httpTimeout: "5s"
+  failOpen: false
 ```
 
 ```bash
@@ -104,6 +106,7 @@ export ENVOY_BOUNCER_WAF_ENABLED=true
 export ENVOY_BOUNCER_WAF_APPSECURL=http://appsec:7422
 export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 export ENVOY_BOUNCER_WAF_HTTPTIMEOUT=5s
+export ENVOY_BOUNCER_WAF_FAILOPEN=false
 ```
 
 ## Network

@@ -27,6 +27,8 @@ When WAF is enabled, requests that pass the bouncer IP check are forwarded to th
 - **ban** — request is denied immediately
 - **captcha** — a CAPTCHA challenge is issued (requires CAPTCHA to be enabled)
 
+If AppSec inspection fails — for example an AppSec outage, a timeout, or AppSec returning an `error` action — the request fails closed by default. Set `waf.failOpen: true` to instead allow the request and treat the WAF as unavailable on WAF errors. This is scoped to the WAF stage only — IP-based LAPI decisions enforced by the bouncer are still applied.
+
 ## Trusted Proxies
 
 Before any decision lookup, the bouncer must determine the real client IP. When requests pass through proxies (load balancers, ingress controllers), the source IP seen by the bouncer is the proxy, not the client.

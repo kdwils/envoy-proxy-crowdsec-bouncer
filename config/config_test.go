@@ -93,6 +93,7 @@ func TestNew(t *testing.T) {
 		v.Set("waf.apiKey", "test-key")
 		v.Set("waf.appSecURL", "http://test.com")
 		v.Set("waf.httpTimeout", "1s")
+		v.Set("waf.failOpen", true)
 		v.Set("http.maxIdleConns", 42)
 		v.Set("http.maxIdleConnsPerHost", 7)
 		v.Set("http.idleConnTimeout", "5s")
@@ -118,6 +119,7 @@ func TestNew(t *testing.T) {
 				ApiKey:      "test-key",
 				AppSecURL:   "http://test.com",
 				HTTPTimeout: time.Second,
+				FailOpen:    true,
 			},
 			TrustedProxies: []string{"127.0.0.1"},
 			ExemptIPs:      []string{"10.0.0.0/8"},
