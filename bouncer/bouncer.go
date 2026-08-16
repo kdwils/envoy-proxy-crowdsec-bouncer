@@ -417,7 +417,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 	switch wafResult.Action {
 	case "allow":
 		reason := "ok"
-		if wafResult.Reason != "" {
+		if wafResult.Reason == wafFailOpenReason {
 			reason = wafResult.Reason
 		}
 		finalResult := NewCheckedRequest(parsed.RealIP, "allow", reason, http.StatusOK, bouncerResult.Decision, "", parsed, nil)
@@ -554,10 +554,12 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)
 }
 
+const wafFailOpenReason = "waf-unavailable"
+
 func (b *Bouncer) wafFailure(parsed *ParsedRequest) CheckedRequest {
 	b.PrometheusRecorder.IncWAFErrorsTotal()
 	if b.config.WAF.FailOpen {
-		return NewCheckedRequest(parsed.RealIP, "allow", "waf-unavailable", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", wafFailOpenReason, http.StatusOK, nil, "", parsed, nil)
 	}
 	return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 }
