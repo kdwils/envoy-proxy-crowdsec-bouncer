@@ -281,7 +281,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, dcRec)
 	require.NoError(t, err)
 
-	waf, err := components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, http.DefaultClient)
+	waf, err := components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, http.DefaultClient)
 	require.NoError(t, err)
 
 	mockProvider := componentmocks.NewMockCaptchaProvider(ctrl)
