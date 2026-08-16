@@ -534,6 +534,9 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	if wafErr != nil {
 		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncWAFErrorsTotal()
+		if b.config.WAF.FailOpen {
+			return NewCheckedRequest(parsed.RealIP, "allow", "", http.StatusOK, nil, "", parsed, nil)
+		}
 		return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
