@@ -416,7 +416,11 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 
 	switch wafResult.Action {
 	case "allow":
-		finalResult := NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, bouncerResult.Decision, "", parsed, nil)
+		reason := "ok"
+		if wafResult.Reason != "" {
+			reason = wafResult.Reason
+		}
+		finalResult := NewCheckedRequest(parsed.RealIP, "allow", reason, http.StatusOK, bouncerResult.Decision, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	case "captcha":
@@ -536,12 +540,12 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 		return b.wafFailure(parsed)
 	}
 
+	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
+
 	if strings.EqualFold(wafResult.Action, "error") {
 		logger.Debug("waf returned error action", slog.String("ip", parsed.RealIP))
 		return b.wafFailure(parsed)
 	}
-
-	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
@@ -550,12 +554,10 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)
 }
 
-// wafFailure returns the result for a WAF that could not complete inspection,
-// whether due to a transport error or an "error" action from AppSec
 func (b *Bouncer) wafFailure(parsed *ParsedRequest) CheckedRequest {
 	b.PrometheusRecorder.IncWAFErrorsTotal()
 	if b.config.WAF.FailOpen {
-		return NewCheckedRequest(parsed.RealIP, "allow", "", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "waf-unavailable", http.StatusOK, nil, "", parsed, nil)
 	}
 	return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
 }

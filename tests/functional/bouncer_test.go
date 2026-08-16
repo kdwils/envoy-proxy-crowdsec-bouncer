@@ -90,15 +90,6 @@ func (stalledRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	return nil, r.Context().Err()
 }
 
-func stalledWAF(t *testing.T, appsecURL, apiKey string) components.WAF {
-	t.Helper()
-
-	w, err := components.NewWAF(appsecURL, apiKey, 500*time.Millisecond, &http.Client{Transport: stalledRoundTripper{}})
-	require.NoError(t, err)
-
-	return w
-}
-
 func startStalledAppSecServer(t *testing.T, port int, appsecURL, apiKey string, failOpen bool, slogger *slog.Logger, templateStore *template.Store) (auth.AuthorizationClient, *recorder.Recorder) {
 	t.Helper()
 
@@ -116,7 +107,7 @@ func startStalledAppSecServer(t *testing.T, port int, appsecURL, apiKey string, 
 	cfg, err := config.New(v)
 	require.NoError(t, err)
 
-	ctx := logger.WithContext(t.Context(), slogger)
+	ctx, cancel := context.WithCancel(logger.WithContext(t.Context(), slogger))
 
 	reg := prometheus.NewRegistry()
 	rec, err := recorder.New(reg)
@@ -138,7 +129,10 @@ func startStalledAppSecServer(t *testing.T, port int, appsecURL, apiKey string, 
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() {
+		cancel()
+		conn.Close()
+	})
 
 	return auth.NewAuthorizationClient(conn), rec
 }
@@ -568,24 +562,20 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	})
 
 	t.Run("hung AppSec fails closed after waf.httpTimeout", func(t *testing.T) {
-		origWAF := bouncer.WAF
-		bouncer.WAF = stalledWAF(t, appsecURL.String(), key)
-		defer func() { bouncer.WAF = origWAF }()
-
-		wafErrorsBefore := testutil.ToFloat64(recorder.GetMetrics().WAFErrorsTotal)
+		stalledClient, rec := startStalledAppSecServer(t, 8082, appsecURL.String(), key, false, slogger, templateStore)
 
 		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
-		check, err := client.Check(t.Context(), req)
+		check, err := stalledClient.Check(t.Context(), req)
 
 		require.Error(t, err)
 		require.Nil(t, check)
 		require.Equal(t, codes.Unavailable, status.Code(err))
 
-		assert.Equal(t, wafErrorsBefore+1, testutil.ToFloat64(recorder.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+		assert.Equal(t, float64(1), testutil.ToFloat64(rec.GetMetrics().WAFErrorsTotal), "expected WAF error to be recorded after timeout")
 	})
 
-	t.Run("hung AppSec passes after waf.httpTimeout with openFail", func(t *testing.T) {
-		stalledClient, rec := startStalledAppSecServer(t, 8082, appsecURL.String(), key, true, slogger, templateStore)
+	t.Run("hung AppSec passes after waf.httpTimeout with failOpen", func(t *testing.T) {
+		stalledClient, rec := startStalledAppSecServer(t, 8083, appsecURL.String(), key, true, slogger, templateStore)
 
 		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
 		check, err := stalledClient.Check(t.Context(), req)

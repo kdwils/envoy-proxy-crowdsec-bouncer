@@ -1247,7 +1247,7 @@ func TestBouncer_Check(t *testing.T) {
 		want := CheckedRequest{
 			IP:         "10.0.0.2",
 			Action:     "allow",
-			Reason:     "ok",
+			Reason:     "waf-unavailable",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
 				IP:           "10.0.0.2",
@@ -1303,7 +1303,7 @@ func TestBouncer_Check(t *testing.T) {
 		want := CheckedRequest{
 			IP:         "10.0.0.4",
 			Action:     "allow",
-			Reason:     "ok",
+			Reason:     "waf-unavailable",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
 				IP:           "10.0.0.4",
@@ -2034,7 +2034,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		want := CheckedRequest{
 			IP:         "6.6.6.7",
 			Action:     "allow",
-			Reason:     "ok",
+			Reason:     "waf-unavailable",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
 				IP:           "6.6.6.7",
@@ -2092,7 +2092,7 @@ func TestBouncer_Check_AllScenarios(t *testing.T) {
 		want := CheckedRequest{
 			IP:         "7.7.7.8",
 			Action:     "allow",
-			Reason:     "ok",
+			Reason:     "waf-unavailable",
 			HTTPStatus: 200,
 			ParsedRequest: &ParsedRequest{
 				IP:           "7.7.7.8",
