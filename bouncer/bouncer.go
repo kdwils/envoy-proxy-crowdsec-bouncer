@@ -151,7 +151,7 @@ func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, httpClient)
+		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.Timeout, httpClient)
 		if err != nil {
 			return nil, err
 		}

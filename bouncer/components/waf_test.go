@@ -8,42 +8,15 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-// httpReqMatcher validates the HTTP request sent to AppSec matches expectations.
-type httpReqMatcher struct {
-	method  string
-	urlStr  string
-	headers map[string]string // subset to verify
-}
-
-func (m httpReqMatcher) Matches(x any) bool {
-	r, ok := x.(*nethttp.Request)
-	if !ok || r == nil {
-		return false
-	}
-	if m.method != "" && r.Method != m.method {
-		return false
-	}
-	if m.urlStr != "" && r.URL.String() != m.urlStr {
-		return false
-	}
-	for k, v := range m.headers {
-		if got := r.Header.Get(k); got != v {
-			return false
-		}
-	}
-	return true
-}
-
-func (m httpReqMatcher) String() string { return "httpReqMatcher" }
-
 func TestNewForwardRequest(t *testing.T) {
-	ctx := context.Background()
 	apiURL, err := url.Parse("http://crowdsec:8080/v1/")
 	assert.NoError(t, err)
 
@@ -60,13 +33,13 @@ func TestNewForwardRequest(t *testing.T) {
 			ProtoMajor: 1,
 			ProtoMinor: 1,
 		}
-		r := newForwardRequest(ctx, apiURL, areq, "key")
+		r := newForwardRequest(t.Context(), apiURL, areq, "key")
 
 		assert.Equal(t, nethttp.MethodGet, r.Method)
 		assert.Equal(t, apiURL, r.URL)
 		assert.Equal(t, apiURL.Host, r.Host)
 		assert.Equal(t, nethttp.NoBody, r.Body)
-		assert.Equal(t, ctx, r.Context())
+		assert.Equal(t, t.Context(), r.Context())
 
 		expected := map[string]string{
 			"X-Crowdsec-Appsec-Ip":           "1.2.3.4",
@@ -94,7 +67,7 @@ func TestNewForwardRequest(t *testing.T) {
 			Body:    []byte("test"),
 			RealIP:  "1.2.3.4",
 		}
-		r := newForwardRequest(ctx, apiURL, areq, "key")
+		r := newForwardRequest(t.Context(), apiURL, areq, "key")
 
 		assert.Equal(t, nethttp.MethodPost, r.Method)
 		assert.Equal(t, int64(4), r.ContentLength)
@@ -112,30 +85,23 @@ func TestNewForwardRequest(t *testing.T) {
 
 	t.Run("http version header omitted when proto major is zero", func(t *testing.T) {
 		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}}
-		r := newForwardRequest(ctx, apiURL, areq, "key")
+		r := newForwardRequest(t.Context(), apiURL, areq, "key")
 		assert.Empty(t, r.Header.Get("X-Crowdsec-Appsec-Http-Version"))
 	})
 }
 
-func newTestWAF(appsecURL, apiKey string, http HTTPClient) WAF {
-	u, err := url.Parse(appsecURL)
-	if err != nil {
-		panic(err)
-	}
-	return WAF{APIURL: appsecURL, apiURL: u, APIKey: apiKey, http: http}
-}
-
 func TestWAF_Inspect(t *testing.T) {
 	t.Run("error on request build", func(t *testing.T) {
-		_, err := NewWAF(":badurl", "", nethttp.DefaultClient)
+		_, err := NewWAF(":badurl", "", time.Second, nethttp.DefaultClient)
 		assert.Error(t, err)
 	})
 
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf := newTestWAF("http://test", "", mockHTTP)
+		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
+		require.NoError(t, err)
+		waf.http = mockHTTP
 		expectedHeaders := map[string]string{
 			"User-Agent":             "UA",
 			"X-Crowdsec-Appsec-Ip":   "192.168.1.1",
@@ -143,18 +109,26 @@ func TestWAF_Inspect(t *testing.T) {
 			"X-Crowdsec-Appsec-Host": "localhost",
 			"X-Crowdsec-Appsec-Verb": "GET",
 		}
-		mockHTTP.EXPECT().Do(httpReqMatcher{method: "GET", urlStr: "http://test", headers: expectedHeaders}).Return(nil, errors.New("fail")).Times(1)
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(nil, errors.New("fail")).Times(1)
 		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "UA"}, RealIP: "192.168.1.1", URL: url.URL{Scheme: "http", Host: "localhost", Path: "/test"}}
-		ctx := context.Background()
-		_, err := waf.Inspect(ctx, areq)
-		assert.Error(t, err)
+		_, err = waf.Inspect(t.Context(), areq)
+		require.Error(t, err)
+
+		require.NotNil(t, gotReq)
+		assert.Equal(t, nethttp.MethodGet, gotReq.Method)
+		assert.Equal(t, "http://test", gotReq.URL.String())
+		for k, want := range expectedHeaders {
+			assert.Equal(t, want, gotReq.Header.Get(k), "header %q", k)
+		}
 	})
 
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf := newTestWAF("http://test", "", mockHTTP)
+		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
+		require.NoError(t, err)
+		waf.http = mockHTTP
 		response := &nethttp.Response{StatusCode: 500, Status: "500 error", Body: io.NopCloser(strings.NewReader(""))}
 		expectedHeaders := map[string]string{
 			"User-Agent":             "UA",
@@ -163,18 +137,26 @@ func TestWAF_Inspect(t *testing.T) {
 			"X-Crowdsec-Appsec-Host": "localhost",
 			"X-Crowdsec-Appsec-Verb": "GET",
 		}
-		mockHTTP.EXPECT().Do(httpReqMatcher{method: "GET", urlStr: "http://test", headers: expectedHeaders}).Return(response, nil).Times(1)
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
 		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "UA"}, RealIP: "192.168.1.1", URL: url.URL{Scheme: "http", Host: "localhost", Path: "/test"}}
-		ctx := context.Background()
-		_, err := waf.Inspect(ctx, areq)
-		assert.Error(t, err)
+		_, err = waf.Inspect(t.Context(), areq)
+		require.Error(t, err)
+
+		require.NotNil(t, gotReq)
+		assert.Equal(t, nethttp.MethodGet, gotReq.Method)
+		assert.Equal(t, "http://test", gotReq.URL.String())
+		for k, want := range expectedHeaders {
+			assert.Equal(t, want, gotReq.Header.Get(k), "header %q", k)
+		}
 	})
 
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf := newTestWAF("http://test", "key", mockHTTP)
+		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
+		require.NoError(t, err)
+		waf.http = mockHTTP
 		respBody := `{"action":"ban","http_status":403}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		expectedHeaders := map[string]string{
@@ -186,20 +168,27 @@ func TestWAF_Inspect(t *testing.T) {
 			"X-Crowdsec-Appsec-Api-Key":    "key",
 			"X-Crowdsec-Appsec-User-Agent": "test-agent",
 		}
-		mockHTTP.EXPECT().Do(httpReqMatcher{method: "GET", urlStr: "http://test", headers: expectedHeaders}).Return(response, nil).Times(1)
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
 		areq := AppSecRequest{Method: "GET", Headers: map[string]string{"user-agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
-		ctx := context.Background()
-		result, err := waf.Inspect(ctx, areq)
-		assert.NoError(t, err)
+		result, err := waf.Inspect(t.Context(), areq)
+		require.NoError(t, err)
 		assert.Equal(t, "ban", result.Action)
 		assert.Equal(t, 403, result.HTTPStatus)
-	})
 
+		require.NotNil(t, gotReq)
+		assert.Equal(t, nethttp.MethodGet, gotReq.Method)
+		assert.Equal(t, "http://test", gotReq.URL.String())
+		for k, want := range expectedHeaders {
+			assert.Equal(t, want, gotReq.Header.Get(k), "header %q", k)
+		}
+	})
 	t.Run("with body", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf := newTestWAF("http://test", "key", mockHTTP)
+		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
+		require.NoError(t, err)
+		waf.http = mockHTTP
 		respBody := `{"action":"captcha"}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		expectedHeaders := map[string]string{
@@ -212,11 +201,60 @@ func TestWAF_Inspect(t *testing.T) {
 			"X-Crowdsec-Appsec-Api-Key":    "key",
 			"X-Crowdsec-Appsec-User-Agent": "test-agent",
 		}
-		mockHTTP.EXPECT().Do(httpReqMatcher{method: "POST", urlStr: "http://test", headers: expectedHeaders}).Return(response, nil).Times(1)
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
 		areq := AppSecRequest{Method: "POST", Headers: map[string]string{"Content-Type": "application/json", "user-agent": "test-agent"}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}, Body: []byte("test")}
-		ctx := context.Background()
-		result, err := waf.Inspect(ctx, areq)
-		assert.NoError(t, err)
+		result, err := waf.Inspect(t.Context(), areq)
+		require.NoError(t, err)
 		assert.Equal(t, "captcha", result.Action)
+
+		require.NotNil(t, gotReq)
+		assert.Equal(t, nethttp.MethodPost, gotReq.Method)
+		assert.Equal(t, "http://test", gotReq.URL.String())
+		for k, want := range expectedHeaders {
+			assert.Equal(t, want, gotReq.Header.Get(k), "header %q", k)
+		}
 	})
+
+	t.Run("applies configured timeout to the request context", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		waf, err := NewWAF("http://test", "", 250*time.Millisecond, nethttp.DefaultClient)
+		require.NoError(t, err)
+		waf.http = mockHTTP
+
+		var gotReq *nethttp.Request
+		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"allow"}`))}
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
+		before := time.Now()
+		_, err = waf.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+
+		require.NotNil(t, gotReq)
+		deadline, ok := gotReq.Context().Deadline()
+		require.True(t, ok, "expected request context to carry a deadline")
+		remaining := time.Until(deadline)
+		assert.LessOrEqual(t, deadline, before.Add(250*time.Millisecond))
+		assert.Greater(t, remaining, time.Duration(0))
+	})
+
+	t.Run("hung appsec returns an error once the timeout elapses", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		waf, err := NewWAF("http://test", "", 50*time.Millisecond, nethttp.DefaultClient)
+		require.NoError(t, err)
+		waf.http = mockHTTP
+
+		mockHTTP.EXPECT().Do(gomock.Any()).DoAndReturn(func(r *nethttp.Request) (*nethttp.Response, error) {
+			<-r.Context().Done()
+			return nil, r.Context().Err()
+		}).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
+		_, err = waf.Inspect(context.Background(), areq)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
 }
