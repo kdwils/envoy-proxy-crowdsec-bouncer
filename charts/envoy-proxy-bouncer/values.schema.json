@@ -334,8 +334,8 @@
                             "default": false,
                             "type": "boolean"
                         },
-                        "timeout": {
-                            "default": "1s",
+                        "httpTimeout": {
+                            "default": "5s",
                             "type": "string"
                         }
                     }
