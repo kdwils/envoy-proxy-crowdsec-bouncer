@@ -68,10 +68,10 @@ release:
     name: envoy-proxy-crowdsec-bouncer
   header: |
     # Features
-    * Added a new configuration for the WAF check path where requests are allowed if AppSec errors or times out instead of failing closed so that IP-based LAPI decisions can still be enforced. This can be configured via [`waf.failOpen`](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/examples/config/example.yaml#L45-L48)
+    * (#234) Added a new configuration for the WAF check path where requests are allowed if AppSec errors or times out instead of failing closed so that IP-based LAPI decisions can still be enforced. This can be configured via [`waf.failOpen`](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/examples/config/example.yaml#L45-L48)
 
     # Bugfixes
-    * Fixed an issue where WAF requests were not setting a http timeout via context cancellation (#234). By default, the timeout is 5s, but can be configured via [`waf.httpTimeout`](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/examples/config/example.yaml#L44)
+    * (#234) Fixed an issue where WAF requests were not setting a http timeout via context cancellation. By default, the timeout is 5s, but can be configured via [`waf.httpTimeout`](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/examples/config/example.yaml#L44)
 
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
