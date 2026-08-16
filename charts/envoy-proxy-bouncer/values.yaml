@@ -74,6 +74,7 @@ config:
     apiKeySecretRef: # @schema type: object
       name: "" # @schema default: ""
       key: "" # @schema default: ""
+    httpTimeout: "5s" # @schema default: "5s"
 
   # enable endpoint for prometheus metrics scraping on the configured port
   prometheus:

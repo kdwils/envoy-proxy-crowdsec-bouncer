@@ -92,6 +92,7 @@ func TestNew(t *testing.T) {
 		v.Set("waf.enabled", true)
 		v.Set("waf.apiKey", "test-key")
 		v.Set("waf.appSecURL", "http://test.com")
+		v.Set("waf.httpTimeout", "1s")
 		v.Set("http.maxIdleConns", 42)
 		v.Set("http.maxIdleConnsPerHost", 7)
 		v.Set("http.idleConnTimeout", "5s")
@@ -113,9 +114,10 @@ func TestNew(t *testing.T) {
 				TickerInterval: "30s",
 			},
 			WAF: WAF{
-				Enabled:   true,
-				ApiKey:    "test-key",
-				AppSecURL: "http://test.com",
+				Enabled:     true,
+				ApiKey:      "test-key",
+				AppSecURL:   "http://test.com",
+				HTTPTimeout: time.Second,
 			},
 			TrustedProxies: []string{"127.0.0.1"},
 			ExemptIPs:      []string{"10.0.0.0/8"},

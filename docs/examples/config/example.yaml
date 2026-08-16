@@ -41,6 +41,7 @@ waf:
   enabled: false
   apiKey: "<lapi-key>"
   appSecURL: "http://appsec:7422"
+  httpTimeout: "5s"
 
 captcha:
   enabled: false

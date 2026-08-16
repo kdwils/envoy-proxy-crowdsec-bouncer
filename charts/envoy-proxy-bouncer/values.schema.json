@@ -333,6 +333,10 @@
                         "enabled": {
                             "default": false,
                             "type": "boolean"
+                        },
+                        "httpTimeout": {
+                            "default": "5s",
+                            "type": "string"
                         }
                     }
                 },
