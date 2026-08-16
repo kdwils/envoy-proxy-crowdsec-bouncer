@@ -1383,6 +1383,49 @@ func TestBouncer_Check(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
+	t.Run("waf action matching is case insensitive", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mb := remediationmocks.NewMockDecisionCache(ctrl)
+		mw := remediationmocks.NewMockWAF(ctrl)
+
+		rec := recorder.NewNoOp()
+		r := Bouncer{
+			DecisionCache:      mb,
+			WAF:                mw,
+			PrometheusRecorder: rec,
+			remediationMetrics: newRemediationMetrics(),
+		}
+
+		req := mkReq("10.0.0.5", "http", "h", "/p", "GET", "HTTP/1.0", "")
+
+		mb.EXPECT().GetDecision(gomock.Any(), "10.0.0.5").Return(nil, nil)
+		mw.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ALLOW"}, nil)
+
+		got := r.Check(context.Background(), req)
+		want := CheckedRequest{
+			IP:         "10.0.0.5",
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+			ParsedRequest: &ParsedRequest{
+				IP:           "10.0.0.5",
+				RealIP:       "10.0.0.5",
+				ParsedRealIP: netip.MustParseAddr("10.0.0.5"),
+				Headers:      map[string]string{":authority": "h", ":method": "GET", ":path": "/p", ":scheme": "http", "user-agent": "UT"},
+
+				URL:        url.URL{Scheme: "http", Host: "h", Path: "/p"},
+				Method:     "GET",
+				UserAgent:  "UT",
+				Body:       nil,
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			},
+		}
+		require.Equal(t, want, got)
+	})
+
 	t.Run("allow both", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()

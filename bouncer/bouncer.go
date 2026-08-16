@@ -540,9 +540,11 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 		return b.wafFailure(parsed)
 	}
 
+	wafResult.Action = strings.ToLower(wafResult.Action)
+
 	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
 
-	if strings.EqualFold(wafResult.Action, "error") {
+	if wafResult.Action == "error" {
 		logger.Debug("waf returned error action", slog.String("ip", parsed.RealIP))
 		return b.wafFailure(parsed)
 	}
