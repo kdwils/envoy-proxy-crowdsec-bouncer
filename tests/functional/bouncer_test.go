@@ -81,6 +81,38 @@ func createHttpRequest(method, path, authority string, extraHeaders map[string]s
 	}
 }
 
+type stalledRoundTripper struct{}
+
+func (stalledRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	<-r.Context().Done()
+	return nil, r.Context().Err()
+}
+
+func newStalledAppSecBouncer(t *testing.T, appsecURL, apiKey string, failOpen bool) *bouncer.Bouncer {
+	t.Helper()
+
+	v := viper.New()
+	v.Set("bouncer.enabled", false)
+	v.Set("waf.enabled", true)
+	v.Set("waf.appsecURL", appsecURL)
+	v.Set("waf.apiKey", apiKey)
+	v.Set("waf.httpTimeout", "500ms")
+	v.Set("waf.failOpen", failOpen)
+	v.Set("captcha.enabled", false)
+
+	cfg, err := config.New(v)
+	require.NoError(t, err)
+
+	reg := prometheus.NewRegistry()
+	rec, err := recorder.New(reg)
+	require.NoError(t, err)
+
+	b, err := bouncer.New(cfg, rec, &http.Client{Transport: stalledRoundTripper{}})
+	require.NoError(t, err)
+
+	return b
+}
+
 func TestBouncer(t *testing.T) {
 	for _, image := range CrowdsecImages {
 		t.Run(image, func(t *testing.T) {
@@ -265,6 +297,7 @@ func testBouncerWithVersion(t *testing.T, image string) {
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.httpTimeout", "5s")
 	v.Set("exemptIPs", []string{"172.16.0.0/12"})
 	v.Set("captcha.enabled", false)
 
@@ -503,6 +536,32 @@ func testBouncerWithVersion(t *testing.T, image string) {
 			"cscli", "decisions", "delete", "--range", "10.0.0.0/8",
 		})
 	})
+
+	t.Run("hung AppSec fails closed after waf.httpTimeout", func(t *testing.T) {
+		b := newStalledAppSecBouncer(t, appsecURL.String(), key, false)
+
+		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		result := b.Check(t.Context(), req)
+
+		require.Equal(t, "error", result.Action)
+		require.Equal(t, http.StatusInternalServerError, result.HTTPStatus)
+
+		metrics := b.PrometheusRecorder.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+	})
+
+	t.Run("hung AppSec passes after waf.httpTimeout with openFail", func(t *testing.T) {
+		b := newStalledAppSecBouncer(t, appsecURL.String(), key, true)
+
+		req := createCheckRequest("192.168.1.50", createHttpRequest("GET", "/testing", "my-host.com", nil))
+		result := b.Check(t.Context(), req)
+
+		require.Equal(t, "allow", result.Action)
+		require.Equal(t, http.StatusOK, result.HTTPStatus)
+
+		metrics := b.PrometheusRecorder.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFErrorsTotal), "expected WAF error to be recorded after timeout")
+	})
 }
 
 func TestBouncerWithCaptcha(t *testing.T) {
@@ -690,6 +749,7 @@ func testBouncerWithCaptchaVersion(t *testing.T, image string) {
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", key)
 	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.httpTimeout", "5s")
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")
