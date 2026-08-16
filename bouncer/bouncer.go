@@ -536,12 +536,12 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 		return b.wafFailure(parsed)
 	}
 
-	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
-
 	if strings.EqualFold(wafResult.Action, "error") {
 		logger.Debug("waf returned error action", slog.String("ip", parsed.RealIP))
 		return b.wafFailure(parsed)
 	}
+
+	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
 
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
