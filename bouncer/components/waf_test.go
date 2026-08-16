@@ -126,6 +126,7 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -153,6 +154,7 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -181,6 +183,7 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -213,6 +216,7 @@ func TestWAF_Inspect(t *testing.T) {
 	})
 	t.Run("with body", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -246,6 +250,7 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("hung appsec returns an error once the timeout elapses", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "", 50*time.Millisecond, nethttp.DefaultClient)
 		require.NoError(t, err)
