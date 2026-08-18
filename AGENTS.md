@@ -35,8 +35,8 @@ Single package / single test: `go test -race ./bouncer -run TestBouncer_Check/sp
 
 ## Config wiring
 
-- Defaults and viper wiring live in `config/defaults.go` — `config.GetViper(cfgFile)` returns a ready-to-use `*viper.Viper` with the env prefix (`ENVOY_BOUNCER_`), key replacer (`.`→`_`), AutomaticEnv, optional config file, and all defaults. When adding a config key, add the struct field in `config/` **and** the default in `config/defaults.go`, or the zero value silently applies.
-- Env vars: prefix `ENVOY_BOUNCER_` with `.`→`_` mapping (e.g. `ENVOY_BOUNCER_BOUNCER_APIKEY`... verify exact key form against the replacer in `config/defaults.go`); `--config` flag accepts a yaml/json file.
+- Defaults and viper wiring live in `config/config.go` — `config.GetViper(cfgFile)` returns a ready-to-use `*viper.Viper` with the env prefix (`ENVOY_BOUNCER_`), key replacer (`.`→`_`), AutomaticEnv, optional config file, and all defaults. When adding a config key, add the struct field in `config/` **and** the default in `config/defaults.go`, or the zero value silently applies.
+- Env vars: prefix `ENVOY_BOUNCER_` with `.`→`_` mapping (e.g. `ENVOY_BOUNCER_BOUNCER_APIKEY`... verify exact key form against the replacer in `config/config.go`); `--config` flag accepts a yaml/json file.
 - User-facing docs for config/captcha/webhooks/templates live in `docs/` — update them when changing behavior.
 
 ## Mocks
