@@ -154,6 +154,7 @@ func New(v *viper.Viper) (Config, error) {
 	return c, err
 }
 
+// GetViper creates a viper instance containing default values
 func GetViper(cfgFile string) *viper.Viper {
 	v := viper.New()
 
