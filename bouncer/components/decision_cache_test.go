@@ -368,8 +368,8 @@ func makeDecisions(tb testing.TB, ctx context.Context, count int, cidrRatio floa
 }
 
 func BenchmarkGetDecision_ExactIP_1k(b *testing.B) {
-	dc := makeDecisions(b, context.Background(), 1000, 0)
-	ctx := context.Background()
+	dc := makeDecisions(b, b.Context(), 1000, 0)
+	ctx := b.Context()
 	ips := make([]string, 1000)
 	for i := range ips {
 		ips[i] = fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
@@ -380,8 +380,8 @@ func BenchmarkGetDecision_ExactIP_1k(b *testing.B) {
 }
 
 func BenchmarkGetDecision_ExactIP_10k(b *testing.B) {
-	dc := makeDecisions(b, context.Background(), 10000, 0)
-	ctx := context.Background()
+	dc := makeDecisions(b, b.Context(), 10000, 0)
+	ctx := b.Context()
 	ips := make([]string, 10000)
 	for i := range ips {
 		ips[i] = fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)
@@ -392,8 +392,8 @@ func BenchmarkGetDecision_ExactIP_10k(b *testing.B) {
 }
 
 func BenchmarkGetDecision_CIDR_1k(b *testing.B) {
-	dc := makeDecisions(b, context.Background(), 1000, 0.5)
-	ctx := context.Background()
+	dc := makeDecisions(b, b.Context(), 1000, 0.5)
+	ctx := b.Context()
 	ips := make([]string, 256)
 	for i := range ips {
 		ips[i] = fmt.Sprintf("172.%d.5.5", i)
@@ -404,8 +404,8 @@ func BenchmarkGetDecision_CIDR_1k(b *testing.B) {
 }
 
 func BenchmarkGetDecision_Mixed_10k(b *testing.B) {
-	dc := makeDecisions(b, context.Background(), 10000, 0.3)
-	ctx := context.Background()
+	dc := makeDecisions(b, b.Context(), 10000, 0.3)
+	ctx := b.Context()
 	ips := make([]string, 10000)
 	for i := range ips {
 		ips[i] = fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xff, (i>>8)&0xff, i&0xff)

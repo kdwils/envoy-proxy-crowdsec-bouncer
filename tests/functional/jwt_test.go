@@ -54,6 +54,7 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", env.apiKey)
 	v.Set("waf.appsecURL", env.appsecCaptchaURL)
+	v.Set("waf.httpTimeout", "5s")
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")

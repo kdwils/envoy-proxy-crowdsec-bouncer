@@ -125,10 +125,11 @@ func TestNew(t *testing.T) {
 				},
 			},
 			WAF: WAF{
-<<<<<<< HEAD
-				Enabled:   true,
-				AppSecURL: "http://test.com",
-				ApiKey:    "test-key",
+				Enabled:     true,
+				AppSecURL:   "http://test.com",
+				ApiKey:      "test-key",
+				HTTPTimeout: time.Second,
+				FailOpen:    true,
 			},
 			Captcha: Captcha{
 				Enabled:                          false,
@@ -164,13 +165,6 @@ func TestNew(t *testing.T) {
 				ShowDeniedPage:         false,
 				CaptchaTemplatePath:    "",
 				CaptchaTemplateHeaders: "",
-=======
-				Enabled:     true,
-				ApiKey:      "test-key",
-				AppSecURL:   "http://test.com",
-				HTTPTimeout: time.Second,
-				FailOpen:    true,
->>>>>>> b7308db40165c9d6a805fc5c43d1960b380992b7
 			},
 			HTTP: HTTP{
 				MaxIdleConns:        42,
