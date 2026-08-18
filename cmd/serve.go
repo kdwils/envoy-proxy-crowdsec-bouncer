@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // ServeCmd represents the serve command
@@ -26,8 +25,7 @@ var ServeCmd = &cobra.Command{
 	Short: "serve the envoy gateway bouncer",
 	Long:  `serve the envoy gateway bouncer`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		v := viper.GetViper()
-		config, err := config.New(v)
+		config, err := config.New(config.GetViper(cfgFile))
 		if err != nil {
 			return err
 		}

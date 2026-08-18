@@ -15,7 +15,9 @@ import (
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
+	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
@@ -32,6 +34,13 @@ func marshalProto(t *testing.T, msg proto.Message) []byte {
 	require.NoError(t, err)
 
 	return b
+}
+
+func newTestViper() *viper.Viper {
+	v := 	config.GetViper("")
+	v.Set("server.logLevel", "debug")
+	v.Set("templates.showDeniedPage", false)
+	return v
 }
 
 func wantAllowedResponse() *auth.CheckResponse {

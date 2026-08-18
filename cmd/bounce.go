@@ -10,7 +10,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var ips []string
@@ -21,8 +20,7 @@ var bounceCmd = &cobra.Command{
 	Short: "Test if an IP should be bounced or not",
 	Long:  `A command that can be used to test if an IP should be bounced or not`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		v := viper.GetViper()
-		config, err := config.New(v)
+		config, err := config.New(config.GetViper(cfgFile))
 		if err != nil {
 			return err
 		}
