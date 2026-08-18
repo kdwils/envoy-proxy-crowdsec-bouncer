@@ -30,6 +30,7 @@ The following CrowdSec versions have been tested. Other versions may work but ha
 | v1.7.4           | ✅ |
 | v1.7.6           | ✅ |
 | v1.7.7           | ✅ |
+| v1.7.8           | ✅ |
 
 ## How It Works
 

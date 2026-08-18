@@ -16,34 +16,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// httpReqMatcher validates the HTTP request sent to AppSec matches expectations.
-type httpReqMatcher struct {
-	method  string
-	urlStr  string
-	headers map[string]string // subset to verify
-}
-
-func (m httpReqMatcher) Matches(x any) bool {
-	r, ok := x.(*nethttp.Request)
-	if !ok || r == nil {
-		return false
-	}
-	if m.method != "" && r.Method != m.method {
-		return false
-	}
-	if m.urlStr != "" && r.URL.String() != m.urlStr {
-		return false
-	}
-	for k, v := range m.headers {
-		if got := r.Header.Get(k); got != v {
-			return false
-		}
-	}
-	return true
-}
-
-func (m httpReqMatcher) String() string { return "httpReqMatcher" }
-
 func TestNewForwardRequest(t *testing.T) {
 	apiURL, err := url.Parse("http://crowdsec:8080/v1/")
 	assert.NoError(t, err)
@@ -126,7 +98,6 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -154,7 +125,6 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -183,7 +153,6 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -216,7 +185,6 @@ func TestWAF_Inspect(t *testing.T) {
 	})
 	t.Run("with body", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -250,7 +218,6 @@ func TestWAF_Inspect(t *testing.T) {
 
 	t.Run("hung appsec returns an error once the timeout elapses", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		waf, err := NewWAF("http://test", "", 50*time.Millisecond, nethttp.DefaultClient)
 		require.NoError(t, err)
@@ -262,7 +229,7 @@ func TestWAF_Inspect(t *testing.T) {
 		}).Times(1)
 
 		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "example.com", Path: "/foo"}}
-		_, err = waf.Inspect(context.Background(), areq)
+		_, err = waf.Inspect(t.Context(), areq)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 }

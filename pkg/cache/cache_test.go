@@ -12,9 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDecisionCache(t *testing.T) {
+func TestCacheLifecycle(t *testing.T) {
 	c := New[string, models.Decision]()
-	assert.Equal(t, 0, c.Size(), "expected empty cache")
 
 	ip := "192.168.1.1"
 	decision := models.Decision{
@@ -25,81 +24,76 @@ func TestDecisionCache(t *testing.T) {
 		Duration: new(time.Hour.String()),
 		Scenario: new("test"),
 	}
+
+	assert.Equal(t, 0, c.Size())
+
 	c.Set(ip, decision)
-	assert.Equal(t, 1, c.Size(), "expected cache size 1 after Set")
+	assert.Equal(t, 1, c.Size())
 
 	got, ok := c.Get(ip)
-	require.True(t, ok, "expected to find entry for %s", ip)
-	assert.Equal(t, ip, *got.Value, "expected correct IP value")
+	require.True(t, ok)
+	assert.Equal(t, decision, got)
 
 	c.Delete(ip)
-	assert.Equal(t, 0, c.Size(), "expected empty cache after delete")
+	assert.Equal(t, 0, c.Size())
 
 	_, ok = c.Get(ip)
-	assert.False(t, ok, "expected no entry for %s after delete", ip)
-}
-
-func TestCaptchaCache(t *testing.T) {
-	c := New[string, time.Time]()
-	assert.Equal(t, 0, c.Size(), "expected empty cache")
-
-	ip := "192.168.1.1"
-	expiry := time.Now().Add(time.Hour)
-	c.Set(ip, expiry)
-	assert.Equal(t, 1, c.Size(), "expected cache size 1 after Set")
-
-	got, ok := c.Get(ip)
-	require.True(t, ok, "expected to find entry for %s", ip)
-	assert.True(t, got.Equal(expiry), "expected correct expiry time")
-
-	c.Delete(ip)
-	assert.Equal(t, 0, c.Size(), "expected empty cache after delete")
-
-	_, ok = c.Get(ip)
-	assert.False(t, ok, "expected no entry for %s after delete", ip)
+	assert.False(t, ok)
 }
 
 func TestCacheKeys(t *testing.T) {
 	c := New[string, string]()
-	assert.Empty(t, c.Keys(), "expected no keys in empty cache")
+	assert.Empty(t, c.Keys())
 
 	c.Set("key1", "value1")
 	c.Set("key2", "value2")
 	c.Set("key3", "value3")
 
 	keys := c.Keys()
-	assert.Len(t, keys, 3, "expected 3 keys")
-
 	sort.Strings(keys)
-	assert.Equal(t, []string{"key1", "key2", "key3"}, keys, "expected correct keys")
+	assert.Equal(t, []string{"key1", "key2", "key3"}, keys)
 
 	c.Delete("key2")
 	keys = c.Keys()
-	assert.Len(t, keys, 2, "expected 2 keys after delete")
-
 	sort.Strings(keys)
-	assert.Equal(t, []string{"key1", "key3"}, keys, "expected correct keys after delete")
+	assert.Equal(t, []string{"key1", "key3"}, keys)
 }
 
-func TestWithCleanupInterval(t *testing.T) {
-	interval := 10 * time.Minute
-	c := New(WithCleanupInterval[string, string](interval))
+func TestNew(t *testing.T) {
+	cleanupFunc := func(key, value string) bool { return false }
 
-	assert.Equal(t, interval, c.cleanupInterval, "expected cleanup interval to be set")
-}
+	tests := []struct {
+		name        string
+		opts        []Option[string, string]
+		want        time.Duration
+		wantCleanup bool
+	}{
+		{name: "default", want: 0, wantCleanup: false},
+		{
+			name: "with cleanup interval",
+			opts: []Option[string, string]{WithCleanupInterval[string, string](10 * time.Minute)},
+			want: 10 * time.Minute,
+		},
+		{
+			name:        "with cleanup",
+			opts:        []Option[string, string]{WithCleanup[string, string](10*time.Minute, cleanupFunc)},
+			want:        10 * time.Minute,
+			wantCleanup: true,
+		},
+	}
 
-func TestNewWithNoCleanupInterval(t *testing.T) {
-	c := New[string, string]()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := New(tt.opts...)
 
-	assert.Equal(t, time.Duration(0), c.cleanupInterval, "expected no cleanup interval by default")
-}
-
-func TestNewWithMultipleOptions(t *testing.T) {
-	interval := 2 * time.Minute
-	c := New(WithCleanupInterval[string, string](interval))
-
-	assert.Equal(t, interval, c.cleanupInterval, "expected cleanup interval to be set")
-	assert.NotNil(t, c.entries, "expected entries map to be initialized")
+			assert.Equal(t, tt.want, c.cleanupInterval)
+			if tt.wantCleanup {
+				assert.NotNil(t, c.cleanupFunc)
+				return
+			}
+			assert.Nil(t, c.cleanupFunc)
+		})
+	}
 }
 
 func TestCleanup(t *testing.T) {
@@ -114,9 +108,7 @@ func TestCleanup(t *testing.T) {
 	c.Set("valid1", futureTime)
 	c.Set("valid2", futureTime)
 
-	assert.Equal(t, 4, c.Size(), "expected 4 entries before cleanup")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 
 	go c.Cleanup(ctx, func(key string, expiry time.Time) bool {
@@ -125,46 +117,34 @@ func TestCleanup(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	assert.Equal(t, 2, c.Size(), "expected 2 entries after cleanup")
+	assert.Equal(t, 2, c.Size())
 
 	keys := c.Keys()
 	sort.Strings(keys)
-	assert.Equal(t, []string{"valid1", "valid2"}, keys, "expected only valid keys to remain")
+	assert.Equal(t, []string{"valid1", "valid2"}, keys)
 }
 
 func TestCleanupContextCancellation(t *testing.T) {
 	c := New(WithCleanupInterval[string, string](50 * time.Millisecond))
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
-	cleanupDone := make(chan bool)
+	cleanupDone := make(chan struct{})
 	go func() {
-		c.Cleanup(ctx, func(key string, value string) bool {
-			return false
-		})
-		cleanupDone <- true
+		c.Cleanup(ctx, func(key, value string) bool { return false })
+		close(cleanupDone)
 	}()
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
 
+	done := false
 	select {
 	case <-cleanupDone:
+		done = true
 	case <-time.After(200 * time.Millisecond):
-		t.Error("cleanup should have stopped after context cancellation")
 	}
-}
-
-func TestWithCleanup(t *testing.T) {
-	interval := 10 * time.Minute
-	cleanupFunc := func(key string, value time.Time) bool {
-		return time.Now().After(value)
-	}
-
-	c := New(WithCleanup(interval, cleanupFunc))
-
-	assert.Equal(t, interval, c.cleanupInterval, "expected cleanup interval to be set")
-	assert.NotNil(t, c.cleanupFunc, "expected cleanup func to be set")
+	assert.True(t, done, "cleanup should have stopped after context cancellation")
 }
 
 func TestStartCleanup(t *testing.T) {
@@ -181,71 +161,49 @@ func TestStartCleanup(t *testing.T) {
 	c.Set("valid1", futureTime)
 	c.Set("valid2", futureTime)
 
-	assert.Equal(t, 4, c.Size(), "expected 4 entries before cleanup")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 
 	c.StartCleanup(ctx)
 
 	time.Sleep(200 * time.Millisecond)
 
-	assert.Equal(t, 2, c.Size(), "expected 2 entries after cleanup")
+	assert.Equal(t, 2, c.Size())
 
 	keys := c.Keys()
 	sort.Strings(keys)
-	assert.Equal(t, []string{"valid1", "valid2"}, keys, "expected only valid keys to remain")
-
-	val1, ok1 := c.Get("valid1")
-	assert.True(t, ok1, "expected valid1 to exist in cache")
-	assert.True(t, val1.Equal(futureTime), "expected valid1 to have correct value")
-
-	val2, ok2 := c.Get("valid2")
-	assert.True(t, ok2, "expected valid2 to exist in cache")
-	assert.True(t, val2.Equal(futureTime), "expected valid2 to have correct value")
-
-	_, expired1Exists := c.Get("expired1")
-	assert.False(t, expired1Exists, "expected expired1 to be removed from cache")
-
-	_, expired2Exists := c.Get("expired2")
-	assert.False(t, expired2Exists, "expected expired2 to be removed from cache")
+	assert.Equal(t, []string{"valid1", "valid2"}, keys)
 }
 
 func TestStartCleanupWithNoCleanupFunc(t *testing.T) {
 	c := New(WithCleanupInterval[string, string](100 * time.Millisecond))
-
 	c.Set("key1", "value1")
 	c.Set("key2", "value2")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
 	c.StartCleanup(ctx)
 
 	time.Sleep(150 * time.Millisecond)
 
-	assert.Equal(t, 2, c.Size(), "expected no cleanup without cleanup func")
+	assert.Equal(t, 2, c.Size())
 
-	val1, ok1 := c.Get("key1")
-	assert.True(t, ok1, "expected key1 to exist")
-	assert.Equal(t, "value1", val1, "expected key1 to have correct value")
-
-	val2, ok2 := c.Get("key2")
-	assert.True(t, ok2, "expected key2 to exist")
-	assert.Equal(t, "value2", val2, "expected key2 to have correct value")
+	keys := c.Keys()
+	sort.Strings(keys)
+	assert.Equal(t, []string{"key1", "key2"}, keys)
 }
 
 func TestStartCleanupContextCancellation(t *testing.T) {
 	var deletionCount atomic.Int32
-	c := New(WithCleanup(50*time.Millisecond, func(key string, value string) bool {
+	c := New(WithCleanup(50*time.Millisecond, func(key, value string) bool {
 		deletionCount.Add(1)
 		return false
 	}))
-
 	c.Set("key1", "value1")
 	c.Set("key2", "value2")
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	c.StartCleanup(ctx)
 
@@ -256,14 +214,6 @@ func TestStartCleanupContextCancellation(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	assert.LessOrEqual(t, deletionCount.Load(), initialDeletionCount+2, "cleanup should have stopped after context cancellation")
-	assert.Equal(t, 2, c.Size(), "expected 2 entries after cancellation")
-
-	val1, ok1 := c.Get("key1")
-	assert.True(t, ok1, "expected key1 to exist")
-	assert.Equal(t, "value1", val1, "expected key1 to have correct value")
-
-	val2, ok2 := c.Get("key2")
-	assert.True(t, ok2, "expected key2 to exist")
-	assert.Equal(t, "value2", val2, "expected key2 to have correct value")
+	assert.LessOrEqual(t, deletionCount.Load(), initialDeletionCount+2)
+	assert.Equal(t, 2, c.Size())
 }

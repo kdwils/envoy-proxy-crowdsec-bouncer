@@ -5,9 +5,7 @@ package functional
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,230 +29,31 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"gopkg.in/yaml.v3"
 )
 
-func TestJWTCompleteVerificationFlow(t *testing.T) {
-	for _, image := range CrowdsecImages {
-		t.Run(image, func(t *testing.T) {
-			testJWTCompleteVerificationFlowVersion(t, image)
-		})
-	}
-}
-
-func waitForServer(t *testing.T, addr string, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	var lastErr error
-	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, time.Second)
-		if err == nil {
-			conn.Close()
-			return
-		}
-		lastErr = err
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("server at %s did not become ready within %v: %v", addr, timeout, lastErr)
-}
-
-func waitForDecisionCache(t *testing.T, dc *components.DecisionCache, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if dc.IsReady() {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("decision cache did not become ready within %v", timeout)
-}
-
-func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
+func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	network, err := network.New(t.Context(), network.WithDriver("bridge"))
-	if err != nil {
-		t.Fatalf("failed to create network: %v", err)
-	}
-	defer network.Remove(t.Context())
-
-	lapiReq := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{"8080/tcp"},
-		Env: map[string]string{
-			"DISABLE_LOCAL_API":               "false",
-			"DISABLE_AGENT":                   "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Networks:       []string{network.Name},
-		NetworkAliases: map[string][]string{network.Name: {"lapi"}},
-		WaitingFor:     wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	lapiContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: lapiReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start container: %v", err)
-	}
-	defer lapiContainer.Terminate(t.Context())
-
-	lapiHost, err := lapiContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	lapiPort, err := lapiContainer.MappedPort(t.Context(), "8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	hostLAPI := url.URL{
-		Scheme: "http",
-		Host:   lapiHost + ":" + lapiPort.Port(),
-	}
-
-	appsecLAPI := url.URL{
-		Scheme: "http",
-		Host:   "lapi:8080",
-	}
-
-	_, out, err := lapiContainer.Exec(t.Context(), []string{
-		"cscli", "bouncers", "add", "testBouncer",
-	})
-	if err != nil {
-		t.Fatalf("failed to exec: %v", err)
-	}
-	b, err := io.ReadAll(out)
-	if err != nil {
-		t.Fatalf("failed to read output: %v", err)
-	}
-
-	key, err := extractAPIKey(string(b))
-	if err != nil {
-		t.Fatalf("failed to extract api key: %v", err)
-	}
-
-	_, _, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "decisions", "add", "--type", "captcha", "--value", "127.0.0.1",
-	})
-	if err != nil {
-		t.Fatalf("failed to add captcha decision: %v", err)
-	}
-
-	agentUser := "appsec-agent"
-	agentPass := "appsec-pass"
-	_, out, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "machines", "add", agentUser, "--password", agentPass, "-f", "/tmp/creds.yaml",
-	})
-	if err != nil {
-		t.Fatalf("failed to add machine: %v", err)
-	}
-
-	creds := credFile{
-		URL:      appsecLAPI.String(),
-		Login:    agentUser,
-		Password: agentPass,
-	}
-
-	b, err = yaml.Marshal(creds)
-	if err != nil {
-		t.Fatalf("failed to marshal creds")
-	}
-
-	tmpFile, err := os.CreateTemp("", "local_api_creds-*.yaml")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write([]byte(b)); err != nil {
-		t.Fatalf("failed to write creds to temp file: %v", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		t.Fatalf("failed to close temp file: %v", err)
-	}
-
-	appsecReq := testcontainers.ContainerRequest{
-		Image:        image,
-		Networks:     []string{network.Name},
-		ExposedPorts: []string{"7422/tcp", "6060/tcp"},
-		Env: map[string]string{
-			"LOCAL_API_URL":                   appsecLAPI.String(),
-			"DISABLE_LOCAL_API":               "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Files: []testcontainers.ContainerFile{
-			{
-				HostFilePath:      "./configs/acquis.yaml",
-				ContainerFilePath: "/etc/crowdsec/acquis.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      "./configs/appsec-captcha.yaml",
-				ContainerFilePath: "/etc/crowdsec/appsec-configs/appsec-config.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      "./configs/appsec-generic-test.yaml",
-				ContainerFilePath: "/etc/crowdsec/appsec-rules/appsec-generic-test.yaml",
-				FileMode:          0644,
-			},
-			{
-				HostFilePath:      tmpFile.Name(),
-				ContainerFilePath: "/staging/etc/crowdsec/local_api_credentials.yaml",
-				FileMode:          0644,
-			},
-		},
-		WaitingFor: wait.ForHTTP("/metrics").WithPort("6060/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	appsecContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: appsecReq,
-		Started:          true,
-	})
-	if err != nil {
-		t.Fatalf("failed to start appsec container: %v", err)
-	}
-	defer appsecContainer.Terminate(t.Context())
-
-	appsecHost, err := appsecContainer.Host(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	appsecPort, err := appsecContainer.MappedPort(t.Context(), "7422")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	appsecURL := url.URL{
-		Scheme: "http",
-		Host:   appsecHost + ":" + appsecPort.Port(),
-	}
-
-	trustedProxies := []string{"10.0.0.1"}
+	env.resetDecisions(t)
+	env.addDecision(t, "--type", "captcha", "--value", "127.0.0.1")
 
 	v := viper.New()
 	v.Set("server.grpcPort", 8080)
 	v.Set("server.httpPort", 8081)
 	v.Set("server.logLevel", "debug")
-	v.Set("bouncer.apiKey", key)
-	v.Set("bouncer.lapiURL", hostLAPI.String())
-	v.Set("trustedProxies", trustedProxies)
+	v.Set("bouncer.apiKey", env.apiKey)
+	v.Set("bouncer.lapiURL", env.lapiURL)
+	v.Set("trustedProxies", []string{"10.0.0.1"})
 	v.Set("bouncer.tickerInterval", "1s")
 	v.Set("bouncer.enabled", true)
 	v.Set("bouncer.metrics", true)
 	v.Set("waf.enabled", true)
-	v.Set("waf.apiKey", key)
-	v.Set("waf.appsecURL", appsecURL.String())
+	v.Set("waf.apiKey", env.apiKey)
+	v.Set("waf.appsecURL", env.appsecCaptchaURL)
 	v.Set("waf.httpTimeout", "5s")
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
@@ -293,6 +92,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	go decisionCache.Sync(ctx)
 
 	waitForDecisionCache(t, decisionCache, 10*time.Second)
+	waitForDecision(t, decisionCache, "127.0.0.1", true, 10*time.Second)
 
 	t.Run("Complete JWT verification flow with cookie bypass", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
@@ -303,34 +103,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
-		testBouncer := &bouncer.Bouncer{
-			DecisionCache:      decisionCache,
-			WAF:                waf,
-			CaptchaService:     captchaService,
-			PrometheusRecorder: rec,
-		}
+		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+		require.NoError(t, err)
+		testBouncer.DecisionCache = decisionCache
+		testBouncer.WAF = waf
+		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
 		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
-
-		testCtx, cancel := context.WithCancel(ctx)
-		serverDone := make(chan struct{})
-		defer func() {
-			cancel()
-			<-serverDone
-		}()
-
-		go func() {
-			err := srv.ServeDual(testCtx)
-			if err != nil && err != context.Canceled {
-				t.Logf("server error: %v", err)
-			}
-			close(serverDone)
-		}()
-
-		waitForServer(t, "localhost:8080", 10*time.Second)
+		stop := startServer(t, ctx, srv, "localhost:8080")
+		defer stop()
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -364,19 +148,9 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.NotNil(t, check.HttpResponse)
-		require.Equal(t, int32(302), check.Status.Code)
 
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse)
-		require.Len(t, deniedResponse.Headers, 1)
-
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
-		require.NotEmpty(t, challengeToken)
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		form := url.Values{}
 		form.Add("challengeToken", challengeToken)
@@ -429,8 +203,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		check2, err := client.Check(context.TODO(), req2)
 		require.NoError(t, err)
-		require.NotNil(t, check2.HttpResponse)
-		assert.Equal(t, int32(0), check2.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check2))
 
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 1 captcha request")
@@ -449,34 +222,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
-		testBouncer := &bouncer.Bouncer{
-			DecisionCache:      decisionCache,
-			WAF:                waf,
-			CaptchaService:     captchaService,
-			PrometheusRecorder: rec,
-		}
+		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+		require.NoError(t, err)
+		testBouncer.DecisionCache = decisionCache
+		testBouncer.WAF = waf
+		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
 		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
-
-		testCtx, cancel := context.WithCancel(ctx)
-		serverDone := make(chan struct{})
-		defer func() {
-			cancel()
-			<-serverDone
-		}()
-
-		go func() {
-			err := srv.ServeDual(testCtx)
-			if err != nil && err != context.Canceled {
-				t.Logf("server error: %v", err)
-			}
-			close(serverDone)
-		}()
-
-		waitForServer(t, "localhost:8080", 10*time.Second)
+		stop := startServer(t, ctx, srv, "localhost:8080")
+		defer stop()
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -510,14 +267,9 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.Equal(t, int32(302), check.Status.Code)
 
-		deniedResponse := check.GetDeniedResponse()
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		form := url.Values{}
 		form.Add("challengeToken", challengeToken)
@@ -568,7 +320,7 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 			checkResult, err := client.Check(context.TODO(), reqWithCookie)
 			require.NoError(t, err)
-			assert.Equal(t, int32(0), checkResult.Status.Code, "Request %d should bypass captcha with valid cookie", i+1)
+			assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, checkResult), "Request %d should bypass captcha with valid cookie", i+1)
 		}
 
 		metrics := rec.GetMetrics()
@@ -582,16 +334,11 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 	t.Run("Expired verification token requires new captcha", func(t *testing.T) {
 		testIP := "127.0.0.1"
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "delete", "--ip", testIP,
-		})
+		env.deleteDecision(t, "--ip", testIP)
+		waitForDecision(t, decisionCache, testIP, false, 10*time.Second)
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "add", "--type", "captcha", "--value", testIP,
-		})
-		require.NoError(t, err)
-
-		time.Sleep(2 * time.Second)
+		env.addDecision(t, "--type", "captcha", "--value", testIP)
+		waitForDecision(t, decisionCache, testIP, true, 10*time.Second)
 
 		cfgShortExpiry := cfg
 		cfgShortExpiry.Captcha.SessionDuration = 2 * time.Second
@@ -604,34 +351,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
-		testBouncer := &bouncer.Bouncer{
-			DecisionCache:      decisionCache,
-			WAF:                waf,
-			CaptchaService:     captchaServiceShort,
-			PrometheusRecorder: rec,
-		}
+		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+		require.NoError(t, err)
+		testBouncer.DecisionCache = decisionCache
+		testBouncer.WAF = waf
+		testBouncer.CaptchaService = captchaServiceShort
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
 		srv := server.NewServer(cfgShortExpiry, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
-
-		testCtx, cancel := context.WithCancel(ctx)
-		serverDone := make(chan struct{})
-		defer func() {
-			cancel()
-			<-serverDone
-		}()
-
-		go func() {
-			err := srv.ServeDual(testCtx)
-			if err != nil && err != context.Canceled {
-				t.Logf("server error: %v", err)
-			}
-			close(serverDone)
-		}()
-
-		waitForServer(t, "localhost:8080", 10*time.Second)
+		stop := startServer(t, ctx, srv, "localhost:8080")
+		defer stop()
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -663,14 +394,9 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.Equal(t, int32(302), check.Status.Code)
 
-		deniedResponse := check.GetDeniedResponse()
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		form := url.Values{}
 		form.Add("challengeToken", challengeToken)
@@ -720,13 +446,15 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		checkWithCookie, err := client.Check(context.TODO(), reqWithCookie)
 		require.NoError(t, err)
-		assert.Equal(t, int32(0), checkWithCookie.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, checkWithCookie))
 
 		time.Sleep(3 * time.Second)
 
 		checkExpired, err := client.Check(context.TODO(), reqWithCookie)
 		require.NoError(t, err)
-		assert.Equal(t, int32(302), checkExpired.Status.Code)
+
+		expiredChallengeToken := extractChallengeToken(t, checkExpired)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(expiredChallengeToken)), marshalProto(t, checkExpired))
 
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(2), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("captcha")), "expected 2 captcha requests (initial + re-challenge after session expiry)")
@@ -748,34 +476,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
-		testBouncer := &bouncer.Bouncer{
-			DecisionCache:      decisionCache,
-			WAF:                waf,
-			CaptchaService:     captchaServiceShort,
-			PrometheusRecorder: rec,
-		}
+		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+		require.NoError(t, err)
+		testBouncer.DecisionCache = decisionCache
+		testBouncer.WAF = waf
+		testBouncer.CaptchaService = captchaServiceShort
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
 		srv := server.NewServer(cfgShortChallenge, testBouncer, captchaServiceShort, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
-
-		testCtx, cancel := context.WithCancel(ctx)
-		serverDone := make(chan struct{})
-		defer func() {
-			cancel()
-			<-serverDone
-		}()
-
-		go func() {
-			err := srv.ServeDual(testCtx)
-			if err != nil && err != context.Canceled {
-				t.Logf("server error: %v", err)
-			}
-			close(serverDone)
-		}()
-
-		time.Sleep(2 * time.Second)
+		stop := startServer(t, ctx, srv, "localhost:8080")
+		defer stop()
 
 		session, err := captchaServiceShort.CreateSession("127.0.0.1", "http://example.com/protected", "")
 		require.NoError(t, err)
@@ -806,34 +518,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
-		testBouncer := &bouncer.Bouncer{
-			DecisionCache:      decisionCache,
-			WAF:                waf,
-			CaptchaService:     captchaService,
-			PrometheusRecorder: rec,
-		}
+		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+		require.NoError(t, err)
+		testBouncer.DecisionCache = decisionCache
+		testBouncer.WAF = waf
+		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
 		srv := server.NewServer(cfg, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
-
-		testCtx, cancel := context.WithCancel(ctx)
-		serverDone := make(chan struct{})
-		defer func() {
-			cancel()
-			<-serverDone
-		}()
-
-		go func() {
-			err := srv.ServeDual(testCtx)
-			if err != nil && err != context.Canceled {
-				t.Logf("server error: %v", err)
-			}
-			close(serverDone)
-		}()
-
-		waitForServer(t, "localhost:8080", 10*time.Second)
+		stop := startServer(t, ctx, srv, "localhost:8080")
+		defer stop()
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -844,12 +540,8 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		ipA := "127.0.0.1"
 		ipB := "192.168.5.5"
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "add", "--type", "captcha", "--value", ipA,
-		})
-		require.NoError(t, err)
-
-		time.Sleep(2 * time.Second)
+		env.addDecision(t, "--type", "captcha", "--value", ipA)
+		waitForDecision(t, decisionCache, ipA, true, 10*time.Second)
 
 		reqA := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{
@@ -875,14 +567,9 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		checkA, err := client.Check(context.TODO(), reqA)
 		require.NoError(t, err)
-		require.Equal(t, int32(302), checkA.Status.Code)
 
-		deniedResponse := checkA.GetDeniedResponse()
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
+		challengeToken := extractChallengeToken(t, checkA)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, checkA))
 
 		form := url.Values{}
 		form.Add("challengeToken", challengeToken)
@@ -912,19 +599,15 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 1 pending captcha challenge (IP mismatch does not decrement pending count)")
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaErrorsTotal), "expected 0 captcha service errors")
 	})
+
 	t.Run("DisableChallengeReplayProtection skips cache and metrics, allows replay", func(t *testing.T) {
 		testIP := "127.0.0.1"
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "delete", "--ip", testIP,
-		})
+		env.deleteDecision(t, "--ip", testIP)
+		waitForDecision(t, decisionCache, testIP, false, 10*time.Second)
 
-		_, _, err = lapiContainer.Exec(t.Context(), []string{
-			"cscli", "decisions", "add", "--type", "captcha", "--value", testIP,
-		})
-		require.NoError(t, err)
-
-		time.Sleep(2 * time.Second)
+		env.addDecision(t, "--type", "captcha", "--value", testIP)
+		waitForDecision(t, decisionCache, testIP, true, 10*time.Second)
 
 		cfgNoReplay := cfg
 		cfgNoReplay.Captcha.DisableChallengeReplayProtection = true
@@ -937,34 +620,18 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
-		testBouncer := &bouncer.Bouncer{
-			DecisionCache:      decisionCache,
-			WAF:                waf,
-			CaptchaService:     captchaService,
-			PrometheusRecorder: rec,
-		}
+		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+		require.NoError(t, err)
+		testBouncer.DecisionCache = decisionCache
+		testBouncer.WAF = waf
+		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
 		require.NoError(t, err)
 
 		srv := server.NewServer(cfgNoReplay, testBouncer, captchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, nil)
-
-		testCtx, cancel := context.WithCancel(ctx)
-		serverDone := make(chan struct{})
-		defer func() {
-			cancel()
-			<-serverDone
-		}()
-
-		go func() {
-			err := srv.ServeDual(testCtx)
-			if err != nil && err != context.Canceled {
-				t.Logf("server error: %v", err)
-			}
-			close(serverDone)
-		}()
-
-		waitForServer(t, "localhost:8080", 10*time.Second)
+		stop := startServer(t, ctx, srv, "localhost:8080")
+		defer stop()
 
 		conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		require.NoError(t, err)
@@ -996,20 +663,12 @@ func testJWTCompleteVerificationFlowVersion(t *testing.T, image string) {
 
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.Equal(t, int32(302), check.Status.Code)
+
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(0), testutil.ToFloat64(metrics.CaptchaPendingChallenges), "expected 0 pending challenges after CreateSession: cache should not be written when replay protection is disabled")
-
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse)
-		require.Len(t, deniedResponse.Headers, 1)
-
-		locationURL, err := url.Parse(deniedResponse.Headers[0].Header.Value)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
-		require.NotEmpty(t, challengeToken)
 
 		httpClient := &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
