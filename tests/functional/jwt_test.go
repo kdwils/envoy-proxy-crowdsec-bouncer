@@ -26,7 +26,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -41,30 +40,22 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 	env.resetDecisions(t)
 	env.addDecision(t, "--type", "captcha", "--value", "127.0.0.1")
 
-	v := viper.New()
-	v.Set("server.grpcPort", 8080)
-	v.Set("server.httpPort", 8081)
-	v.Set("server.logLevel", "debug")
+	v := newTestViper()
 	v.Set("bouncer.apiKey", env.apiKey)
 	v.Set("bouncer.lapiURL", env.lapiURL)
 	v.Set("trustedProxies", []string{"10.0.0.1"})
 	v.Set("bouncer.tickerInterval", "1s")
-	v.Set("bouncer.enabled", true)
 	v.Set("bouncer.metrics", true)
 	v.Set("waf.enabled", true)
 	v.Set("waf.apiKey", env.apiKey)
 	v.Set("waf.appsecURL", env.appsecCaptchaURL)
-	v.Set("waf.httpTimeout", "5s")
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")
 	v.Set("captcha.secretKey", "test-secret-key")
 	v.Set("captcha.signingKey", "test-signing-key-for-jwt-sessions")
 	v.Set("captcha.callbackURL", "http://localhost")
-	v.Set("captcha.cookieDomain", "")
-	v.Set("captcha.cookieName", "session")
 	v.Set("captcha.secureCookie", false)
-	v.Set("captcha.challengeDuration", "5m")
 	v.Set("captcha.sessionDuration", "1h")
 
 	cfg, err := config.New(v)

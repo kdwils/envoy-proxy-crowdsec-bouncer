@@ -28,7 +28,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -92,20 +91,15 @@ func testBouncerTLS(t *testing.T, env *testEnv) {
 	})
 	require.NoError(t, err)
 
-	v := viper.New()
+	v := newTestViper()
 	v.Set("server.grpcPort", 8082)
-	v.Set("server.logLevel", "debug")
 	v.Set("bouncer.lapiURL", hostLAPI.String())
 	v.Set("bouncer.tls.enabled", true)
 	v.Set("bouncer.tls.certPath", certs.clientCertPath)
 	v.Set("bouncer.tls.keyPath", certs.clientKeyPath)
 	v.Set("bouncer.tls.caPath", certs.caPath)
-	v.Set("bouncer.tls.insecureSkipVerify", false)
 	v.Set("bouncer.tickerInterval", "1s")
-	v.Set("bouncer.enabled", true)
 	v.Set("bouncer.metrics", true)
-	v.Set("waf.enabled", false)
-	v.Set("captcha.enabled", false)
 
 	cfg, err := config.New(v)
 	require.NoError(t, err)

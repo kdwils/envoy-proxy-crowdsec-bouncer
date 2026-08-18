@@ -17,7 +17,6 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -26,14 +25,10 @@ import (
 )
 
 func testHealthProbes(t *testing.T, env *testEnv) {
-	v := viper.New()
-	v.Set("server.grpcPort", 8080)
-	v.Set("server.logLevel", "debug")
+	v := newTestViper()
 	v.Set("bouncer.apiKey", env.apiKey)
 	v.Set("bouncer.lapiURL", env.lapiURL)
 	v.Set("bouncer.tickerInterval", "1s")
-	v.Set("bouncer.enabled", true)
-	v.Set("captcha.enabled", false)
 
 	cfg, err := config.New(v)
 	require.NoError(t, err)
@@ -112,11 +107,9 @@ func testHealthProbes(t *testing.T, env *testEnv) {
 }
 
 func TestHealthProbesWithDisabledBouncer(t *testing.T) {
-	v := viper.New()
+	v := newTestViper()
 	v.Set("server.grpcPort", 8082)
-	v.Set("server.logLevel", "debug")
 	v.Set("bouncer.enabled", false)
-	v.Set("captcha.enabled", false)
 
 	cfg, err := config.New(v)
 	require.NoError(t, err)
