@@ -264,7 +264,7 @@ export ENVOY_BOUNCER_WEBHOOK_BUFFERSIZE=100
 |--------|------|---------|-------------|
 | `deniedTemplatePath` | string | `""` | Path to custom ban page template |
 | `deniedTemplateHeaders` | string | `"text/html; charset=utf-8"` | Content-Type header for ban page |
-| `showDeniedPage` | bool | `true` | Render the denied page template on ban. When false, an empty body is returned |
+| `showDeniedPage` | bool | `false` | Render the denied page template on ban. When false, an empty body is returned |
 | `captchaTemplatePath` | string | `""` | Path to custom CAPTCHA page template |
 | `captchaTemplateHeaders` | string | `"text/html; charset=utf-8"` | Content-Type header for CAPTCHA page |
 
@@ -272,7 +272,7 @@ export ENVOY_BOUNCER_WEBHOOK_BUFFERSIZE=100
 templates:
   deniedTemplatePath: "/path/to/custom-ban.html"
   deniedTemplateHeaders: "text/html; charset=utf-8"
-  showDeniedPage: true
+  showDeniedPage: false
   captchaTemplatePath: "/path/to/custom-captcha.html"
   captchaTemplateHeaders: "text/html; charset=utf-8"
 ```

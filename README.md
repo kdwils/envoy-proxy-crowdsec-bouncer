@@ -41,10 +41,8 @@ Integrates with Envoy as an external authorization service. Each request is eval
 3. Inspecting request with CrowdSec AppSec WAF (if enabled)
 4. Enforcing decisions:
     - Allow: request proceeds
-    - Ban: return 403 with ban page
+    - Ban: return 403
     - Captcha: redirect to challenge page
-
-![Ban Page](docs/images/ban.jpeg)
 
 ## Documentation
 
