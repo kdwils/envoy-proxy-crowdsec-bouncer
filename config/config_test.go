@@ -296,7 +296,7 @@ func TestGetViper(t *testing.T) {
 			Templates: Templates{
 				DeniedTemplatePath:     "",
 				DeniedTemplateHeaders:  "text/html; charset=utf-8",
-				ShowDeniedPage:         true,
+				ShowDeniedPage:         false,
 				CaptchaTemplatePath:    "",
 				CaptchaTemplateHeaders: "text/html; charset=utf-8",
 			},

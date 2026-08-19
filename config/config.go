@@ -217,7 +217,7 @@ func GetViper(cfgFile string) *viper.Viper {
 
 	v.SetDefault("templates.deniedTemplatePath", "")
 	v.SetDefault("templates.deniedTemplateHeaders", "text/html; charset=utf-8")
-	v.SetDefault("templates.showDeniedPage", true)
+	v.SetDefault("templates.showDeniedPage", false)
 	v.SetDefault("templates.captchaTemplatePath", "")
 	v.SetDefault("templates.captchaTemplateHeaders", "text/html; charset=utf-8")
 
