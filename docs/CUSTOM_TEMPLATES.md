@@ -34,7 +34,7 @@ Conditionals:
 
 ## Ban Template
 
-Requires `showDeniedPage: true` in your config. When enabled, banned requests receive the default ban page:
+Requires `showDeniedPage: true` in your config. When enabled, banned requests receive the built-in ban page unless a custom template is configured via `deniedTemplatePath`:
 
 ![Ban Page](../docs/images/ban.jpeg)
 
