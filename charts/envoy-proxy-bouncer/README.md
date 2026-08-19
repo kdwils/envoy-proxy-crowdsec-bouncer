@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.7.2](https://img.shields.io/badge/Version-0.7.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.7.2](https://img.shields.io/badge/AppVersion-v0.7.2-informational?style=flat-square)
+![Version: 0.8.0](https://img.shields.io/badge/Version-0.8.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.8.0](https://img.shields.io/badge/AppVersion-v0.8.0-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -65,7 +65,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.templates.captchaTemplatePath | string | `""` |  |
 | config.templates.deniedTemplateHeaders | string | `""` |  |
 | config.templates.deniedTemplatePath | string | `""` |  |
-| config.templates.showDeniedPage | bool | `true` |  |
+| config.templates.showDeniedPage | bool | `false` |  |
 | config.trustedProxies | list | `[]` |  |
 | config.waf.apiKey | string | `""` |  |
 | config.waf.apiKeySecretRef.key | string | `""` |  |

@@ -133,7 +133,7 @@ config:
   templates:
     deniedTemplatePath: "" # @schema default: ""
     deniedTemplateHeaders: "" # @schema default: ""
-    showDeniedPage: true # @schema default: true
+    showDeniedPage: false # @schema default: false
     captchaTemplatePath: "" # @schema default: ""
     captchaTemplateHeaders: "" # @schema default: ""
 

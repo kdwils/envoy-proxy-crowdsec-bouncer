@@ -297,7 +297,7 @@
                             "type": "string"
                         },
                         "showDeniedPage": {
-                            "default": true,
+                            "default": false,
                             "type": "boolean"
                         }
                     }
