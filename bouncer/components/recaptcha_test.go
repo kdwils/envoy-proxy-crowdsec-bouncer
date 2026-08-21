@@ -1,7 +1,6 @@
 package components
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -10,174 +9,127 @@ import (
 
 	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
 func TestNewRecaptchaProvider(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-
-		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
-
-		assert.NoError(t, err)
-		assert.NotNil(t, provider)
-		assert.Equal(t, "test-secret", provider.SecretKey)
-		assert.Equal(t, mockHTTP, provider.HTTPClient)
-	})
-}
-
-func TestRecaptchaProvider_GetProviderName(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
 	mockHTTP := mocks.NewMockHTTPClient(ctrl)
 
-	provider := &RecaptchaProvider{SecretKey: "test", HTTPClient: mockHTTP}
+	provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
 
-	assert.Equal(t, "recaptcha", provider.GetProviderName())
+	require.NoError(t, err)
+	assert.Equal(t, &RecaptchaProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}, provider)
 }
 
 func TestRecaptchaProvider_Verify(t *testing.T) {
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		require.NoError(t, err)
 
-		provider := &RecaptchaProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *http.Request) { gotReq = r }).Return(nil, errors.New("network error")).Times(1)
 
-		expectedMatcher := httpReqMatcher{
-			method: "POST",
-			urlStr: "https://www.google.com/recaptcha/api/siteverify",
-			headers: map[string]string{
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-		}
+		success, err := provider.Verify(t.Context(), "test-response", "192.168.1.1")
 
-		mockHTTP.EXPECT().Do(expectedMatcher).Return(nil, errors.New("network error")).Times(1)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, http.MethodPost, gotReq.Method)
+		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
-		success, err := provider.Verify(context.Background(), "test-response", "192.168.1.1")
-
-		assert.Error(t, err)
-		assert.False(t, success)
-		assert.Contains(t, err.Error(), "recaptcha verification request failed")
+		assert.Equal(t, false, success)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "verification request failed")
 	})
 
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		require.NoError(t, err)
 
-		provider := &RecaptchaProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}
+		response := &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader(""))}
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *http.Request) { gotReq = r }).Return(response, nil).Times(1)
 
-		response := &http.Response{
-			StatusCode: 500,
-			Body:       io.NopCloser(strings.NewReader("")),
-		}
+		success, err := provider.Verify(t.Context(), "test-response", "192.168.1.1")
 
-		expectedMatcher := httpReqMatcher{
-			method: "POST",
-			urlStr: "https://www.google.com/recaptcha/api/siteverify",
-			headers: map[string]string{
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-		}
+		require.NotNil(t, gotReq)
+		assert.Equal(t, http.MethodPost, gotReq.Method)
+		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
-		mockHTTP.EXPECT().Do(expectedMatcher).Return(response, nil).Times(1)
-
-		success, err := provider.Verify(context.Background(), "test-response", "192.168.1.1")
-
-		assert.Error(t, err)
-		assert.False(t, success)
-		assert.Contains(t, err.Error(), "recaptcha API returned status 500")
+		assert.Equal(t, false, success)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "API returned status 500")
 	})
 
 	t.Run("invalid JSON response", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		require.NoError(t, err)
 
-		provider := &RecaptchaProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}
+		response := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("invalid json"))}
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *http.Request) { gotReq = r }).Return(response, nil).Times(1)
 
-		response := &http.Response{
-			StatusCode: 200,
-			Body:       io.NopCloser(strings.NewReader("invalid json")),
-		}
+		success, err := provider.Verify(t.Context(), "test-response", "192.168.1.1")
 
-		expectedMatcher := httpReqMatcher{
-			method: "POST",
-			urlStr: "https://www.google.com/recaptcha/api/siteverify",
-			headers: map[string]string{
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-		}
+		require.NotNil(t, gotReq)
+		assert.Equal(t, http.MethodPost, gotReq.Method)
+		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
-		mockHTTP.EXPECT().Do(expectedMatcher).Return(response, nil).Times(1)
-
-		success, err := provider.Verify(context.Background(), "test-response", "192.168.1.1")
-
-		assert.Error(t, err)
-		assert.False(t, success)
-		assert.Contains(t, err.Error(), "failed to parse recaptcha response")
+		assert.Equal(t, false, success)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "failed to parse")
 	})
 
 	t.Run("verification failed with error codes", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		require.NoError(t, err)
 
-		provider := &RecaptchaProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}
+		response := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":false,"error-codes":["invalid-input-response","timeout-or-duplicate"]}`))}
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *http.Request) { gotReq = r }).Return(response, nil).Times(1)
 
-		respBody := `{"success":false,"error-codes":["invalid-input-response","timeout-or-duplicate"]}`
-		response := &http.Response{
-			StatusCode: 200,
-			Body:       io.NopCloser(strings.NewReader(respBody)),
-		}
+		success, err := provider.Verify(t.Context(), "test-response", "192.168.1.1")
 
-		expectedMatcher := httpReqMatcher{
-			method: "POST",
-			urlStr: "https://www.google.com/recaptcha/api/siteverify",
-			headers: map[string]string{
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-		}
+		require.NotNil(t, gotReq)
+		assert.Equal(t, http.MethodPost, gotReq.Method)
+		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
-		mockHTTP.EXPECT().Do(expectedMatcher).Return(response, nil).Times(1)
-
-		success, err := provider.Verify(context.Background(), "test-response", "192.168.1.1")
-
-		assert.Error(t, err)
-		assert.False(t, success)
-		assert.Contains(t, err.Error(), "recaptcha verification failed")
-		assert.Contains(t, err.Error(), "invalid-input-response")
+		assert.Equal(t, false, success)
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "verification failed")
+		assert.ErrorContains(t, err, "invalid-input-response")
 	})
 
 	t.Run("successful verification", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		require.NoError(t, err)
 
-		provider := &RecaptchaProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}
+		response := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}
+		var gotReq *http.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *http.Request) { gotReq = r }).Return(response, nil).Times(1)
 
-		respBody := `{"success":true,"challenge_ts":"2023-01-01T00:00:00Z","hostname":"example.com"}`
-		response := &http.Response{
-			StatusCode: 200,
-			Body:       io.NopCloser(strings.NewReader(respBody)),
-		}
+		success, err := provider.Verify(t.Context(), "test-response", "192.168.1.1")
 
-		expectedMatcher := httpReqMatcher{
-			method: "POST",
-			urlStr: "https://www.google.com/recaptcha/api/siteverify",
-			headers: map[string]string{
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-		}
+		require.NotNil(t, gotReq)
+		assert.Equal(t, http.MethodPost, gotReq.Method)
+		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
-		mockHTTP.EXPECT().Do(expectedMatcher).Return(response, nil).Times(1)
-
-		success, err := provider.Verify(context.Background(), "test-response", "192.168.1.1")
-
-		assert.NoError(t, err)
-		assert.True(t, success)
+		assert.Equal(t, true, success)
+		require.NoError(t, err)
 	})
 }

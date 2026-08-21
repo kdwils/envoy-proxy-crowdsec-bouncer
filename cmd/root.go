@@ -1,12 +1,9 @@
 package cmd
 
 import (
-	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var cfgFile string
@@ -26,76 +23,6 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (json or yaml)")
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-}
-
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
-	if cfgFile != "" {
-		viper.SetConfigFile(cfgFile)
-	}
-
-	viper.SetEnvPrefix("ENVOY_BOUNCER")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", ""))
-	viper.AutomaticEnv()
-
-	viper.SetDefault("trustedProxies", []string{})
-	viper.SetDefault("trustedIPHeader", "")
-	viper.SetDefault("exemptIPs", []string{})
-
-	viper.SetDefault("server.grpcPort", 8080)
-	viper.SetDefault("server.httpPort", 8081)
-	viper.SetDefault("server.logLevel", slog.LevelInfo)
-
-	viper.SetDefault("bouncer.apiKey", "")
-	viper.SetDefault("bouncer.lapiURL", "")
-	viper.SetDefault("bouncer.enabled", true)
-	viper.SetDefault("bouncer.metrics", false)
-	viper.SetDefault("bouncer.tickerInterval", "10s")
-	viper.SetDefault("bouncer.metricsInterval", "10m")
-	viper.SetDefault("bouncer.banStatusCode", 403)
-	viper.SetDefault("bouncer.tls.enabled", false)
-	viper.SetDefault("bouncer.tls.certPath", "")
-	viper.SetDefault("bouncer.tls.keyPath", "")
-	viper.SetDefault("bouncer.tls.caPath", "")
-	viper.SetDefault("bouncer.tls.insecureSkipVerify", false)
-
-	viper.SetDefault("waf.enabled", false)
-	viper.SetDefault("waf.apiKey", "")
-	viper.SetDefault("waf.appSecURL", "")
-
-	viper.SetDefault("captcha.enabled", false)
-	viper.SetDefault("captcha.provider", "")
-	viper.SetDefault("captcha.siteKey", "")
-	viper.SetDefault("captcha.secretKey", "")
-	viper.SetDefault("captcha.signingKey", "")
-	viper.SetDefault("captcha.callbackURL", "")
-	viper.SetDefault("captcha.cookieDomain", "")
-	viper.SetDefault("captcha.cookieName", "session")
-	viper.SetDefault("captcha.secureCookie", true)
-	viper.SetDefault("captcha.timeout", "10s")
-	viper.SetDefault("captcha.challengeDuration", "5m")
-	viper.SetDefault("captcha.sessionDuration", "15m")
-	viper.SetDefault("captcha.disableChallengeReplayProtection", false)
-
-	viper.SetDefault("prometheus.enabled", false)
-	viper.SetDefault("prometheus.port", 9090)
-
-	viper.SetDefault("webhook.subscriptions", nil)
-	viper.SetDefault("webhook.signingKey", "")
-	viper.SetDefault("webhook.timeout", "5s")
-	viper.SetDefault("webhook.bufferSize", 100)
-
-	viper.SetDefault("templates.deniedTemplatePath", "")
-	viper.SetDefault("templates.deniedTemplateHeaders", "text/html; charset=utf-8")
-	viper.SetDefault("templates.showDeniedPage", true)
-	viper.SetDefault("templates.captchaTemplatePath", "")
-	viper.SetDefault("templates.captchaTemplateHeaders", "text/html; charset=utf-8")
-
-	viper.SetDefault("http.maxIdleConns", 1000)
-	viper.SetDefault("http.maxIdleConnsPerHost", 100)
-	viper.SetDefault("http.idleConnTimeout", "90s")
-	viper.SetDefault("http.tlsHandshakeTimeout", "10s")
 }

@@ -3,6 +3,7 @@ package crowdsec
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -12,22 +13,65 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec/mocks"
 )
 
+const staticStartupTS = int64(1234567890)
+
+func newTestCollector(t *testing.T) *MetricsService {
+	t.Helper()
+
+	collector, err := NewMetricsService(MetricsConfig{
+		APIClient:   &apiclient.ApiClient{},
+		BouncerType: "envoy-proxy",
+		Version:     "v1.0.0",
+	})
+	require.NoError(t, err)
+
+	return collector
+}
+
+func newStaticCollector(t *testing.T) *MetricsService {
+	collector, err := NewMetricsService(MetricsConfig{
+		APIClient:   &apiclient.ApiClient{},
+		BouncerType: "envoy-proxy",
+		Version:     "v1.0.0",
+	})
+	require.NoError(t, err)
+
+	collector.startupTS = staticStartupTS
+
+	return collector
+}
+
+func newMockCollector(t *testing.T, client CrowdsecClient) *MetricsService {
+	collector, err := NewMetricsService(MetricsConfig{
+		APIClient:   &apiclient.ApiClient{},
+		BouncerType: "envoy-proxy",
+		Version:     "v1.0.0",
+	})
+	require.NoError(t, err)
+
+	collector.apiClient = client
+
+	return collector
+}
+
+func sortItems(items []*models.MetricsDetailItem) {
+	sort.Slice(items, func(i, j int) bool {
+		return *items[i].Name < *items[j].Name
+	})
+}
+
 func TestNewMetricsService(t *testing.T) {
 	t.Run("creates collector with valid config", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
+		collector, err := NewMetricsService(MetricsConfig{
+			APIClient:   &apiclient.ApiClient{},
 			BouncerType: "envoy-proxy",
 			Version:     "v1.0.0",
-		}
+		})
 
-		collector, err := NewMetricsService(cfg)
-
-		require.Nil(t, err)
+		require.NoError(t, err)
 		require.NotNil(t, collector)
 		require.NotNil(t, collector.cache)
 		require.NotNil(t, collector.apiClient)
@@ -35,156 +79,48 @@ func TestNewMetricsService(t *testing.T) {
 		assert.Equal(t, "v1.0.0", collector.version)
 	})
 
-	t.Run("returns error when api client is nil", func(t *testing.T) {
-		cfg := MetricsConfig{
-			APIClient:   nil,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
+	t.Run("returns error on invalid config", func(t *testing.T) {
+		tests := []struct {
+			name string
+			cfg  MetricsConfig
+			want string
+		}{
+			{
+				name: "nil api client",
+				cfg:  MetricsConfig{BouncerType: "envoy-proxy", Version: "v1.0.0"},
+				want: "api client is required",
+			},
+			{
+				name: "empty bouncer type",
+				cfg:  MetricsConfig{APIClient: &apiclient.ApiClient{}, Version: "v1.0.0"},
+				want: "bouncer type is required",
+			},
+			{
+				name: "empty version",
+				cfg:  MetricsConfig{APIClient: &apiclient.ApiClient{}, BouncerType: "envoy-proxy"},
+				want: "version is required",
+			},
 		}
 
-		collector, err := NewMetricsService(cfg)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				collector, err := NewMetricsService(tt.cfg)
 
-		wantErr := "api client is required"
-		assert.Equal(t, wantErr, err.Error())
-		assert.Nil(t, collector)
-	})
-
-	t.Run("returns error when bouncer type is empty", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "",
-			Version:     "v1.0.0",
+				assert.Nil(t, collector)
+				require.Error(t, err)
+				assert.Equal(t, tt.want, err.Error())
+			})
 		}
-
-		collector, err := NewMetricsService(cfg)
-
-		wantErr := "bouncer type is required"
-		assert.Equal(t, wantErr, err.Error())
-		assert.Nil(t, collector)
-	})
-
-	t.Run("returns error when version is empty", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "",
-		}
-
-		collector, err := NewMetricsService(cfg)
-
-		wantErr := "version is required"
-		assert.Equal(t, wantErr, err.Error())
-		assert.Nil(t, collector)
 	})
 }
 
 func TestMetricsService_Inc(t *testing.T) {
-	t.Run("increments new metric", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
+	t.Run("creates and accumulates metric", func(t *testing.T) {
+		collector := newTestCollector(t)
 		labels := map[string]string{"origin": "capi"}
-		collector.Inc("test_key", "test_metric", "count", labels)
 
-		got, ok := collector.cache.Get("test_key")
-		require.True(t, ok)
-
-		want := Metric{
-			Name:   "test_metric",
-			Unit:   "count",
-			Value:  1,
-			Labels: map[string]string{"origin": "capi"},
-		}
-		assert.Equal(t, want, got)
-	})
-
-	t.Run("increments existing metric", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		labels := map[string]string{"origin": "capi"}
 		collector.Inc("test_key", "test_metric", "count", labels)
 		collector.Inc("test_key", "test_metric", "count", labels)
-		collector.Inc("test_key", "test_metric", "count", labels)
-
-		got, ok := collector.cache.Get("test_key")
-		require.True(t, ok)
-
-		want := Metric{
-			Name:   "test_metric",
-			Unit:   "count",
-			Value:  3,
-			Labels: map[string]string{"origin": "capi"},
-		}
-		assert.Equal(t, want, got)
-	})
-
-	t.Run("increments multiple different metrics", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		collector.Inc("key1", "metric1", "count", map[string]string{"type": "a"})
-		collector.Inc("key2", "metric2", "count", map[string]string{"type": "b"})
-
-		got1, ok1 := collector.cache.Get("key1")
-		require.True(t, ok1)
-		want1 := Metric{
-			Name:   "metric1",
-			Unit:   "count",
-			Value:  1,
-			Labels: map[string]string{"type": "a"},
-		}
-		assert.Equal(t, want1, got1)
-
-		got2, ok2 := collector.cache.Get("key2")
-		require.True(t, ok2)
-		want2 := Metric{
-			Name:   "metric2",
-			Unit:   "count",
-			Value:  1,
-			Labels: map[string]string{"type": "b"},
-		}
-		assert.Equal(t, want2, got2)
-	})
-}
-
-func TestMetricsService_Dec(t *testing.T) {
-	t.Run("decrements existing metric", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		labels := map[string]string{"origin": "capi"}
-		collector.Inc("test_key", "test_metric", "count", labels)
-		collector.Inc("test_key", "test_metric", "count", labels)
-		collector.Inc("test_key", "test_metric", "count", labels)
-
-		collector.Dec("test_key", "test_metric", "count", labels)
 
 		got, ok := collector.cache.Get("test_key")
 		require.True(t, ok)
@@ -198,67 +134,99 @@ func TestMetricsService_Dec(t *testing.T) {
 		assert.Equal(t, want, got)
 	})
 
-	t.Run("decrements new metric to zero", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
+	t.Run("increments different metrics independently", func(t *testing.T) {
+		collector := newTestCollector(t)
 
-		labels := map[string]string{"origin": "capi"}
-		collector.Dec("test_key", "test_metric", "count", labels)
+		collector.Inc("key1", "metric1", "count", map[string]string{"type": "a"})
+		collector.Inc("key2", "metric2", "count", map[string]string{"type": "b"})
 
-		got, ok := collector.cache.Get("test_key")
-		require.True(t, ok)
+		got := collector.GetSnapshot()
 
-		want := Metric{
-			Name:   "test_metric",
-			Unit:   "count",
-			Value:  0,
-			Labels: map[string]string{"origin": "capi"},
+		want := map[string]Metric{
+			"key1": {
+				Name:   "metric1",
+				Unit:   "count",
+				Value:  1,
+				Labels: map[string]string{"type": "a"},
+			},
+			"key2": {
+				Name:   "metric2",
+				Unit:   "count",
+				Value:  1,
+				Labels: map[string]string{"type": "b"},
+			},
 		}
 		assert.Equal(t, want, got)
 	})
-
-	t.Run("does not go below zero", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		labels := map[string]string{"origin": "capi"}
-		collector.Inc("test_key", "test_metric", "count", labels)
-		collector.Dec("test_key", "test_metric", "count", labels)
-		collector.Dec("test_key", "test_metric", "count", labels)
-		collector.Dec("test_key", "test_metric", "count", labels)
-
-		got, ok := collector.cache.Get("test_key")
-		require.True(t, ok)
-
-		assert.Equal(t, int64(0), got.Value)
-	})
 }
 
-func TestMetricsService_Set(t *testing.T) {
-	t.Run("sets new metric", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
+func TestMetricsService_Dec(t *testing.T) {
+	t.Run("decrements metric count", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			incCalls int
+			decCalls int
+			want     Metric
+		}{
+			{
+				name:     "decrements existing metric",
+				incCalls: 3,
+				decCalls: 1,
+				want: Metric{
+					Name:   "test_metric",
+					Unit:   "count",
+					Value:  2,
+					Labels: map[string]string{"origin": "capi"},
+				},
+			},
+			{
+				name:     "decrements new metric to zero",
+				incCalls: 0,
+				decCalls: 1,
+				want: Metric{
+					Name:   "test_metric",
+					Unit:   "count",
+					Value:  0,
+					Labels: map[string]string{"origin": "capi"},
+				},
+			},
+			{
+				name:     "never goes below zero",
+				incCalls: 1,
+				decCalls: 3,
+				want: Metric{
+					Name:   "test_metric",
+					Unit:   "count",
+					Value:  0,
+					Labels: map[string]string{"origin": "capi"},
+				},
+			},
 		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
 
-		labels := map[string]string{"origin": "capi"}
-		collector.Set("test_key", "test_metric", "gauge", 42, labels)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				collector := newTestCollector(t)
+				labels := map[string]string{"origin": "capi"}
+
+				for i := 0; i < tt.incCalls; i++ {
+					collector.Inc("test_key", "test_metric", "count", labels)
+				}
+				for i := 0; i < tt.decCalls; i++ {
+					collector.Dec("test_key", "test_metric", "count", labels)
+				}
+
+				got, ok := collector.cache.Get("test_key")
+				require.True(t, ok)
+				assert.Equal(t, tt.want, got)
+			})
+		}
+	})
+}
+func TestMetricsService_Set(t *testing.T) {
+	t.Run("sets metric value", func(t *testing.T) {
+		collector := newTestCollector(t)
+
+		collector.Set("test_key", "test_metric", "gauge", 42, map[string]string{"origin": "capi"})
 
 		got, ok := collector.cache.Get("test_key")
 		require.True(t, ok)
@@ -271,98 +239,14 @@ func TestMetricsService_Set(t *testing.T) {
 		}
 		assert.Equal(t, want, got)
 	})
-
-	t.Run("overwrites existing metric", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		labels := map[string]string{"origin": "capi"}
-		collector.Set("test_key", "test_metric", "gauge", 42, labels)
-		collector.Set("test_key", "test_metric", "gauge", 100, labels)
-
-		got, ok := collector.cache.Get("test_key")
-		require.True(t, ok)
-
-		want := Metric{
-			Name:   "test_metric",
-			Unit:   "gauge",
-			Value:  100,
-			Labels: map[string]string{"origin": "capi"},
-		}
-		assert.Equal(t, want, got)
-	})
-
-	t.Run("sets zero value", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		collector.Set("test_key", "test_metric", "gauge", 0, nil)
-
-		got, ok := collector.cache.Get("test_key")
-		require.True(t, ok)
-
-		want := Metric{
-			Name:   "test_metric",
-			Unit:   "gauge",
-			Value:  0,
-			Labels: nil,
-		}
-		assert.Equal(t, want, got)
-	})
 }
 
 func TestMetricsService_Reset(t *testing.T) {
 	t.Run("clears all metrics", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
+		collector := newTestCollector(t)
 		collector.Inc("key1", "metric1", "count", nil)
 		collector.Inc("key2", "metric2", "count", nil)
 		collector.Set("key3", "metric3", "gauge", 42, nil)
-
-		assert.Equal(t, 3, collector.cache.Size())
-
-		collector.Reset()
-
-		assert.Equal(t, 0, collector.cache.Size())
-
-		_, ok1 := collector.cache.Get("key1")
-		assert.False(t, ok1)
-
-		_, ok2 := collector.cache.Get("key2")
-		assert.False(t, ok2)
-
-		_, ok3 := collector.cache.Get("key3")
-		assert.False(t, ok3)
-	})
-
-	t.Run("reset on empty cache", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
 
 		collector.Reset()
 
@@ -371,193 +255,178 @@ func TestMetricsService_Reset(t *testing.T) {
 }
 
 func TestMetricsService_GetSnapshot(t *testing.T) {
-	t.Run("returns snapshot of all metrics", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
+	t.Run("returns a snapshot of the current cache", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			setup func(*MetricsService)
+			want  map[string]Metric
+		}{
+			{
+				name: "with metrics",
+				setup: func(c *MetricsService) {
+					c.Inc("key1", "metric1", "count", map[string]string{"origin": "capi"})
+					c.Set("key2", "metric2", "gauge", 42, nil)
+				},
+				want: map[string]Metric{
+					"key1": {
+						Name:   "metric1",
+						Unit:   "count",
+						Value:  1,
+						Labels: map[string]string{"origin": "capi"},
+					},
+					"key2": {
+						Name:   "metric2",
+						Unit:   "gauge",
+						Value:  42,
+						Labels: nil,
+					},
+				},
+			},
+			{
+				name:  "empty cache",
+				setup: func(c *MetricsService) {},
+				want:  map[string]Metric{},
+			},
 		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
 
-		collector.Inc("key1", "metric1", "count", map[string]string{"origin": "capi"})
-		collector.Set("key2", "metric2", "gauge", 42, nil)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				collector := newTestCollector(t)
+				tt.setup(collector)
 
-		got := collector.GetSnapshot()
+				got := collector.GetSnapshot()
+
+				assert.Equal(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("snapshot is independent of cache", func(t *testing.T) {
+		collector := newTestCollector(t)
+		collector.Inc("key1", "metric1", "count", nil)
+
+		snapshot := collector.GetSnapshot()
+		collector.Inc("key2", "metric2", "count", nil)
 
 		want := map[string]Metric{
 			"key1": {
 				Name:   "metric1",
 				Unit:   "count",
 				Value:  1,
-				Labels: map[string]string{"origin": "capi"},
-			},
-			"key2": {
-				Name:   "metric2",
-				Unit:   "gauge",
-				Value:  42,
 				Labels: nil,
 			},
 		}
-		assert.Equal(t, want, got)
-	})
-
-	t.Run("returns empty map for empty cache", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		got := collector.GetSnapshot()
-
-		want := map[string]Metric{}
-		assert.Equal(t, want, got)
-	})
-
-	t.Run("snapshot is independent of cache", func(t *testing.T) {
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
-
-		collector.Inc("key1", "metric1", "count", nil)
-		snapshot := collector.GetSnapshot()
-
-		collector.Inc("key2", "metric2", "count", nil)
-
-		assert.Equal(t, 1, len(snapshot))
-		assert.Equal(t, 2, collector.cache.Size())
+		assert.Equal(t, want, snapshot)
 	})
 }
 
 func TestMetricsService_Calculate(t *testing.T) {
-	t.Run("calculates metrics with correct structure", func(t *testing.T) {
-		staticStartupTS := int64(1234567890)
-		collector := &MetricsService{
-			cache:       cache.New[string, Metric](),
-			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-			startupTS:   staticStartupTS,
-		}
-
-		collector.Inc("processed", "http_requests_total", "count", map[string]string{"origin": "capi"})
+	t.Run("builds complete metrics payload", func(t *testing.T) {
+		collector := newStaticCollector(t)
+		collector.Inc("requests", "http_requests_total", "count", map[string]string{"origin": "capi"})
 		collector.Set("active", "active_connections", "gauge", 5, nil)
 
-		interval := 30 * time.Second
-		allMetrics := collector.Calculate(interval)
+		got := collector.Calculate(30 * time.Second)
+		component := got.RemediationComponents[0]
+		require.NotNil(t, component.Os)
+		require.NotNil(t, component.Metrics[0].Meta.UtcNowTimestamp)
+		component.Metrics[0].Meta.UtcNowTimestamp = nil
 
-		require.NotNil(t, allMetrics)
-		require.NotNil(t, allMetrics.RemediationComponents)
-		require.Equal(t, 1, len(allMetrics.RemediationComponents))
-
-		component := allMetrics.RemediationComponents[0]
-		assert.Equal(t, "envoy-proxy", component.Type)
-		assert.Equal(t, "v1.0.0", *component.Version)
-		require.Equal(t, 1, len(component.Metrics))
-
-		meta := component.Metrics[0].Meta
-		assert.Equal(t, int64(30), *meta.WindowSizeSeconds)
-
-		items := component.Metrics[0].Items
-		assert.Equal(t, 2, len(items))
-
-		require.NotNil(t, component.UtcStartupTimestamp)
-		assert.Equal(t, staticStartupTS, *component.UtcStartupTimestamp)
-	})
-
-	t.Run("includes all metric details", func(t *testing.T) {
-		staticStartupTS := int64(1234567890)
-		collector := &MetricsService{
-			cache:       cache.New[string, Metric](),
-			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-			startupTS:   staticStartupTS,
+		items := []*models.MetricsDetailItem{
+			{
+				Name:   new("active_connections"),
+				Unit:   new("gauge"),
+				Value:  new(float64(5)),
+				Labels: nil,
+			},
+			{
+				Name:   new("http_requests_total"),
+				Unit:   new("count"),
+				Value:  new(float64(1)),
+				Labels: map[string]string{"origin": "capi"},
+			},
 		}
+		sortItems(items)
+		sortItems(component.Metrics[0].Items)
 
-		labels := map[string]string{"origin": "capi", "type": "ban"}
-		collector.Inc("test_metric", "decisions_applied", "count", labels)
+		want := wantMetrics(component, 30*time.Second, items)
 
-		allMetrics := collector.Calculate(10 * time.Second)
-
-		items := allMetrics.RemediationComponents[0].Metrics[0].Items
-		require.Equal(t, 1, len(items))
-
-		got := items[0]
-		want := &models.MetricsDetailItem{
-			Name:   new("decisions_applied"),
-			Unit:   new("count"),
-			Value:  new(float64(1)),
-			Labels: map[string]string{"origin": "capi", "type": "ban"},
-		}
 		assert.Equal(t, want, got)
-
-		component := allMetrics.RemediationComponents[0]
-		require.NotNil(t, component.UtcStartupTimestamp)
-		assert.Equal(t, staticStartupTS, *component.UtcStartupTimestamp)
 	})
 
 	t.Run("handles empty metrics", func(t *testing.T) {
-		staticStartupTS := int64(1234567890)
-		collector := &MetricsService{
-			cache:       cache.New[string, Metric](),
-			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-			startupTS:   staticStartupTS,
-		}
+		collector := newStaticCollector(t)
 
-		allMetrics := collector.Calculate(10 * time.Second)
+		got := collector.Calculate(10 * time.Second)
+		component := got.RemediationComponents[0]
+		require.NotNil(t, component.Os)
+		require.NotNil(t, component.Metrics[0].Meta.UtcNowTimestamp)
+		component.Metrics[0].Meta.UtcNowTimestamp = nil
 
-		require.NotNil(t, allMetrics)
-		require.NotNil(t, allMetrics.RemediationComponents)
+		want := wantMetrics(component, 10*time.Second, nil)
 
-		items := allMetrics.RemediationComponents[0].Metrics[0].Items
-		assert.Equal(t, 0, len(items))
-
-		component := allMetrics.RemediationComponents[0]
-		require.NotNil(t, component.UtcStartupTimestamp)
-		assert.Equal(t, staticStartupTS, *component.UtcStartupTimestamp)
+		assert.Equal(t, want, got)
 	})
 
-	t.Run("startup timestamp remains constant across multiple Calculate calls", func(t *testing.T) {
-		staticStartupTS := int64(1234567890)
-		collector := &MetricsService{
-			cache:       cache.New[string, Metric](),
-			apiClient:   &crowdSecClient{client: &apiclient.ApiClient{}},
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-			startupTS:   staticStartupTS,
-		}
-
+	t.Run("startup timestamp remains constant across Calculate calls", func(t *testing.T) {
+		collector := newStaticCollector(t)
 		collector.Inc("test", "test_metric", "count", nil)
 
-		firstMetrics := collector.Calculate(10 * time.Second)
-		firstComponent := firstMetrics.RemediationComponents[0]
-		require.NotNil(t, firstComponent.UtcStartupTimestamp)
-		assert.Equal(t, staticStartupTS, *firstComponent.UtcStartupTimestamp)
-
-		time.Sleep(10 * time.Millisecond)
+		first := collector.Calculate(10 * time.Second)
+		firstComponent := first.RemediationComponents[0]
+		require.NotNil(t, firstComponent.Os)
+		require.NotNil(t, firstComponent.Metrics[0].Meta.UtcNowTimestamp)
+		firstComponent.Metrics[0].Meta.UtcNowTimestamp = nil
 
 		collector.Inc("test", "test_metric", "count", nil)
+		second := collector.Calculate(20 * time.Second)
+		secondComponent := second.RemediationComponents[0]
+		require.NotNil(t, secondComponent.Os)
+		require.NotNil(t, secondComponent.Metrics[0].Meta.UtcNowTimestamp)
+		secondComponent.Metrics[0].Meta.UtcNowTimestamp = nil
 
-		secondMetrics := collector.Calculate(20 * time.Second)
-		secondComponent := secondMetrics.RemediationComponents[0]
-		require.NotNil(t, secondComponent.UtcStartupTimestamp)
-		assert.Equal(t, staticStartupTS, *secondComponent.UtcStartupTimestamp)
+		wantFirst := wantMetrics(firstComponent, 10*time.Second, []*models.MetricsDetailItem{
+			{
+				Name:   new("test_metric"),
+				Unit:   new("count"),
+				Value:  new(float64(1)),
+				Labels: nil,
+			},
+		})
+		wantSecond := wantMetrics(secondComponent, 20*time.Second, []*models.MetricsDetailItem{
+			{
+				Name:   new("test_metric"),
+				Unit:   new("count"),
+				Value:  new(float64(2)),
+				Labels: nil,
+			},
+		})
 
-		assert.Equal(t, *firstComponent.UtcStartupTimestamp, *secondComponent.UtcStartupTimestamp)
+		assert.Equal(t, wantFirst, first)
+		assert.Equal(t, wantSecond, second)
 	})
+}
+
+func wantMetrics(component *models.RemediationComponentsMetrics, interval time.Duration, items []*models.MetricsDetailItem) *models.AllMetrics {
+	return &models.AllMetrics{
+		RemediationComponents: []*models.RemediationComponentsMetrics{
+			{
+				Type: "envoy-proxy",
+				BaseMetrics: models.BaseMetrics{
+					Os:                  component.Os,
+					Version:             new("v1.0.0"),
+					FeatureFlags:        []string{},
+					UtcStartupTimestamp: new(staticStartupTS),
+					Metrics: []*models.DetailedMetrics{
+						{
+							Meta:  &models.MetricsMeta{WindowSizeSeconds: new(int64(interval.Seconds()))},
+							Items: items,
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func TestMetricsService_Send(t *testing.T) {
@@ -566,14 +435,10 @@ func TestMetricsService_Send(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockClient := mocks.NewMockCrowdsecClient(ctrl)
-		collector := &MetricsService{
-			apiClient:   mockClient,
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-		}
+		collector := newMockCollector(t, mockClient)
 
 		allMetrics := &models.AllMetrics{}
-		ctx := context.Background()
+		ctx := t.Context()
 
 		mockClient.EXPECT().SendMetrics(gomock.Any(), allMetrics).Return(nil)
 
@@ -587,14 +452,10 @@ func TestMetricsService_Send(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockClient := mocks.NewMockCrowdsecClient(ctrl)
-		collector := &MetricsService{
-			apiClient:   mockClient,
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-		}
+		collector := newMockCollector(t, mockClient)
 
 		allMetrics := &models.AllMetrics{}
-		ctx := context.Background()
+		ctx := t.Context()
 		wantErr := errors.New("network error")
 
 		mockClient.EXPECT().SendMetrics(gomock.Any(), allMetrics).Return(wantErr)
@@ -609,14 +470,10 @@ func TestMetricsService_Send(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockClient := mocks.NewMockCrowdsecClient(ctrl)
-		collector := &MetricsService{
-			apiClient:   mockClient,
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-		}
+		collector := newMockCollector(t, mockClient)
 
 		allMetrics := &models.AllMetrics{}
-		ctx := context.Background()
+		ctx := t.Context()
 
 		mockClient.EXPECT().SendMetrics(gomock.Any(), allMetrics).DoAndReturn(
 			func(ctx context.Context, metrics *models.AllMetrics) error {
@@ -633,41 +490,29 @@ func TestMetricsService_Send(t *testing.T) {
 }
 
 func TestMetricsService_Run(t *testing.T) {
-	t.Run("returns immediately when interval is zero", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockClient := mocks.NewMockCrowdsecClient(ctrl)
-		collector := &MetricsService{
-			apiClient:   mockClient,
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-		}
-
-		ctx := context.Background()
-		err := collector.Run(ctx, 0)
-
-		assert.Nil(t, err)
-	})
-
-	t.Run("stops when context is cancelled", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockClient := mocks.NewMockCrowdsecClient(ctrl)
-		collector := &MetricsService{
-			apiClient:   mockClient,
-			bouncerType: "envoy-proxy",
-			version:     "v1.0.0",
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
+	t.Run("returns early without ticking", func(t *testing.T) {
+		cancelledCtx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		got := collector.Run(ctx, 10*time.Millisecond)
+		tests := []struct {
+			name     string
+			interval time.Duration
+			ctx      context.Context
+			want     error
+		}{
+			{name: "interval is zero", interval: 0, ctx: t.Context(), want: nil},
+			{name: "context already cancelled", interval: 10 * time.Millisecond, ctx: cancelledCtx, want: context.Canceled},
+		}
 
-		want := context.Canceled
-		assert.Equal(t, want, got)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				collector := newTestCollector(t)
+
+				got := collector.Run(tt.ctx, tt.interval)
+
+				assert.Equal(t, tt.want, got)
+			})
+		}
 	})
 
 	t.Run("sends metrics and resets on successful tick", func(t *testing.T) {
@@ -675,27 +520,19 @@ func TestMetricsService_Run(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockClient := mocks.NewMockCrowdsecClient(ctrl)
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
+		collector := newTestCollector(t)
 		collector.apiClient = mockClient
-
 		collector.Inc("test", "test_metric", "count", nil)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
 		mockClient.EXPECT().SendMetrics(gomock.Any(), gomock.Any()).Return(nil).MinTimes(1)
 
 		got := collector.Run(ctx, 20*time.Millisecond)
 
-		want := context.DeadlineExceeded
-		assert.Equal(t, want, got)
+		assert.Equal(t, context.DeadlineExceeded, got)
+		assert.Equal(t, 0, collector.cache.Size())
 	})
 
 	t.Run("does not reset when send fails", func(t *testing.T) {
@@ -703,19 +540,11 @@ func TestMetricsService_Run(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockClient := mocks.NewMockCrowdsecClient(ctrl)
-		client := &apiclient.ApiClient{}
-		cfg := MetricsConfig{
-			APIClient:   client,
-			BouncerType: "envoy-proxy",
-			Version:     "v1.0.0",
-		}
-		collector, err := NewMetricsService(cfg)
-		require.Nil(t, err)
+		collector := newTestCollector(t)
 		collector.apiClient = mockClient
-
 		collector.Inc("test", "test_metric", "count", nil)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
 		sendErr := errors.New("send failed")
@@ -723,7 +552,7 @@ func TestMetricsService_Run(t *testing.T) {
 
 		got := collector.Run(ctx, 20*time.Millisecond)
 
-		want := context.DeadlineExceeded
-		assert.Equal(t, want, got)
+		assert.Equal(t, context.DeadlineExceeded, got)
+		assert.Equal(t, 1, collector.cache.Size())
 	})
 }

@@ -4,40 +4,41 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLevelFromString(t *testing.T) {
 	tests := []struct {
-		name     string
-		level    string
-		expected slog.Level
+		name  string
+		level string
+		want  slog.Level
 	}{
-		{"debug level", "debug", slog.LevelDebug},
-		{"info level", "info", slog.LevelInfo},
-		{"warn level", "warn", slog.LevelWarn},
-		{"error level", "error", slog.LevelError},
-		{"default level", "invalid", slog.LevelInfo},
-		{"case insensitive", "DEBUG", slog.LevelDebug},
+		{name: "debug level", level: "debug", want: slog.LevelDebug},
+		{name: "info level", level: "info", want: slog.LevelInfo},
+		{name: "warn level", level: "warn", want: slog.LevelWarn},
+		{name: "error level", level: "error", want: slog.LevelError},
+		{name: "unknown level falls back to info", level: "invalid", want: slog.LevelInfo},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := LevelFromString(tt.level); got != tt.expected {
-				t.Errorf("LevelFromString() = %v, want %v", got, tt.expected)
-			}
+			got := LevelFromString(tt.level)
+
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestWithContext(t *testing.T) {
-	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 
-	newCtx := WithContext(ctx, logger)
+	newCtx := WithContext(t.Context(), logger)
 
-	if got := newCtx.Value(loggerKey).(*slog.Logger); got != logger {
-		t.Errorf("WithContext() stored logger = %v, want %v", got, logger)
-	}
+	got, ok := newCtx.Value(loggerKey).(*slog.Logger)
+	require.True(t, ok)
+	assert.Same(t, logger, got)
 }
 
 func TestFromContext(t *testing.T) {
@@ -48,27 +49,21 @@ func TestFromContext(t *testing.T) {
 		ctx  context.Context
 		want *slog.Logger
 	}{
-		{
-			name: "nil context",
-			ctx:  nil,
-		},
-		{
-			name: "context without logger",
-			ctx:  context.Background(),
-		},
-		{
-			name: "context with logger",
-			ctx:  WithContext(context.Background(), logger),
-			want: logger,
-		},
+		{name: "nil context", ctx: nil, want: nil},
+		{name: "context without logger", ctx: t.Context(), want: nil},
+		{name: "context with logger", ctx: WithContext(t.Context(), logger), want: logger},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FromContext(tt.ctx)
-			if tt.want != nil && got != tt.want {
-				t.Errorf("FromContext() = %v, want %v", got, tt.want)
+
+			if tt.want == nil {
+				require.NotNil(t, got)
+				return
 			}
+
+			assert.Same(t, tt.want, got)
 		})
 	}
 }

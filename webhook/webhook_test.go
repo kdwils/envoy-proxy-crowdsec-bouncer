@@ -24,22 +24,13 @@ func newService(t *testing.T, subs []config.Subscription, signingKey string) (*S
 	return New(subs, signingKey, time.Second, 0, mockHTTP), mockHTTP
 }
 
-func assertEvent(t *testing.T, svc *Service, want Event) {
+func nextEvent(t *testing.T, svc *Service) (Event, bool) {
 	t.Helper()
 	select {
 	case got := <-svc.events:
-		assert.Equal(t, want, got, "expected event payload to match")
+		return got, true
 	default:
-		t.Fatal("expected event to be enqueued")
-	}
-}
-
-func assertNoEvent(t *testing.T, svc *Service) {
-	t.Helper()
-	select {
-	case got := <-svc.events:
-		t.Fatalf("expected no event enqueued, got %+v", got)
-	default:
+		return Event{}, false
 	}
 }
 
@@ -58,13 +49,15 @@ func TestService_NotifyCheckedRequest(t *testing.T) {
 			Reason: "crowdsecurity/ssh-bf",
 		})
 
-		assertEvent(t, svc, Event{
+		got, ok := nextEvent(t, svc)
+		require.True(t, ok, "expected event to be enqueued")
+		assert.Equal(t, Event{
 			Type:      EventRequestBlocked,
 			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			IP:        "1.2.3.4",
 			Action:    "ban",
 			Reason:    "crowdsecurity/ssh-bf",
-		})
+		}, got)
 	})
 
 	t.Run("enqueues request_allowed event for allow action", func(t *testing.T) {
@@ -76,12 +69,14 @@ func TestService_NotifyCheckedRequest(t *testing.T) {
 			Action: "allow",
 		})
 
-		assertEvent(t, svc, Event{
+		got, ok := nextEvent(t, svc)
+		require.True(t, ok, "expected event to be enqueued")
+		assert.Equal(t, Event{
 			Type:      EventRequestAllowed,
 			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			IP:        "1.2.3.4",
 			Action:    "allow",
-		})
+		}, got)
 	})
 
 	t.Run("does not enqueue when not subscribed to event type", func(t *testing.T) {
@@ -92,7 +87,8 @@ func TestService_NotifyCheckedRequest(t *testing.T) {
 			Action: "ban",
 		})
 
-		assertNoEvent(t, svc)
+		_, ok := nextEvent(t, svc)
+		assert.False(t, ok, "expected no event enqueued")
 	})
 
 	t.Run("does not enqueue event when action is error", func(t *testing.T) {
@@ -104,7 +100,8 @@ func TestService_NotifyCheckedRequest(t *testing.T) {
 			Reason: "remediator error",
 		})
 
-		assertNoEvent(t, svc)
+		_, ok := nextEvent(t, svc)
+		assert.False(t, ok, "expected no event enqueued")
 	})
 
 	t.Run("no-op when no subscriptions", func(t *testing.T) {
@@ -115,7 +112,8 @@ func TestService_NotifyCheckedRequest(t *testing.T) {
 			Action: "ban",
 		})
 
-		assertNoEvent(t, svc)
+		_, ok := nextEvent(t, svc)
+		assert.False(t, ok, "expected no event enqueued")
 	})
 }
 
@@ -126,13 +124,15 @@ func TestService_NotifyCaptchaVerified(t *testing.T) {
 
 		svc.NotifyCaptchaVerified(t.Context(), "1.2.3.4")
 
-		assertEvent(t, svc, Event{
+		got, ok := nextEvent(t, svc)
+		require.True(t, ok, "expected event to be enqueued")
+		assert.Equal(t, Event{
 			Type:      EventCaptchaVerified,
 			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 			IP:        "1.2.3.4",
 			Action:    "allow",
 			Reason:    "captcha verified",
-		})
+		}, got)
 	})
 
 	t.Run("does not enqueue when not subscribed", func(t *testing.T) {
@@ -140,7 +140,8 @@ func TestService_NotifyCaptchaVerified(t *testing.T) {
 
 		svc.NotifyCaptchaVerified(t.Context(), "1.2.3.4")
 
-		assertNoEvent(t, svc)
+		_, ok := nextEvent(t, svc)
+		assert.False(t, ok, "expected no event enqueued")
 	})
 }
 
