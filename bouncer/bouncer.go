@@ -95,6 +95,14 @@ func newRemediationMetrics() map[string]remediationMetric {
 				"remediation": "captcha",
 			},
 		},
+		"challenge": {
+			key:  "CAPI:challenge",
+			name: "dropped",
+			labels: map[string]string{
+				"origin":      "CAPI",
+				"remediation": "challenge",
+			},
+		},
 	}
 }
 
@@ -331,14 +339,16 @@ type ParsedRequest struct {
 func (e *ParseError) Error() string { return e.Reason }
 
 type CheckedRequest struct {
-	IP             string
-	Action         string
-	Reason         string
-	HTTPStatus     int
-	RedirectURL    string
-	Decision       *models.Decision
-	ParsedRequest  *ParsedRequest
-	CaptchaSession *components.CaptchaSession
+	IP              string
+	Action          string
+	Reason          string
+	HTTPStatus      int
+	RedirectURL     string
+	Decision        *models.Decision
+	ParsedRequest   *ParsedRequest
+	CaptchaSession  *components.CaptchaSession
+	ResponseBody    string
+	ResponseHeaders map[string][]string
 }
 
 func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *components.CaptchaSession) CheckedRequest {
@@ -427,6 +437,9 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
 		return captchaResult
+	case "challenge":
+		b.recordFinalMetric(wafResult)
+		return wafResult
 	case "ban":
 		b.recordFinalMetric(wafResult)
 		return wafResult
@@ -549,11 +562,39 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 		return b.wafFailure(parsed)
 	}
 
+	if wafResult.Action == "challenge" {
+		return b.buildChallengeResponse(parsed, wafResult)
+	}
+
 	if wafResult.Action != "allow" {
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
 	}
 
 	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)
+}
+
+// buildChallengeResponse converts an AppSec challenge response into a CheckedRequest,
+// carrying the AppSec-rendered body, cookies, and headers through verbatim so the
+// client's browser can run the challenge (fingerprint/PoW page, worker script, or
+// submission result) without the bouncer interpreting its contents.
+func (b *Bouncer) buildChallengeResponse(parsed *ParsedRequest, wafResult components.WAFResponse) CheckedRequest {
+	status := wafResult.HTTPStatus
+	if status == 0 {
+		status = b.getBanStatusCode()
+	}
+
+	headers := make(map[string][]string, len(wafResult.UserHeaders)+1)
+	for k, v := range wafResult.UserHeaders {
+		headers[k] = append([]string(nil), v...)
+	}
+	if len(wafResult.UserCookies) > 0 {
+		headers["Set-Cookie"] = append(headers["Set-Cookie"], wafResult.UserCookies...)
+	}
+
+	result := NewCheckedRequest(parsed.RealIP, "challenge", "crowdsec challenge", status, nil, "", parsed, nil)
+	result.ResponseBody = wafResult.UserBodyContent
+	result.ResponseHeaders = headers
+	return result
 }
 
 const wafFailOpenReason = "waf-unavailable"
