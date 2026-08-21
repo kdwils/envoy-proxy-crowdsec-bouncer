@@ -5,7 +5,6 @@ package functional
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -25,22 +24,14 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func TestWebhookEvents(t *testing.T) {
-	testWebhookEventsWithVersion(t, CrowdsecImages[len(CrowdsecImages)-1])
-}
-
-func testWebhookEventsWithVersion(t *testing.T, image string) {
+func testWebhookEvents(t *testing.T, env *testEnv) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -56,79 +47,21 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	}))
 	defer webhookSrv.Close()
 
-	net, err := network.New(t.Context(), network.WithDriver("bridge"))
-	require.NoError(t, err, "failed to create network")
-	defer net.Remove(t.Context())
+	env.resetDecisions(t)
+	env.addDecision(t, "--type", "ban", "--value", "192.168.10.1")
+	env.addDecision(t, "--type", "captcha", "--value", "192.168.10.2")
 
-	lapiReq := testcontainers.ContainerRequest{
-		Image:        image,
-		ExposedPorts: []string{"8080/tcp"},
-		Env: map[string]string{
-			"DISABLE_LOCAL_API":               "false",
-			"DISABLE_AGENT":                   "true",
-			"CROWDSEC_BYPASS_DB_VOLUME_CHECK": "true",
-		},
-		Networks:       []string{net.Name},
-		NetworkAliases: map[string][]string{net.Name: {"lapi"}},
-		WaitingFor:     wait.ForHTTP("/health").WithPort("8080/tcp").WithStartupTimeout(30 * time.Second),
-	}
-
-	lapiContainer, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
-		ContainerRequest: lapiReq,
-		Started:          true,
-	})
-	require.NoError(t, err, "failed to start LAPI container")
-	defer lapiContainer.Terminate(t.Context())
-
-	lapiHost, err := lapiContainer.Host(t.Context())
-	require.NoError(t, err)
-	lapiPort, err := lapiContainer.MappedPort(t.Context(), "8080")
-	require.NoError(t, err)
-
-	hostLAPI := url.URL{
-		Scheme: "http",
-		Host:   lapiHost + ":" + lapiPort.Port(),
-	}
-
-	_, out, err := lapiContainer.Exec(t.Context(), []string{
-		"cscli", "bouncers", "add", "testBouncer",
-	})
-	require.NoError(t, err, "failed to add bouncer")
-	b, err := io.ReadAll(out)
-	require.NoError(t, err)
-	key, err := extractAPIKey(string(b))
-	require.NoError(t, err, "failed to extract API key")
-
-	_, _, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "decisions", "add", "--type", "ban", "--value", "192.168.10.1",
-	})
-	require.NoError(t, err, "failed to add ban decision")
-
-	_, _, err = lapiContainer.Exec(t.Context(), []string{
-		"cscli", "decisions", "add", "--type", "captcha", "--value", "192.168.10.2",
-	})
-	require.NoError(t, err, "failed to add captcha decision")
-
-	v := viper.New()
-	v.Set("server.grpcPort", 8080)
-	v.Set("server.httpPort", 8081)
-	v.Set("server.logLevel", "debug")
-	v.Set("bouncer.apiKey", key)
-	v.Set("bouncer.lapiURL", hostLAPI.String())
+	v := newTestViper()
+	v.Set("bouncer.apiKey", env.apiKey)
+	v.Set("bouncer.lapiURL", env.lapiURL)
 	v.Set("bouncer.tickerInterval", "1s")
-	v.Set("bouncer.enabled", true)
-	v.Set("bouncer.metrics", false)
-	v.Set("waf.enabled", false)
 	v.Set("captcha.enabled", true)
 	v.Set("captcha.provider", "recaptcha")
 	v.Set("captcha.siteKey", "test-site-key")
 	v.Set("captcha.secretKey", "test-secret-key")
 	v.Set("captcha.signingKey", "test-signing-key-for-jwt-sessions")
 	v.Set("captcha.callbackURL", "http://localhost")
-	v.Set("captcha.cookieDomain", "")
-	v.Set("captcha.cookieName", "session")
 	v.Set("captcha.secureCookie", false)
-	v.Set("captcha.challengeDuration", "5m")
 	v.Set("captcha.sessionDuration", "1h")
 
 	cfg, err := config.New(v)
@@ -144,16 +77,19 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	mockProvider.EXPECT().Verify(gomock.Any(), "success", gomock.Any()).Return(true, nil).AnyTimes()
 	mockProvider.EXPECT().Verify(gomock.Any(), gomock.Not("success"), gomock.Any()).Return(false, nil).AnyTimes()
 
-	recorder := recorder.NewNoOp()
+	rec := recorder.NewNoOp()
 
-	captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, recorder)
+	captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 	require.NoError(t, err)
 	captchaService.Provider = mockProvider
 
-	testBouncer, err := bouncer.New(cfg, recorder, http.DefaultClient)
+	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 	require.NoError(t, err)
 	testBouncer.CaptchaService = captchaService
 	go testBouncer.Sync(ctx)
+
+	waitForDecision(t, testBouncer.DecisionCache, "192.168.10.1", true, 10*time.Second)
+	waitForDecision(t, testBouncer.DecisionCache, "192.168.10.2", true, 10*time.Second)
 
 	notifier := webhook.New(
 		[]config.Subscription{
@@ -177,14 +113,9 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 	templateStore, err := template.NewStore(template.Config{})
 	require.NoError(t, err)
 
-	srv := server.NewServer(cfg, testBouncer, captchaService, notifier, templateStore, slogger, recorder, nil)
-	go func() {
-		if err := srv.ServeDual(ctx); err != nil && err != context.Canceled {
-			t.Logf("server error: %v", err)
-		}
-	}()
-
-	time.Sleep(5 * time.Second)
+	srv := server.NewServer(cfg, testBouncer, captchaService, notifier, templateStore, slogger, rec, nil)
+	stop := startServer(t, ctx, srv, "localhost:8080")
+	defer stop()
 
 	conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -207,7 +138,7 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 		req := createCheckRequest("10.0.0.1", createHttpRequest("GET", "/hello", "example.com", nil))
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.Equal(t, int32(0), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantAllowedResponse()), marshalProto(t, check))
 
 		got := waitForEvent(t, 3*time.Second)
 		want := webhook.Event{
@@ -225,7 +156,7 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 		req := createCheckRequest("192.168.10.1", createHttpRequest("GET", "/restricted", "example.com", nil))
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.Equal(t, int32(403), check.Status.Code)
+		assert.Equal(t, marshalProto(t, wantForbiddenResponse()), marshalProto(t, check))
 
 		got := waitForEvent(t, 3*time.Second)
 		want := webhook.Event{
@@ -243,7 +174,9 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 		req := createCheckRequest("192.168.10.2", createHttpRequest("GET", "/protected", "example.com", nil))
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.Equal(t, int32(302), check.Status.Code)
+
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		got := waitForEvent(t, 3*time.Second)
 		want := webhook.Event{
@@ -261,20 +194,11 @@ func testWebhookEventsWithVersion(t *testing.T, image string) {
 		req := createCheckRequest("192.168.10.2", createHttpRequest("GET", "/protected-verify", "example.com", nil))
 		check, err := client.Check(context.TODO(), req)
 		require.NoError(t, err)
-		require.Equal(t, int32(302), check.Status.Code)
+
+		challengeToken := extractChallengeToken(t, check)
+		assert.Equal(t, marshalProto(t, wantRedirectResponse(challengeToken)), marshalProto(t, check))
 
 		waitForEvent(t, 3*time.Second)
-
-		deniedResponse := check.GetDeniedResponse()
-		require.NotNil(t, deniedResponse, "expected denied response for captcha redirect")
-		require.Len(t, deniedResponse.Headers, 1, "expected one location header")
-
-		locationHeader := deniedResponse.Headers[0].Header.Value
-		locationURL, err := url.Parse(locationHeader)
-		require.NoError(t, err)
-
-		challengeToken := locationURL.Query().Get("challengeToken")
-		require.NotEmpty(t, challengeToken, "expected challenge token in redirect")
 
 		form := url.Values{}
 		form.Add("challengeToken", challengeToken)

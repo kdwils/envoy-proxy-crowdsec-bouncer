@@ -41,6 +41,11 @@ waf:
   enabled: false
   apiKey: "<lapi-key>"
   appSecURL: "http://appsec:7422"
+  httpTimeout: "5s"
+  # failOpen: allows requests to proceed when AppSec inspection returns an
+  # error (transport error or AppSec error action), treating the WAF as
+  # unavailable instead of failing closed
+  # failOpen: false
 
 captcha:
   enabled: false
