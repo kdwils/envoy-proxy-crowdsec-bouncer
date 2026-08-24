@@ -1,6 +1,6 @@
 module github.com/kdwils/envoy-proxy-bouncer
 
-go 1.27
+go 1.26.4
 
 require (
 	github.com/crowdsecurity/crowdsec v1.7.8
