@@ -1,4 +1,4 @@
-package components
+package decisions
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 )
 
-type DecisionCache struct {
+type Cache struct {
 	stream         *csbouncer.StreamBouncer
 	decisions      *cache.Cache[string, models.Decision]
 	MetricsService *crowdsec.MetricsService
@@ -29,7 +29,7 @@ type DecisionCache struct {
 	cidrs          atomic.Pointer[bart.Table[models.Decision]]
 }
 
-func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom *recorder.Recorder) (*DecisionCache, error) {
+func NewCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom *recorder.Recorder) (*Cache, error) {
 	if err := cfg.ValidateAuth(); err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func NewDecisionCache(cfg config.Bouncer, metricsService *crowdsec.MetricsServic
 	if err != nil {
 		return nil, err
 	}
-	dc := &DecisionCache{
+	dc := &Cache{
 		stream:         stream,
 		decisions:      cache.New[string, models.Decision](),
 		MetricsService: metricsService,
@@ -97,7 +97,7 @@ func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
 	return b, err
 }
 
-func (dc *DecisionCache) GetDecision(ctx context.Context, ip string) (*models.Decision, error) {
+func (dc *Cache) GetDecision(ctx context.Context, ip string) (*models.Decision, error) {
 	log := logger.FromContext(ctx)
 	if ip == "" {
 		log.Debug("no ip provided")
@@ -128,18 +128,18 @@ func (dc *DecisionCache) GetDecision(ctx context.Context, ip string) (*models.De
 	return nil, nil
 }
 
-func (dc *DecisionCache) Size() int {
+func (dc *Cache) Size() int {
 	if dc.decisions == nil {
 		return 0
 	}
 	return dc.decisions.Size()
 }
 
-func (dc *DecisionCache) IsReady() bool {
+func (dc *Cache) IsReady() bool {
 	return dc.syncComplete.Load()
 }
 
-func (dc *DecisionCache) GetOriginCounts() map[string]int {
+func (dc *Cache) GetOriginCounts() map[string]int {
 	originCounts := make(map[string]int)
 	for _, origin := range dc.knownOrigins.Keys() {
 		originCounts[origin] = 0
@@ -159,7 +159,7 @@ func (dc *DecisionCache) GetOriginCounts() map[string]int {
 	return originCounts
 }
 
-func (dc *DecisionCache) buildIndex(ctx context.Context) *bart.Table[models.Decision] {
+func (dc *Cache) buildIndex(ctx context.Context) *bart.Table[models.Decision] {
 	logger := logger.FromContext(ctx).With(slog.String("component", "bouncer"), slog.String("method", "build_index"))
 
 	var newCidrs bart.Table[models.Decision]
@@ -209,7 +209,7 @@ func (dc *DecisionCache) buildIndex(ctx context.Context) *bart.Table[models.Deci
 	return &newCidrs
 }
 
-func (dc *DecisionCache) Sync(ctx context.Context) error {
+func (dc *Cache) Sync(ctx context.Context) error {
 	if dc.stream == nil {
 		return errors.New("stream not initialized")
 	}

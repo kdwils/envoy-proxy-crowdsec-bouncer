@@ -14,23 +14,19 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/types"
 )
-
-//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mock_http_client.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/webhook HTTPClient
-type HTTPClient interface {
-	Do(*http.Request) (*http.Response, error)
-}
 
 type Service struct {
 	subsByEvent map[EventType][]string
 	signingKey  string
-	http        HTTPClient
+	http        types.HTTPClient
 	timeout     time.Duration
 	events      chan Event
 	now         func() time.Time
 }
 
-func New(subscriptions []config.Subscription, signingKey string, timeout time.Duration, bufferSize int, client HTTPClient) *Service {
+func New(subscriptions []config.Subscription, signingKey string, timeout time.Duration, bufferSize int, client types.HTTPClient) *Service {
 	t := timeout
 	if t == 0 {
 		t = 5 * time.Second

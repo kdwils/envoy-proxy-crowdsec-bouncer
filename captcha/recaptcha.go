@@ -1,4 +1,4 @@
-package components
+package captcha
 
 import (
 	"context"
@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/kdwils/envoy-proxy-bouncer/types"
 )
 
 // RecaptchaProvider implements Google reCAPTCHA verification
 type RecaptchaProvider struct {
 	SecretKey  string
-	HTTPClient HTTPClient
+	HTTPClient types.HTTPClient
 }
 
 // RecaptchaResponse represents Google reCAPTCHA API response
@@ -26,7 +28,7 @@ type RecaptchaResponse struct {
 }
 
 // NewRecaptchaProvider creates a new reCAPTCHA provider
-func NewRecaptchaProvider(secretKey string, httpClient HTTPClient) (*RecaptchaProvider, error) {
+func NewRecaptchaProvider(secretKey string, httpClient types.HTTPClient) (*RecaptchaProvider, error) {
 	return &RecaptchaProvider{
 		SecretKey:  secretKey,
 		HTTPClient: httpClient,

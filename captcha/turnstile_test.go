@@ -1,4 +1,4 @@
-package components
+package captcha
 
 import (
 	"errors"
@@ -7,27 +7,27 @@ import (
 	"strings"
 	"testing"
 
-	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
+	mocks "github.com/kdwils/envoy-proxy-bouncer/types/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func TestNewRecaptchaProvider(t *testing.T) {
+func TestNewTurnstileProvider(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockHTTP := mocks.NewMockHTTPClient(ctrl)
 
-	provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+	provider, err := NewTurnstileProvider("test-secret", mockHTTP)
 
 	require.NoError(t, err)
-	assert.Equal(t, &RecaptchaProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}, provider)
+	assert.Equal(t, &TurnstileProvider{SecretKey: "test-secret", HTTPClient: mockHTTP}, provider)
 }
 
-func TestRecaptchaProvider_Verify(t *testing.T) {
+func TestTurnstileProvider_Verify(t *testing.T) {
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		provider, err := NewTurnstileProvider("test-secret", mockHTTP)
 		require.NoError(t, err)
 
 		var gotReq *http.Request
@@ -37,7 +37,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 
 		require.NotNil(t, gotReq)
 		assert.Equal(t, http.MethodPost, gotReq.Method)
-		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "https://challenges.cloudflare.com/turnstile/v0/siteverify", gotReq.URL.String())
 		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
 		assert.Equal(t, false, success)
@@ -48,7 +48,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		provider, err := NewTurnstileProvider("test-secret", mockHTTP)
 		require.NoError(t, err)
 
 		response := &http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader(""))}
@@ -59,7 +59,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 
 		require.NotNil(t, gotReq)
 		assert.Equal(t, http.MethodPost, gotReq.Method)
-		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "https://challenges.cloudflare.com/turnstile/v0/siteverify", gotReq.URL.String())
 		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
 		assert.Equal(t, false, success)
@@ -70,7 +70,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 	t.Run("invalid JSON response", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		provider, err := NewTurnstileProvider("test-secret", mockHTTP)
 		require.NoError(t, err)
 
 		response := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("invalid json"))}
@@ -81,7 +81,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 
 		require.NotNil(t, gotReq)
 		assert.Equal(t, http.MethodPost, gotReq.Method)
-		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "https://challenges.cloudflare.com/turnstile/v0/siteverify", gotReq.URL.String())
 		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
 		assert.Equal(t, false, success)
@@ -92,7 +92,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 	t.Run("verification failed with error codes", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		provider, err := NewTurnstileProvider("test-secret", mockHTTP)
 		require.NoError(t, err)
 
 		response := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":false,"error-codes":["invalid-input-response","timeout-or-duplicate"]}`))}
@@ -103,7 +103,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 
 		require.NotNil(t, gotReq)
 		assert.Equal(t, http.MethodPost, gotReq.Method)
-		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "https://challenges.cloudflare.com/turnstile/v0/siteverify", gotReq.URL.String())
 		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
 		assert.Equal(t, false, success)
@@ -115,7 +115,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 	t.Run("successful verification", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		provider, err := NewRecaptchaProvider("test-secret", mockHTTP)
+		provider, err := NewTurnstileProvider("test-secret", mockHTTP)
 		require.NoError(t, err)
 
 		response := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"success":true}`))}
@@ -126,7 +126,7 @@ func TestRecaptchaProvider_Verify(t *testing.T) {
 
 		require.NotNil(t, gotReq)
 		assert.Equal(t, http.MethodPost, gotReq.Method)
-		assert.Equal(t, "https://www.google.com/recaptcha/api/siteverify", gotReq.URL.String())
+		assert.Equal(t, "https://challenges.cloudflare.com/turnstile/v0/siteverify", gotReq.URL.String())
 		assert.Equal(t, "application/x-www-form-urlencoded", gotReq.Header.Get("Content-Type"))
 
 		assert.Equal(t, true, success)

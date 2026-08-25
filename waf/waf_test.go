@@ -1,4 +1,4 @@
-package components
+package waf
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
+	mocks "github.com/kdwils/envoy-proxy-bouncer/types/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -92,16 +92,15 @@ func TestNewForwardRequest(t *testing.T) {
 
 func TestWAF_Inspect(t *testing.T) {
 	t.Run("error on request build", func(t *testing.T) {
-		_, err := NewWAF(":badurl", "", time.Second, nethttp.DefaultClient)
+		_, err := NewWAF(":badurl", "", time.Second, nil)
 		assert.Error(t, err)
 	})
 
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
+		waf, err := NewWAF("http://test", "", time.Second, mockHTTP)
 		require.NoError(t, err)
-		waf.http = mockHTTP
 		expectedHeaders := map[string]string{
 			"User-Agent":             "UA",
 			"X-Crowdsec-Appsec-Ip":   "192.168.1.1",
@@ -126,9 +125,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "", time.Second, nethttp.DefaultClient)
+		waf, err := NewWAF("http://test", "", time.Second, mockHTTP)
 		require.NoError(t, err)
-		waf.http = mockHTTP
 		response := &nethttp.Response{StatusCode: 500, Status: "500 error", Body: io.NopCloser(strings.NewReader(""))}
 		expectedHeaders := map[string]string{
 			"User-Agent":             "UA",
@@ -154,9 +152,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
+		waf, err := NewWAF("http://test", "key", time.Second, mockHTTP)
 		require.NoError(t, err)
-		waf.http = mockHTTP
 		respBody := `{"action":"ban","http_status":403}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		expectedHeaders := map[string]string{
@@ -186,9 +183,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("with body", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
+		waf, err := NewWAF("http://test", "key", time.Second, mockHTTP)
 		require.NoError(t, err)
-		waf.http = mockHTTP
 		respBody := `{"action":"captcha"}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
 		expectedHeaders := map[string]string{
@@ -219,9 +215,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("hung appsec returns an error once the timeout elapses", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "", 50*time.Millisecond, nethttp.DefaultClient)
+		waf, err := NewWAF("http://test", "", 50*time.Millisecond, mockHTTP)
 		require.NoError(t, err)
-		waf.http = mockHTTP
 
 		mockHTTP.EXPECT().Do(gomock.Any()).DoAndReturn(func(r *nethttp.Request) (*nethttp.Response, error) {
 			<-r.Context().Done()

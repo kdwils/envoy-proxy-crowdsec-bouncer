@@ -18,7 +18,7 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
+	"github.com/kdwils/envoy-proxy-bouncer/captcha"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
@@ -453,7 +453,7 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 
 		redirectParams := make(url.Values)
 		redirectParams.Set("challengeToken", challengeToken)
-		assert.Equal(t, components.CaptchaSession{
+		assert.Equal(t, captcha.CaptchaSession{
 			ID:           challengeToken,
 			OriginalURL:  "http://my-host.com/protected",
 			CreatedAt:    session.CreatedAt,
@@ -494,7 +494,7 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 
 		redirectParams := make(url.Values)
 		redirectParams.Set("challengeToken", challengeToken)
-		assert.Equal(t, components.CaptchaSession{
+		assert.Equal(t, captcha.CaptchaSession{
 			ID:           challengeToken,
 			OriginalURL:  "http://my-host.com/crowdsec-test-NtktlJHV4TfBSK3wvlhiOBnl",
 			CreatedAt:    session.CreatedAt,
@@ -516,7 +516,7 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 	})
 
 	t.Run("Test invalid redirect URL is rejected", func(t *testing.T) {
-		captchaService, err := components.NewCaptchaService(cfg.Captcha, &http.Client{}, rec)
+		captchaService, err := captcha.NewCaptchaService(cfg.Captcha, &http.Client{}, rec)
 		require.NoError(t, err)
 
 		session, err := captchaService.CreateSession("192.168.1.100", "javascript:alert('xss')", "")
