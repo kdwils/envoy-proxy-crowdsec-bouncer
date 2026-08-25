@@ -46,7 +46,7 @@ type AppSecRequest struct {
 	ProtoMinor int
 }
 
-func NewWAF(appsecURL, apiKey string, httpTimeout time.Duration, http *http.Client) (WAF, error) {
+func NewWAF(appsecURL, apiKey string, httpTimeout time.Duration, http types.HTTPClient) (WAF, error) {
 	apiURL, err := url.Parse(appsecURL)
 	if err != nil {
 		return WAF{}, fmt.Errorf("failed to parse API URL: %w", err)
