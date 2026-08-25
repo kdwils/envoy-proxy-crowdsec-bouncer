@@ -37,7 +37,7 @@ func marshalProto(t *testing.T, msg proto.Message) []byte {
 }
 
 func newTestViper() *viper.Viper {
-	v := 	config.GetViper("")
+	v := config.GetViper("")
 	v.Set("server.logLevel", "debug")
 	v.Set("templates.showDeniedPage", false)
 	return v

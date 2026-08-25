@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	components "github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
+	captcha "github.com/kdwils/envoy-proxy-bouncer/captcha"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -56,10 +56,10 @@ func (mr *MockCaptchaServiceMockRecorder) CookieName() *gomock.Call {
 }
 
 // CreateSession mocks base method.
-func (m *MockCaptchaService) CreateSession(ip, originalURL, sessionToken string) (*components.CaptchaSession, error) {
+func (m *MockCaptchaService) CreateSession(ip, originalURL, sessionToken string) (*captcha.CaptchaSession, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateSession", ip, originalURL, sessionToken)
-	ret0, _ := ret[0].(*components.CaptchaSession)
+	ret0, _ := ret[0].(*captcha.CaptchaSession)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -71,10 +71,10 @@ func (mr *MockCaptchaServiceMockRecorder) CreateSession(ip, originalURL, session
 }
 
 // GetSession mocks base method.
-func (m *MockCaptchaService) GetSession(challengeToken string) (*components.CaptchaSession, bool) {
+func (m *MockCaptchaService) GetSession(challengeToken string) (*captcha.CaptchaSession, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetSession", challengeToken)
-	ret0, _ := ret[0].(*components.CaptchaSession)
+	ret0, _ := ret[0].(*captcha.CaptchaSession)
 	ret1, _ := ret[1].(bool)
 	return ret0, ret1
 }
@@ -126,10 +126,10 @@ func (mr *MockCaptchaServiceMockRecorder) StartCleanup(ctx any) *gomock.Call {
 }
 
 // VerifyResponse mocks base method.
-func (m *MockCaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken, challengeResponse string) (*components.VerificationResult, error) {
+func (m *MockCaptchaService) VerifyResponse(ctx context.Context, ip, challengeToken, challengeResponse string) (*captcha.VerificationResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "VerifyResponse", ctx, ip, challengeToken, challengeResponse)
-	ret0, _ := ret[0].(*components.VerificationResult)
+	ret0, _ := ret[0].(*captcha.VerificationResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

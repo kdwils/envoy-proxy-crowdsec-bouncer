@@ -13,11 +13,12 @@ import (
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/captcha"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
+	"github.com/kdwils/envoy-proxy-bouncer/waf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -1020,14 +1021,14 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("bouncer allows - waf bans", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 		r.MetricsService = newMetricsService(t)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "4.4.4.4").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ban"}, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("4.4.4.4", "https", "host", "/bar", "POST", "HTTP/2", "abc"))
 		want := NewCheckedRequest("4.4.4.4", "ban", "ban", 403, nil, "", wantParsed("4.4.4.4", "https", "host", "/bar", "POST", []byte("abc"), 2, 0), nil)
@@ -1041,13 +1042,13 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "6.6.6.6").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf down"))
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(t.Context(), mkCheckRequest("6.6.6.6", "http", "h", "/p", "GET", "HTTP/1.0", ""))
 		want := NewCheckedRequest("6.6.6.6", "error", "error", 500, nil, "", wantParsed("6.6.6.6", "http", "h", "/p", "GET", nil, 1, 0), nil)
@@ -1057,13 +1058,13 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf error with failOpen enabled allows request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{WAF: config.WAF{FailOpen: true}})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.2").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{}, fmt.Errorf("waf down"))
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.2", "http", "h", "/p", "GET", "HTTP/1.0", ""))
 		want := NewCheckedRequest("10.0.0.2", "allow", "waf-unavailable", 200, nil, "", wantParsed("10.0.0.2", "http", "h", "/p", "GET", nil, 1, 0), nil)
@@ -1073,13 +1074,13 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf error action with failOpen enabled allows request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{WAF: config.WAF{FailOpen: true}})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.4").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.4", "http", "h", "/p", "GET", "HTTP/1.0", ""))
 		want := NewCheckedRequest("10.0.0.4", "allow", "waf-unavailable", 200, nil, "", wantParsed("10.0.0.4", "http", "h", "/p", "GET", nil, 1, 0), nil)
@@ -1089,14 +1090,14 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf error with failOpen enabled still enforces LAPI ban", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{WAF: config.WAF{FailOpen: true}})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decision := &models.Decision{Type: new("ban")}
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.3").Return(decision, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.Any()).Times(0)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.Any()).Times(0)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.3", "http", "h", "/p", "GET", "HTTP/1.0", ""))
 		want := NewCheckedRequest("10.0.0.3", "ban", "crowdsec ban", 403, decision, "", wantParsed("10.0.0.3", "http", "h", "/p", "GET", nil, 1, 0), nil)
@@ -1106,13 +1107,13 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf action matching is case insensitive", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.5").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "ALLOW"}, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "ALLOW"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.5", "http", "h", "/p", "GET", "HTTP/1.0", ""))
 		want := NewCheckedRequest("10.0.0.5", "allow", "ok", 200, nil, "", wantParsed("10.0.0.5", "http", "h", "/p", "GET", nil, 1, 0), nil)
@@ -1122,13 +1123,13 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf returns error action", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "7.7.7.7").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "error"}, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("7.7.7.7", "http", "h", "/p", "GET", "HTTP/1.0", ""))
 		want := NewCheckedRequest("7.7.7.7", "error", "error", 500, nil, "", wantParsed("7.7.7.7", "http", "h", "/p", "GET", nil, 1, 0), nil)
@@ -1138,13 +1139,13 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf returns unknown action", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "8.8.8.8").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "unknown"}, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "unknown"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("8.8.8.8", "http", "h", "/p", "GET", "HTTP/1.0", ""))
 		want := NewCheckedRequest("8.8.8.8", "unknown", "unknown action", 500, nil, "", wantParsed("8.8.8.8", "http", "h", "/p", "GET", nil, 1, 0), nil)
@@ -1154,14 +1155,14 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("allow both", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 		r.MetricsService = newMetricsService(t)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "9.9.9.9").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "allow"}, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "allow"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("9.9.9.9", "https", "ex", "/ok", "GET", "HTTP/2", ""))
 		want := NewCheckedRequest("9.9.9.9", "allow", "ok", 200, nil, "", wantParsed("9.9.9.9", "https", "ex", "/ok", "GET", nil, 2, 0), nil)
@@ -1220,16 +1221,16 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf captcha - captcha disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
-		captcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
-		r.CaptchaService = captcha
+		r.WAF = mockWAF
+		r.CaptchaService = mockCaptcha
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "11.11.11.11").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
-		captcha.EXPECT().IsEnabled().Return(false)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
+		mockCaptcha.EXPECT().IsEnabled().Return(false)
 
 		got := r.Check(t.Context(), mkCheckRequest("11.11.11.11", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
 		want := NewCheckedRequest("11.11.11.11", "allow", "captcha disabled", 200, nil, "", wantParsed("11.11.11.11", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
@@ -1239,13 +1240,13 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf captcha - captcha nil", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
+		r.WAF = mockWAF
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("12.12.12.12", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
 		want := NewCheckedRequest("12.12.12.12", "allow", "captcha disabled", 200, nil, "", wantParsed("12.12.12.12", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
@@ -1255,18 +1256,18 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf captcha - no challenge needed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
-		captcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
-		r.CaptchaService = captcha
+		r.WAF = mockWAF
+		r.CaptchaService = mockCaptcha
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
-		captcha.EXPECT().IsEnabled().Return(true)
-		captcha.EXPECT().CookieName().Return("session")
-		captcha.EXPECT().CreateSession("13.13.13.13", "https://example.com/test", "").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
+		mockCaptcha.EXPECT().IsEnabled().Return(true)
+		mockCaptcha.EXPECT().CookieName().Return("session")
+		mockCaptcha.EXPECT().CreateSession("13.13.13.13", "https://example.com/test", "").Return(nil, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("13.13.13.13", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
 		want := NewCheckedRequest("13.13.13.13", "allow", "captcha not required", 200, nil, "", wantParsed("13.13.13.13", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
@@ -1276,18 +1277,18 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf captcha - challenge error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
-		captcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
-		r.CaptchaService = captcha
+		r.WAF = mockWAF
+		r.CaptchaService = mockCaptcha
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "14.14.14.14").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
-		captcha.EXPECT().IsEnabled().Return(true)
-		captcha.EXPECT().CookieName().Return("session")
-		captcha.EXPECT().CreateSession("14.14.14.14", "https://example.com/test", "").Return(nil, fmt.Errorf("session creation failed"))
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
+		mockCaptcha.EXPECT().IsEnabled().Return(true)
+		mockCaptcha.EXPECT().CookieName().Return("session")
+		mockCaptcha.EXPECT().CreateSession("14.14.14.14", "https://example.com/test", "").Return(nil, fmt.Errorf("session creation failed"))
 
 		got := r.Check(t.Context(), mkCheckRequest("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
 		want := NewCheckedRequest("14.14.14.14", "error", "captcha error", 500, nil, "", wantParsed("14.14.14.14", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
@@ -1297,20 +1298,20 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf captcha - challenge required", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		waf := remediationmocks.NewMockWAF(ctrl)
-		captcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.WAF = waf
-		r.CaptchaService = captcha
+		r.WAF = mockWAF
+		r.CaptchaService = mockCaptcha
 		r.MetricsService = newMetricsService(t)
 
-		session := &components.CaptchaSession{ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123"}
+		session := &captcha.CaptchaSession{ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123"}
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(nil, nil)
-		waf.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(components.AppSecRequest{})).Return(components.WAFResponse{Action: "captcha"}, nil)
-		captcha.EXPECT().IsEnabled().Return(true)
-		captcha.EXPECT().CookieName().Return("session")
-		captcha.EXPECT().CreateSession("15.15.15.15", "https://example.com/test", "").Return(session, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
+		mockCaptcha.EXPECT().IsEnabled().Return(true)
+		mockCaptcha.EXPECT().CookieName().Return("session")
+		mockCaptcha.EXPECT().CreateSession("15.15.15.15", "https://example.com/test", "").Return(session, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
 		want := NewCheckedRequest("15.15.15.15", "captcha", "captcha required", 302, nil, session.ChallengeURL, wantParsed("15.15.15.15", "https", "example.com", "/test", "GET", nil, 1, 1), session)
@@ -1324,16 +1325,16 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("bouncer captcha - session token from cookie is passed to CreateSession", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		captcha := remediationmocks.NewMockCaptchaService(ctrl)
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
 		r := newTestBouncer(t, config.Config{})
 		r.DecisionCache = decisionCache
-		r.CaptchaService = captcha
+		r.CaptchaService = mockCaptcha
 
-		session := &components.CaptchaSession{ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123"}
+		session := &captcha.CaptchaSession{ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123"}
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "16.16.16.16").Return(&models.Decision{Type: new("captcha")}, nil)
-		captcha.EXPECT().IsEnabled().Return(true)
-		captcha.EXPECT().CookieName().Return("session")
-		captcha.EXPECT().CreateSession("16.16.16.16", "https://example.com/test", "abc123").Return(session, nil)
+		mockCaptcha.EXPECT().IsEnabled().Return(true)
+		mockCaptcha.EXPECT().CookieName().Return("session")
+		mockCaptcha.EXPECT().CreateSession("16.16.16.16", "https://example.com/test", "abc123").Return(session, nil)
 
 		req := &auth.CheckRequest{
 			Attributes: &auth.AttributeContext{

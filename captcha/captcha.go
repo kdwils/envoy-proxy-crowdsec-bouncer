@@ -1,4 +1,4 @@
-package components
+package captcha
 
 import (
 	"context"
@@ -16,9 +16,10 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
+	"github.com/kdwils/envoy-proxy-bouncer/types"
 )
 
-//go:generate mockgen -destination=mocks/mock_captcha_provider.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer/components CaptchaProvider
+//go:generate mockgen -destination=mocks/mock_captcha_provider.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/captcha CaptchaProvider
 
 type CaptchaProvider interface {
 	Verify(ctx context.Context, response, remoteIP string) (bool, error)
@@ -171,7 +172,7 @@ type VerificationResult struct {
 	Token   string `json:"token,omitempty"`
 }
 
-func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient, prom *recorder.Recorder) (*CaptchaService, error) {
+func NewCaptchaService(cfg config.Captcha, httpClient types.HTTPClient, prom *recorder.Recorder) (*CaptchaService, error) {
 	if cfg.Enabled && cfg.SigningKey == "" {
 		return nil, fmt.Errorf("signing key is required when captcha is enabled")
 	}
@@ -193,7 +194,7 @@ func NewCaptchaService(cfg config.Captcha, httpClient HTTPClient, prom *recorder
 		prom:           prom,
 	}
 
-	service.challengeCache = cache.New[string, ChallengeClaims](
+	service.challengeCache = cache.New(
 		cache.WithCleanup(time.Minute, func(key string, value ChallengeClaims) bool {
 			expired := value.ExpiresAt.Time.Before(time.Now())
 			if expired {

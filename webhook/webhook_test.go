@@ -10,17 +10,17 @@ import (
 
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
-	"github.com/kdwils/envoy-proxy-bouncer/webhook/mocks"
+	typesmocks "github.com/kdwils/envoy-proxy-bouncer/types/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func newService(t *testing.T, subs []config.Subscription, signingKey string) (*Service, *mocks.MockHTTPClient) {
+func newService(t *testing.T, subs []config.Subscription, signingKey string) (*Service, *typesmocks.MockHTTPClient) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
-	mockHTTP := mocks.NewMockHTTPClient(ctrl)
+	mockHTTP := typesmocks.NewMockHTTPClient(ctrl)
 	return New(subs, signingKey, time.Second, 0, mockHTTP), mockHTTP
 }
 

@@ -1,4 +1,4 @@
-package components
+package waf
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/types"
 )
 
 type Config struct {
@@ -25,7 +26,7 @@ type WAF struct {
 	APIKey      string
 	APIURL      string
 	apiURL      *url.URL
-	http        HTTPClient
+	http        types.HTTPClient
 	httpTimeout time.Duration
 }
 

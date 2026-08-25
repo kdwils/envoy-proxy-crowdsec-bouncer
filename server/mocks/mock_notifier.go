@@ -41,18 +41,6 @@ func (m *MockNotifier) EXPECT() *MockNotifierMockRecorder {
 	return m.recorder
 }
 
-// NotifyCheckedRequest mocks base method.
-func (m *MockNotifier) NotifyCheckedRequest(ctx context.Context, result bouncer.CheckedRequest) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "NotifyCheckedRequest", ctx, result)
-}
-
-// NotifyCheckedRequest indicates an expected call of NotifyCheckedRequest.
-func (mr *MockNotifierMockRecorder) NotifyCheckedRequest(ctx, result any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyCheckedRequest", reflect.TypeOf((*MockNotifier)(nil).NotifyCheckedRequest), ctx, result)
-}
-
 // NotifyCaptchaVerified mocks base method.
 func (m *MockNotifier) NotifyCaptchaVerified(ctx context.Context, ip string) {
 	m.ctrl.T.Helper()
@@ -63,4 +51,16 @@ func (m *MockNotifier) NotifyCaptchaVerified(ctx context.Context, ip string) {
 func (mr *MockNotifierMockRecorder) NotifyCaptchaVerified(ctx, ip any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyCaptchaVerified", reflect.TypeOf((*MockNotifier)(nil).NotifyCaptchaVerified), ctx, ip)
+}
+
+// NotifyCheckedRequest mocks base method.
+func (m *MockNotifier) NotifyCheckedRequest(ctx context.Context, result bouncer.CheckedRequest) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "NotifyCheckedRequest", ctx, result)
+}
+
+// NotifyCheckedRequest indicates an expected call of NotifyCheckedRequest.
+func (mr *MockNotifierMockRecorder) NotifyCheckedRequest(ctx, result any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyCheckedRequest", reflect.TypeOf((*MockNotifier)(nil).NotifyCheckedRequest), ctx, result)
 }

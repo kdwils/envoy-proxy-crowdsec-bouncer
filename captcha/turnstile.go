@@ -1,4 +1,4 @@
-package components
+package captcha
 
 import (
 	"context"
@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/kdwils/envoy-proxy-bouncer/types"
 )
 
 // TurnstileProvider implements Cloudflare Turnstile verification
 type TurnstileProvider struct {
 	SecretKey  string
-	HTTPClient HTTPClient
+	HTTPClient types.HTTPClient
 }
 
 // TurnstileResponse represents Cloudflare Turnstile API response
@@ -28,7 +30,7 @@ type TurnstileResponse struct {
 }
 
 // NewTurnstileProvider creates a new Turnstile provider
-func NewTurnstileProvider(secretKey string, httpClient HTTPClient) (*TurnstileProvider, error) {
+func NewTurnstileProvider(secretKey string, httpClient types.HTTPClient) (*TurnstileProvider, error) {
 	return &TurnstileProvider{
 		SecretKey:  secretKey,
 		HTTPClient: httpClient,

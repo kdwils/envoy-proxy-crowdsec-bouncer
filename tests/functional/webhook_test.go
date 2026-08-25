@@ -16,8 +16,8 @@ import (
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
-	componentmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/captcha"
+	captchamocks "github.com/kdwils/envoy-proxy-bouncer/captcha/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
@@ -72,14 +72,14 @@ func testWebhookEvents(t *testing.T, env *testEnv) {
 	slogger := slog.New(handler)
 	ctx := logger.WithContext(t.Context(), slogger)
 
-	mockProvider := componentmocks.NewMockCaptchaProvider(ctrl)
+	mockProvider := captchamocks.NewMockCaptchaProvider(ctrl)
 	mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 	mockProvider.EXPECT().Verify(gomock.Any(), "success", gomock.Any()).Return(true, nil).AnyTimes()
 	mockProvider.EXPECT().Verify(gomock.Any(), gomock.Not("success"), gomock.Any()).Return(false, nil).AnyTimes()
 
 	rec := recorder.NewNoOp()
 
-	captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
+	captchaService, err := captcha.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 	require.NoError(t, err)
 	captchaService.Provider = mockProvider
 

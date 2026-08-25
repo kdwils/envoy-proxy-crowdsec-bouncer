@@ -1,4 +1,4 @@
-package components
+package waf
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
+	mocks "github.com/kdwils/envoy-proxy-bouncer/types/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
