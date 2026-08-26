@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	components "github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
+	waf "github.com/kdwils/envoy-proxy-bouncer/waf"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,10 +42,10 @@ func (m *MockWAF) EXPECT() *MockWAFMockRecorder {
 }
 
 // Inspect mocks base method.
-func (m *MockWAF) Inspect(ctx context.Context, req components.AppSecRequest) (components.WAFResponse, error) {
+func (m *MockWAF) Inspect(ctx context.Context, req waf.AppSecRequest) (waf.WAFResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Inspect", ctx, req)
-	ret0, _ := ret[0].(components.WAFResponse)
+	ret0, _ := ret[0].(waf.WAFResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

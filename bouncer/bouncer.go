@@ -15,19 +15,21 @@ import (
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	"github.com/crowdsecurity/go-cs-lib/version"
 
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
+	"github.com/kdwils/envoy-proxy-bouncer/captcha"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/decisions"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
+	"github.com/kdwils/envoy-proxy-bouncer/waf"
 
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 )
 
 //go:generate mockgen -destination=mocks/mock_waf.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer WAF
 type WAF interface {
-	Inspect(ctx context.Context, req components.AppSecRequest) (components.WAFResponse, error)
+	Inspect(ctx context.Context, req waf.AppSecRequest) (waf.WAFResponse, error)
 }
 
 //go:generate mockgen -destination=mocks/mock_decision_cache.go -package=mocks github.com/kdwils/envoy-proxy-bouncer/bouncer DecisionCache
@@ -43,9 +45,9 @@ type DecisionCache interface {
 type CaptchaService interface {
 	IsEnabled() bool
 	RequiresCaptcha(sessionToken string) bool
-	CreateSession(ip, originalURL, sessionToken string) (*components.CaptchaSession, error)
-	GetSession(challengeToken string) (*components.CaptchaSession, bool)
-	VerifyResponse(ctx context.Context, ip, challengeToken, challengeResponse string) (*components.VerificationResult, error)
+	CreateSession(ip, originalURL, sessionToken string) (*captcha.CaptchaSession, error)
+	GetSession(challengeToken string) (*captcha.CaptchaSession, bool)
+	VerifyResponse(ctx context.Context, ip, challengeToken, challengeResponse string) (*captcha.VerificationResult, error)
 	CookieName() string
 	StartCleanup(ctx context.Context)
 }
@@ -151,7 +153,7 @@ func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client
 
 	var dc DecisionCache
 	if cfg.Bouncer.Enabled {
-		dc, err = components.NewDecisionCache(cfg.Bouncer, bouncer.MetricsService, bouncer.PrometheusRecorder)
+		dc, err = decisions.NewCache(cfg.Bouncer, bouncer.MetricsService, bouncer.PrometheusRecorder)
 		if err != nil {
 			return nil, err
 		}
@@ -159,15 +161,15 @@ func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client
 
 	var w WAF
 	if cfg.WAF.Enabled {
-		w, err = components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, httpClient)
+		w, err = waf.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, httpClient)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	var c *components.CaptchaService
+	var c *captcha.CaptchaService
 	if cfg.Captcha.Enabled {
-		c, err = components.NewCaptchaService(cfg.Captcha, httpClient, recorder)
+		c, err = captcha.NewCaptchaService(cfg.Captcha, httpClient, recorder)
 		if err != nil {
 			return nil, err
 		}
@@ -346,12 +348,12 @@ type CheckedRequest struct {
 	RedirectURL     string
 	Decision        *models.Decision
 	ParsedRequest   *ParsedRequest
-	CaptchaSession  *components.CaptchaSession
+	CaptchaSession  *captcha.CaptchaSession
 	ResponseBody    string
 	ResponseHeaders map[string][]string
 }
 
-func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *components.CaptchaSession) CheckedRequest {
+func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *captcha.CaptchaSession) CheckedRequest {
 	return CheckedRequest{
 		IP:             ip,
 		Action:         action,
@@ -537,7 +539,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 	logger.Debug("running WAF", slog.String("ip", parsed.RealIP))
 
-	wafReq := components.AppSecRequest{
+	wafReq := waf.AppSecRequest{
 		Method:     parsed.Method,
 		URL:        parsed.URL,
 		Headers:    parsed.Headers,
@@ -577,7 +579,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 // carrying the AppSec-rendered body, cookies, and headers through verbatim so the
 // client's browser can run the challenge (fingerprint/PoW page, worker script, or
 // submission result) without the bouncer interpreting its contents.
-func (b *Bouncer) buildChallengeResponse(parsed *ParsedRequest, wafResult components.WAFResponse) CheckedRequest {
+func (b *Bouncer) buildChallengeResponse(parsed *ParsedRequest, wafResult waf.WAFResponse) CheckedRequest {
 	status := wafResult.HTTPStatus
 	if status == 0 {
 		status = b.getBanStatusCode()

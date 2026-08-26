@@ -16,13 +16,15 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
-	componentmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/captcha"
+	captchamocks "github.com/kdwils/envoy-proxy-bouncer/captcha/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/decisions"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
+	"github.com/kdwils/envoy-proxy-bouncer/waf"
 	"github.com/kdwils/envoy-proxy-bouncer/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -69,13 +71,13 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 
 	dcRec := recorder.NewNoOp()
 
-	decisionCache, err := components.NewDecisionCache(cfg.Bouncer, nil, dcRec)
+	decisionCache, err := decisions.NewCache(cfg.Bouncer, nil, dcRec)
 	require.NoError(t, err)
 
-	waf, err := components.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, http.DefaultClient)
+	wafClient, err := waf.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, http.DefaultClient)
 	require.NoError(t, err)
 
-	mockProvider := componentmocks.NewMockCaptchaProvider(ctrl)
+	mockProvider := captchamocks.NewMockCaptchaProvider(ctrl)
 	mockProvider.EXPECT().GetProviderName().Return("recaptcha").AnyTimes()
 	mockProvider.EXPECT().Verify(gomock.Any(), "success", gomock.Any()).Return(true, nil).AnyTimes()
 	mockProvider.EXPECT().Verify(gomock.Any(), gomock.Not("success"), gomock.Any()).Return(false, nil).AnyTimes()
@@ -90,14 +92,14 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 		rec, err := recorder.New(reg)
 		require.NoError(t, err)
 
-		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
+		captchaService, err := captcha.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
 		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 		require.NoError(t, err)
 		testBouncer.DecisionCache = decisionCache
-		testBouncer.WAF = waf
+		testBouncer.WAF = wafClient
 		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -209,14 +211,14 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 		rec, err := recorder.New(reg)
 		require.NoError(t, err)
 
-		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
+		captchaService, err := captcha.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
 		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 		require.NoError(t, err)
 		testBouncer.DecisionCache = decisionCache
-		testBouncer.WAF = waf
+		testBouncer.WAF = wafClient
 		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -338,14 +340,14 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 		rec, err := recorder.New(reg)
 		require.NoError(t, err)
 
-		captchaServiceShort, err := components.NewCaptchaService(cfgShortExpiry.Captcha, http.DefaultClient, rec)
+		captchaServiceShort, err := captcha.NewCaptchaService(cfgShortExpiry.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
 		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 		require.NoError(t, err)
 		testBouncer.DecisionCache = decisionCache
-		testBouncer.WAF = waf
+		testBouncer.WAF = wafClient
 		testBouncer.CaptchaService = captchaServiceShort
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -463,14 +465,14 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 		rec, err := recorder.New(reg)
 		require.NoError(t, err)
 
-		captchaServiceShort, err := components.NewCaptchaService(cfgShortChallenge.Captcha, http.DefaultClient, rec)
+		captchaServiceShort, err := captcha.NewCaptchaService(cfgShortChallenge.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaServiceShort.Provider = mockProvider
 
 		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 		require.NoError(t, err)
 		testBouncer.DecisionCache = decisionCache
-		testBouncer.WAF = waf
+		testBouncer.WAF = wafClient
 		testBouncer.CaptchaService = captchaServiceShort
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -505,14 +507,14 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 		rec, err := recorder.New(reg)
 		require.NoError(t, err)
 
-		captchaService, err := components.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
+		captchaService, err := captcha.NewCaptchaService(cfg.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
 		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 		require.NoError(t, err)
 		testBouncer.DecisionCache = decisionCache
-		testBouncer.WAF = waf
+		testBouncer.WAF = wafClient
 		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
@@ -607,14 +609,14 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 		rec, err := recorder.New(reg)
 		require.NoError(t, err)
 
-		captchaService, err := components.NewCaptchaService(cfgNoReplay.Captcha, http.DefaultClient, rec)
+		captchaService, err := captcha.NewCaptchaService(cfgNoReplay.Captcha, http.DefaultClient, rec)
 		require.NoError(t, err)
 		captchaService.Provider = mockProvider
 
 		testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
 		require.NoError(t, err)
 		testBouncer.DecisionCache = decisionCache
-		testBouncer.WAF = waf
+		testBouncer.WAF = wafClient
 		testBouncer.CaptchaService = captchaService
 
 		templateStore, err := template.NewStore(template.Config{})
