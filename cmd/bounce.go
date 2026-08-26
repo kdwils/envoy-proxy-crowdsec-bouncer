@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/decisions"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 
 	"github.com/spf13/cobra"
@@ -30,7 +30,7 @@ var bounceCmd = &cobra.Command{
 		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
 		logger := slog.New(handler)
 
-		client, err := components.NewLiveBouncer(config.Bouncer)
+		client, err := decisions.NewLiveBouncer(config.Bouncer)
 		if err != nil {
 			return err
 		}

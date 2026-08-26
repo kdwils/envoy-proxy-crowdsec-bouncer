@@ -19,8 +19,8 @@ import (
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
-	"github.com/kdwils/envoy-proxy-bouncer/bouncer/components"
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
+	"github.com/kdwils/envoy-proxy-bouncer/captcha"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
@@ -395,7 +395,7 @@ func TestServer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		session := &components.CaptchaSession{
+		session := &captcha.CaptchaSession{
 			Provider:    "turnstile",
 			SiteKey:     "test-site-key",
 			CallbackURL: "http://example.com/captcha",
@@ -656,7 +656,7 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			},
 		}
 
-		session := &components.CaptchaSession{
+		session := &captcha.CaptchaSession{
 			OriginalURL: "http://example.com",
 			ID:          "test-challenge-token",
 			Provider:    "recaptcha",
@@ -695,13 +695,13 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			},
 		}
 
-		session := &components.CaptchaSession{
+		session := &captcha.CaptchaSession{
 			OriginalURL: "http://example.com",
 			ID:          "test-challenge-token",
 			Provider:    "recaptcha",
 		}
 
-		verificationResult := &components.VerificationResult{
+		verificationResult := &captcha.VerificationResult{
 			Success: false,
 			Message: "Verification failed",
 		}
@@ -739,13 +739,13 @@ func TestServer_handleCaptchaVerify(t *testing.T) {
 			},
 		}
 
-		session := &components.CaptchaSession{
+		session := &captcha.CaptchaSession{
 			OriginalURL: "http://example.com/original",
 			ID:          "test-challenge-token",
 			Provider:    "recaptcha",
 		}
 
-		verificationResult := &components.VerificationResult{
+		verificationResult := &captcha.VerificationResult{
 			Success: true,
 			Token:   "session-jwt-token",
 		}

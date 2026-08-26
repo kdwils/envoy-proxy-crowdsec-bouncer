@@ -1,11 +1,11 @@
-package components
+package captcha
 
 import (
 	"net/http"
 	"testing"
 	"time"
 
-	mocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/components/mocks"
+	mocks "github.com/kdwils/envoy-proxy-bouncer/captcha/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/prometheus/client_golang/prometheus"
