@@ -63,7 +63,12 @@ var ServeCmd = &cobra.Command{
 
 		httpClient := config.HTTP.NewClient()
 
-		bouncer, err := bouncer.New(config, rec, httpClient)
+		decisionCache, w, captchaService, metricsService, err := bouncer.NewComponents(config, rec, httpClient)
+		if err != nil {
+			return err
+		}
+
+		bouncer, err := bouncer.New(config, rec, decisionCache, w, captchaService, metricsService)
 		if err != nil {
 			return err
 		}
