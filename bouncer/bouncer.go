@@ -519,6 +519,9 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 
 func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
+	if !b.config.WAF.Enabled {
+		return NewCheckedRequest(parsed.RealIP, "allow", "", http.StatusOK, nil, "", parsed, nil)
+	}
 	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
 	defer stop()
 

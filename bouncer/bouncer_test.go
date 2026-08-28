@@ -20,6 +20,8 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/waf"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -1171,6 +1173,44 @@ func TestBouncer_Check(t *testing.T) {
 			ProtoMinor:   0,
 		}, nil)
 		assert.Equal(t, want, got)
+	})
+
+	t.Run("waf disabled does not record waf metrics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		r, err := New(config.Config{WAF: config.WAF{Enabled: false}}, rec, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
+		require.NoError(t, err)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.9").Return(nil, nil)
+
+		r.Check(t.Context(), mkCheckRequest("10.0.0.9", "https", "ex", "/ok", "GET", "HTTP/2", ""))
+
+		metrics := rec.GetMetrics()
+		assert.Zero(t, testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "waf disabled should not record waf_requests_total")
+	})
+
+	t.Run("waf enabled records waf metrics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		r, err := New(config.Config{WAF: config.WAF{Enabled: true}}, rec, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+		require.NoError(t, err)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.10").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "allow"}, nil)
+
+		r.Check(t.Context(), mkCheckRequest("10.0.0.10", "https", "ex", "/ok", "GET", "HTTP/2", ""))
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "waf enabled should record waf_requests_total")
 	})
 
 	t.Run("exempt list bypasses all checks", func(t *testing.T) {
