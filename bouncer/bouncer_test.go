@@ -16,9 +16,12 @@ import (
 	remediationmocks "github.com/kdwils/envoy-proxy-bouncer/bouncer/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/captcha"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/decisions"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/waf"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -68,9 +71,9 @@ func newMetricsService(t *testing.T) *crowdsec.MetricsService {
 	return collector
 }
 
-func newTestBouncer(t *testing.T, cfg config.Config) *Bouncer {
+func newTestBouncer(t *testing.T, cfg config.Config, decisionCache DecisionCache, w WAF, captchaService CaptchaService, metricsService *crowdsec.MetricsService) *Bouncer {
 	t.Helper()
-	r, err := New(cfg, recorder.NewNoOp(), nil)
+	r, err := New(cfg, recorder.NewNoOp(), decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
 	return r
 }
@@ -310,7 +313,7 @@ func TestExtractRealIPFromHTTP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := newTestBouncer(t, config.Config{TrustedProxies: tt.trustedProxies, TrustedIPHeader: tt.trustedIPHeader})
+			b := newTestBouncer(t, config.Config{TrustedProxies: tt.trustedProxies, TrustedIPHeader: tt.trustedIPHeader}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 			got := b.ExtractRealIPFromHTTP(newReq(tt.remoteAddr, tt.headers))
 			assert.Equal(t, tt.want, got)
 		})
@@ -376,7 +379,7 @@ func TestIsExemptIP(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := newTestBouncer(t, config.Config{ExemptIPs: tt.exemptIPs})
+			b := newTestBouncer(t, config.Config{ExemptIPs: tt.exemptIPs}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 			got := b.isExemptIP(tt.ip)
 			assert.Equal(t, tt.want, got)
 		})
@@ -588,7 +591,7 @@ func Test_parseIPNets(t *testing.T) {
 }
 
 func TestParseCheckRequest(t *testing.T) {
-	r := newTestBouncer(t, config.Config{TrustedProxies: []string{"10.0.0.0/8"}})
+	r := newTestBouncer(t, config.Config{TrustedProxies: []string{"10.0.0.0/8"}}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 	tests := []struct {
 		name string
@@ -894,7 +897,7 @@ func TestParseCheckRequest(t *testing.T) {
 }
 
 func TestParseCheckRequest_TrustedIPHeader(t *testing.T) {
-	r := newTestBouncer(t, config.Config{TrustedIPHeader: "x-envoy-external-address"})
+	r := newTestBouncer(t, config.Config{TrustedIPHeader: "x-envoy-external-address"}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 	req := &auth.CheckRequest{
 		Attributes: &auth.AttributeContext{
 			Source: &auth.AttributeContext_Peer{
@@ -937,9 +940,7 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("bouncer denies", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.MetricsService = newMetricsService(t)
+		r := newTestBouncer(t, config.Config{}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), newMetricsService(t))
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(&models.Decision{Type: new("ban")}, nil)
 
@@ -967,8 +968,7 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("bouncer denies with scenario", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
+		r := newTestBouncer(t, config.Config{}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 		decision := &models.Decision{Type: new("ban"), Scenario: new("crowdsecurity/test"), Origin: new("CAPI"), Duration: new("1h"), Scope: new("Ip"), Value: new("2.2.2.2")}
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(decision, nil)
@@ -993,9 +993,7 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("bouncer error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.MetricsService = newMetricsService(t)
+		r := newTestBouncer(t, config.Config{}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), newMetricsService(t))
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "3.3.3.3").Return(nil, fmt.Errorf("boom"))
 
@@ -1022,10 +1020,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
-		r.MetricsService = newMetricsService(t)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), newMetricsService(t))
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "4.4.4.4").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "ban"}, nil)
@@ -1043,9 +1038,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "6.6.6.6").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
@@ -1059,9 +1052,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{WAF: config.WAF{FailOpen: true}})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true, FailOpen: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.2").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
@@ -1075,9 +1066,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{WAF: config.WAF{FailOpen: true}})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true, FailOpen: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.4").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
@@ -1091,9 +1080,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{WAF: config.WAF{FailOpen: true}})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true, FailOpen: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decision := &models.Decision{Type: new("ban")}
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.3").Return(decision, nil)
@@ -1108,9 +1095,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.5").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "ALLOW"}, nil)
@@ -1124,9 +1109,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "7.7.7.7").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
@@ -1140,9 +1123,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "8.8.8.8").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "unknown"}, nil)
@@ -1156,10 +1137,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
-		r.MetricsService = newMetricsService(t)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), newMetricsService(t))
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "9.9.9.9").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "allow"}, nil)
@@ -1176,8 +1154,7 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("waf disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: false}}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.1").Return(nil, nil)
 
@@ -1198,8 +1175,46 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 	})
 
+	t.Run("waf disabled does not record waf metrics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		r, err := New(config.Config{WAF: config.WAF{Enabled: false}}, rec, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
+		require.NoError(t, err)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.9").Return(nil, nil)
+
+		r.Check(t.Context(), mkCheckRequest("10.0.0.9", "https", "ex", "/ok", "GET", "HTTP/2", ""))
+
+		metrics := rec.GetMetrics()
+		assert.Zero(t, testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "waf disabled should not record waf_requests_total")
+	})
+
+	t.Run("waf enabled records waf metrics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		reg := prometheus.NewRegistry()
+		rec, err := recorder.New(reg)
+		require.NoError(t, err)
+
+		r, err := New(config.Config{WAF: config.WAF{Enabled: true}}, rec, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+		require.NoError(t, err)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.10").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "allow"}, nil)
+
+		r.Check(t.Context(), mkCheckRequest("10.0.0.10", "https", "ex", "/ok", "GET", "HTTP/2", ""))
+
+		metrics := rec.GetMetrics()
+		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("allow")), "waf enabled should record waf_requests_total")
+	})
+
 	t.Run("exempt list bypasses all checks", func(t *testing.T) {
-		r := newTestBouncer(t, config.Config{ExemptIPs: []string{"10.0.0.0/8"}})
+		r := newTestBouncer(t, config.Config{ExemptIPs: []string{"10.0.0.0/8"}}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.1.2.3", "http", "example.com", "/foo", "GET", "HTTP/1.1", ""))
 		want := NewCheckedRequest("10.1.2.3", "allow", "ip is in exempt list", 200, nil, "", &ParsedRequest{
@@ -1223,10 +1238,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
-		r.CaptchaService = mockCaptcha
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, mockCaptcha, nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "11.11.11.11").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
@@ -1237,13 +1249,11 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 	})
 
-	t.Run("waf captcha - captcha nil", func(t *testing.T) {
+	t.Run("waf captcha - captcha noop", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}, Captcha: config.Captcha{Enabled: false}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "12.12.12.12").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
@@ -1258,10 +1268,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
-		r.CaptchaService = mockCaptcha
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}, Captcha: config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}}, decisionCache, mockWAF, mockCaptcha, nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "13.13.13.13").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
@@ -1279,10 +1286,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
-		r.CaptchaService = mockCaptcha
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}, Captcha: config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}}, decisionCache, mockWAF, mockCaptcha, nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "14.14.14.14").Return(nil, nil)
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
@@ -1300,11 +1304,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockWAF := remediationmocks.NewMockWAF(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.WAF = mockWAF
-		r.CaptchaService = mockCaptcha
-		r.MetricsService = newMetricsService(t)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}, Captcha: config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}}, decisionCache, mockWAF, mockCaptcha, newMetricsService(t))
 
 		session := &captcha.CaptchaSession{ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123"}
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "15.15.15.15").Return(nil, nil)
@@ -1326,9 +1326,7 @@ func TestBouncer_Check(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
 		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
-		r.CaptchaService = mockCaptcha
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: false}, Captcha: config.Captcha{Enabled: true, Provider: "recaptcha", SecretKey: "test", SigningKey: "test-signing-key-that-is-at-least-32-bytes-long"}}, decisionCache, waf.NewNoopWAF(), mockCaptcha, nil)
 
 		session := &captcha.CaptchaSession{ChallengeURL: "https://bouncer.example.com/captcha/challenge?session=abc123"}
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "16.16.16.16").Return(&models.Decision{Type: new("captcha")}, nil)
@@ -1378,8 +1376,7 @@ func TestBouncer_Check(t *testing.T) {
 	t.Run("bouncer captcha decision - captcha service disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
-		r := newTestBouncer(t, config.Config{})
-		r.DecisionCache = decisionCache
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: false}, Captcha: config.Captcha{Enabled: false}}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "17.17.17.17").Return(&models.Decision{Type: new("captcha")}, nil)
 
@@ -1401,7 +1398,11 @@ func TestBouncer_Check(t *testing.T) {
 	})
 
 	t.Run("bouncer disabled - waf disabled - captcha disabled", func(t *testing.T) {
-		r := newTestBouncer(t, config.Config{})
+		r := newTestBouncer(t, config.Config{
+			Bouncer: config.Bouncer{Enabled: false},
+			WAF:     config.WAF{Enabled: false},
+			Captcha: config.Captcha{Enabled: false},
+		}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("18.18.18.18", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
 		want := NewCheckedRequest("18.18.18.18", "allow", "ok", 200, nil, "", &ParsedRequest{
@@ -1496,16 +1497,8 @@ func Test_parseCookies(t *testing.T) {
 
 func TestBouncer_IsReady(t *testing.T) {
 	t.Run("returns true when bouncer is disabled", func(t *testing.T) {
-		r := newTestBouncer(t, config.Config{})
+		r := newTestBouncer(t, config.Config{Bouncer: config.Bouncer{Enabled: false}}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 		assert.True(t, r.IsReady())
-	})
-
-	t.Run("returns false when bouncer enabled but cache is nil", func(t *testing.T) {
-		r := newTestBouncer(t, config.Config{
-			Bouncer: config.Bouncer{Enabled: true, LAPIURL: "http://localhost:8080", ApiKey: "test"},
-		})
-		r.DecisionCache = nil
-		assert.False(t, r.IsReady())
 	})
 
 	t.Run("returns false when cache not synced", func(t *testing.T) {
@@ -1514,8 +1507,7 @@ func TestBouncer_IsReady(t *testing.T) {
 		decisionCache.EXPECT().IsReady().Return(false)
 		r := newTestBouncer(t, config.Config{
 			Bouncer: config.Bouncer{Enabled: true, LAPIURL: "http://localhost:8080", ApiKey: "test"},
-		})
-		r.DecisionCache = decisionCache
+		}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 		assert.False(t, r.IsReady())
 	})
 
@@ -1525,8 +1517,7 @@ func TestBouncer_IsReady(t *testing.T) {
 		decisionCache.EXPECT().IsReady().Return(true)
 		r := newTestBouncer(t, config.Config{
 			Bouncer: config.Bouncer{Enabled: true, LAPIURL: "http://localhost:8080", ApiKey: "test"},
-		})
-		r.DecisionCache = decisionCache
+		}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 		assert.True(t, r.IsReady())
 	})
 }
@@ -1537,9 +1528,8 @@ func TestBouncer_Check_ContextCancelled(t *testing.T) {
 	decisionCache.EXPECT().GetDecision(gomock.Any(), gomock.Any()).Return(nil, context.Canceled)
 	decisionCache.EXPECT().IsReady().Return(true).AnyTimes()
 
-	r, err := New(config.Config{}, recorder.NewNoOp(), nil)
+	r, err := New(config.Config{}, recorder.NewNoOp(), decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 	require.NoError(t, err)
-	r.DecisionCache = decisionCache
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

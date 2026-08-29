@@ -83,9 +83,11 @@ func testWebhookEvents(t *testing.T, env *testEnv) {
 	require.NoError(t, err)
 	captchaService.Provider = mockProvider
 
-	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+	decisionCache, w, _, metricsService, err := bouncer.NewComponents(cfg, rec, http.DefaultClient)
 	require.NoError(t, err)
-	testBouncer.CaptchaService = captchaService
+
+	testBouncer, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
+	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
 
 	waitForDecision(t, testBouncer.DecisionCache, "192.168.10.1", true, 10*time.Second)

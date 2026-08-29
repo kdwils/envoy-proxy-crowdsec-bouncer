@@ -100,11 +100,11 @@ func newRemediationMetrics() map[string]remediationMetric {
 	}
 }
 
-func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client) (*Bouncer, error) {
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-
+// New assembles a Bouncer from already-resolved components. Use NewComponents
+// to resolve the real-or-noop DecisionCache, WAF, CaptchaService, and
+// MetricsService for cfg; callers that need specific components (tests,
+// mocks) can construct and pass those directly instead.
+func New(cfg config.Config, prom *recorder.Recorder, decisionCache DecisionCache, w WAF, captchaService CaptchaService, metricsService *crowdsec.MetricsService) (*Bouncer, error) {
 	trustedProxies, err := parseIPNets(cfg.TrustedProxies)
 	if err != nil {
 		return nil, err
@@ -115,20 +115,34 @@ func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client
 		return nil, fmt.Errorf("failed to parse exempt IPs list: %w", err)
 	}
 
-	bouncer := &Bouncer{
+	return &Bouncer{
+		DecisionCache:      decisionCache,
+		WAF:                w,
+		CaptchaService:     captchaService,
+		MetricsService:     metricsService,
 		TrustedProxies:     trustedProxies,
 		TrustedIPHeader:    cfg.TrustedIPHeader,
 		ExemptIPs:          exemptIPs,
-		PrometheusRecorder: recorder,
+		PrometheusRecorder: prom,
 		remediationMetrics: newRemediationMetrics(),
 		config:             cfg,
+	}, nil
+}
+
+// NewComponents resolves the DecisionCache, WAF, CaptchaService, and
+// MetricsService for cfg: a real implementation when the corresponding
+// component is enabled, a noop otherwise. Pass the results to New.
+func NewComponents(cfg config.Config, prom *recorder.Recorder, httpClient *http.Client) (DecisionCache, WAF, CaptchaService, *crowdsec.MetricsService, error) {
+	if httpClient == nil {
+		return nil, nil, nil, nil, errors.New("bouncer: NewComponents requires a non-nil httpClient")
 	}
 
+	var metricsService *crowdsec.MetricsService
 	if cfg.Bouncer.Enabled && cfg.Bouncer.Metrics {
 		userAgent := "envoy-proxy-crowdsec-bouncer/" + version.Version
 		client, err := crowdsec.NewClient(cfg.Bouncer, userAgent, httpClient)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
 
 		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
@@ -137,47 +151,43 @@ func New(cfg config.Config, recorder *recorder.Recorder, httpClient *http.Client
 			Version:     bouncerVersion.Version,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
 
-		bouncer.MetricsService = collector
+		metricsService = collector
 	}
 
-	var dc DecisionCache
+	var decisionCache DecisionCache = decisions.NewNoopCache()
 	if cfg.Bouncer.Enabled {
-		dc, err = decisions.NewCache(cfg.Bouncer, bouncer.MetricsService, bouncer.PrometheusRecorder)
+		dc, err := decisions.NewCache(cfg.Bouncer, metricsService, prom)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
+		decisionCache = dc
 	}
 
-	var w WAF
+	var w WAF = waf.NewNoopWAF()
 	if cfg.WAF.Enabled {
-		w, err = waf.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, httpClient)
+		realWAF, err := waf.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, httpClient)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
+		w = realWAF
 	}
 
-	var c *captcha.CaptchaService
+	var captchaService CaptchaService = captcha.NewNoopCaptchaService()
 	if cfg.Captcha.Enabled {
-		c, err = captcha.NewCaptchaService(cfg.Captcha, httpClient, recorder)
+		c, err := captcha.NewCaptchaService(cfg.Captcha, httpClient, prom)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, nil, err
 		}
-		bouncer.CaptchaService = c
+		captchaService = c
 	}
 
-	bouncer.DecisionCache = dc
-	bouncer.WAF = w
-
-	return bouncer, nil
+	return decisionCache, w, captchaService, metricsService, nil
 }
 
 func (b *Bouncer) Sync(ctx context.Context) error {
-	if b.DecisionCache == nil {
-		return errors.New("decision cache not initialized")
-	}
 	return b.DecisionCache.Sync(ctx)
 }
 
@@ -189,12 +199,6 @@ func (b *Bouncer) Metrics(ctx context.Context) error {
 }
 
 func (b *Bouncer) IsReady() bool {
-	if !b.config.Bouncer.Enabled {
-		return true
-	}
-	if b.DecisionCache == nil {
-		return false
-	}
 	return b.DecisionCache.IsReady()
 }
 
@@ -444,9 +448,6 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 
 func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
-	if b.DecisionCache == nil {
-		return NewCheckedRequest(parsed.RealIP, "allow", "decision cache disabled", http.StatusOK, nil, "", parsed, nil)
-	}
 	stop := b.PrometheusRecorder.ObserveComponentDuration("decision_cache")
 	defer stop()
 
@@ -493,7 +494,7 @@ func (b *Bouncer) getBanStatusCode() int {
 
 func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decision *models.Decision) CheckedRequest {
 	logger := logger.FromContext(ctx)
-	if b.CaptchaService == nil || !b.CaptchaService.IsEnabled() {
+	if !b.CaptchaService.IsEnabled() {
 		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed, nil)
 	}
 	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
@@ -518,8 +519,8 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 
 func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
 	logger := logger.FromContext(ctx)
-	if b.WAF == nil {
-		return NewCheckedRequest(parsed.RealIP, "allow", "waf disabled", http.StatusOK, nil, "", parsed, nil)
+	if !b.config.WAF.Enabled {
+		return NewCheckedRequest(parsed.RealIP, "allow", "", http.StatusOK, nil, "", parsed, nil)
 	}
 	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
 	defer stop()
@@ -623,7 +624,7 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		case "x-real-ip":
 			xRealIP = v
 		}
-		if b.WAF != nil {
+		if b.config.WAF.Enabled {
 			if parsedRequest.Headers == nil {
 				parsedRequest.Headers = make(map[string]string, len(httpRequest.Headers))
 			}
@@ -631,13 +632,13 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 		}
 	}
 
-	if b.CaptchaService != nil && cookieHeader != "" {
+	if b.config.Captcha.Enabled && cookieHeader != "" {
 		parsedRequest.Cookies = parseCookies(cookieHeader)
 	}
 
 	parsedRequest.RealIP, parsedRequest.ParsedRealIP = ExtractRealIP(parsedRequest.IP, xForwardedFor, xRealIP, trustedValue, b.TrustedProxies)
 
-	if b.WAF != nil && len(httpRequest.GetBody()) > 0 {
+	if b.config.WAF.Enabled && len(httpRequest.GetBody()) > 0 {
 		parsedRequest.Body = []byte(httpRequest.GetBody())
 	}
 

@@ -135,3 +135,15 @@ func newForwardRequest(ctx context.Context, apiURL *url.URL, request AppSecReque
 
 	return httpRequest.WithContext(ctx)
 }
+
+// NoopWAF always allows the request, used when the WAF component is disabled
+// so callers don't need to nil-check it.
+type NoopWAF struct{}
+
+func NewNoopWAF() NoopWAF {
+	return NoopWAF{}
+}
+
+func (NoopWAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error) {
+	return WAFResponse{Action: "allow"}, nil
+}
