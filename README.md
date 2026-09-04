@@ -66,3 +66,8 @@ Integrates with Envoy as an external authorization service. Each request is eval
 
 * Helm schema generated with [helm-values-schema-json](https://github.com/losisin/helm-values-schema-json)
 * Helm docs generated with [helm-docs](https://github.com/norwoodj/helm-docs)
+
+## Contributing
+
+Thanks for considering contributions! Please run tests (`pytest` / `dotnet test` / `cargo test`) and lint (`ruff check .`) before opening a PR.
+
