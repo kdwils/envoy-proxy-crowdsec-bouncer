@@ -69,5 +69,12 @@ Integrates with Envoy as an external authorization service. Each request is eval
 
 ## Contributing
 
-Thanks for considering contributions! Please run tests (`pytest` / `dotnet test` / `cargo test`) and lint (`ruff check .`) before opening a PR.
+Thanks for considering contributions! Before opening a PR, please run the unit tests and lint checks:
+
+```bash
+go test -race ./...            # Unit tests
+go vet ./... && gofmt -l .     # Lint + format check
+```
+
+Functional tests (testcontainers-based, requires Docker) run via `go test -tags functional -timeout 30m ./tests/functional`.
 
