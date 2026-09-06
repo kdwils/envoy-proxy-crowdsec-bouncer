@@ -1059,6 +1059,9 @@ func TestBouncer_Check(t *testing.T) {
 				Bouncer: config.Bouncer{
 					BanStatusCode: 403,
 				},
+				WAF: config.WAF{
+					Enabled: true,
+				},
 			},
 		}
 

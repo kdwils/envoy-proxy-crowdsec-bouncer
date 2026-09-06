@@ -1,0 +1,7 @@
+name: crowdsecurity/appsec-default
+# Unconditionally issues AppSec's native bot challenge (fingerprint/PoW page)
+# for every in-band request, mirroring the pattern CrowdSec's own appsec
+# hook tests use to force a challenge without depending on a hub collection.
+post_eval:
+  - apply:
+      - SendChallenge()
