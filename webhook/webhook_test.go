@@ -79,6 +79,27 @@ func TestService_NotifyCheckedRequest(t *testing.T) {
 		}, got)
 	})
 
+	t.Run("enqueues challenge_required event for challenge action", func(t *testing.T) {
+		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"challenge_required"}}}, "")
+		svc.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+		svc.NotifyCheckedRequest(t.Context(), bouncer.CheckedRequest{
+			IP:     "1.2.3.4",
+			Action: "challenge",
+			Reason: "crowdsec challenge",
+		})
+
+		got, ok := nextEvent(t, svc)
+		require.True(t, ok, "expected event to be enqueued")
+		assert.Equal(t, Event{
+			Type:      EventChallengeRequired,
+			Timestamp: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+			IP:        "1.2.3.4",
+			Action:    "challenge",
+			Reason:    "crowdsec challenge",
+		}, got)
+	})
+
 	t.Run("does not enqueue when not subscribed to event type", func(t *testing.T) {
 		svc, _ := newService(t, []config.Subscription{{URL: "http://example.com", Events: []string{"captcha_required"}}}, "")
 
