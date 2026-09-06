@@ -104,10 +104,7 @@ func (dc *Cache) GetDecision(ctx context.Context, ip string) (*models.Decision, 
 		return nil, errors.New("no ip found")
 	}
 
-	log.Debug("checking for decision", slog.String("ip", ip))
-
 	if decision, ok := dc.decisions.Get(ip); ok {
-		log.Debug("decision found", "type", *decision.Type)
 		return &decision, nil
 	}
 
@@ -120,7 +117,6 @@ func (dc *Cache) GetDecision(ctx context.Context, ip string) (*models.Decision, 
 		addr = addr.Unmap()
 
 		if decision, ok := cidrs.Lookup(addr); ok {
-			log.Debug("decision found", "type", *decision.Type)
 			return &decision, nil
 		}
 	}

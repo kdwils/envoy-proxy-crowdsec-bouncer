@@ -368,10 +368,13 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 
 	switch result.Action {
 	case "allow":
+		s.logger.Debug("request allowed", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return getAllowedResponse(), nil
 	case "captcha":
+		s.logger.Debug("captcha challenge issued", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return getRedirectResponse(result.RedirectURL), nil
 	case "challenge":
+		s.logger.Debug("waf challenge issued", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return getChallengeResponse(httpStatusToEnvoyStatus(result.HTTPStatus), result.ResponseBody, result.ResponseHeaders), nil
 	case "ban":
 		s.logger.Debug("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
