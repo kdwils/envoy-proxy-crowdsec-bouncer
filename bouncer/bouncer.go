@@ -464,7 +464,6 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	stop := b.PrometheusRecorder.ObserveComponentDuration("decision_cache")
 	defer stop()
 
-	logger.Debug("running decision cache", slog.String("ip", parsed.RealIP))
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
 		logger.Error("decision cache error", "error", err, slog.String("ip", parsed.RealIP))
@@ -494,6 +493,7 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	case "captcha":
 		return NewCheckedRequest(parsed.RealIP, "captcha", "crowdsec captcha", http.StatusFound, decision, "", parsed, nil)
 	default:
+		logger.Debug("unhandled decision type, allowing", "type", decisionType, slog.String("ip", parsed.RealIP))
 		return NewCheckedRequest(parsed.RealIP, "allow", "decision allows", http.StatusOK, nil, "", parsed, nil)
 	}
 }
@@ -513,7 +513,6 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
 	defer stop()
 
-	logger.Debug("running captcha", slog.String("ip", parsed.RealIP))
 	originalURL := parsed.URL.String()
 
 	sessionToken := parsed.Cookies[b.CaptchaService.CookieName()]
@@ -537,8 +536,6 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	}
 	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
 	defer stop()
-
-	logger.Debug("running WAF", slog.String("ip", parsed.RealIP))
 
 	wafReq := waf.AppSecRequest{
 		Method:     parsed.Method,
