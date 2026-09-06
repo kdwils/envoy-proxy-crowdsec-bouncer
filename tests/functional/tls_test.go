@@ -48,7 +48,7 @@ func testBouncerTLS(t *testing.T, env *testEnv) {
 	certs := generateTLSTestCerts(t)
 
 	lapiReq := testcontainers.ContainerRequest{
-		Image:        env.image,
+		Image:        env.image.Tag,
 		ExposedPorts: []string{"8080/tcp"},
 		Env: map[string]string{
 			"DISABLE_LOCAL_API":               "false",

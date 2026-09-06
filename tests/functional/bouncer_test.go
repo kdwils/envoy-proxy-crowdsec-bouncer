@@ -654,13 +654,3 @@ func extractChallengeToken(t *testing.T, check *auth.CheckResponse) string {
 
 	return challengeToken
 }
-
-func extractAPIKey(output string) (string, error) {
-	lines := strings.Split(output, "\n")
-	if len(lines) < 3 {
-		return "", fmt.Errorf("expected at least 3 lines, got %d", len(lines))
-	}
-
-	key := lines[2]
-	return strings.TrimSpace(key), nil
-}

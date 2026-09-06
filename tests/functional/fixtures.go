@@ -4,10 +4,12 @@ package functional
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,8 +107,9 @@ type credFile struct {
 }
 
 type testEnv struct {
-	image            string
+	image            CrowdsecImage
 	network          string
+	credsPath        string
 	lapi             testcontainers.Container
 	appsecBan        testcontainers.Container
 	appsecCaptcha    testcontainers.Container
@@ -116,22 +119,22 @@ type testEnv struct {
 	apiKey           string
 }
 
-func setupEnv(t *testing.T, image string) *testEnv {
+func setupEnv(t *testing.T, image CrowdsecImage) *testEnv {
 	t.Helper()
 
 	net, err := network.New(t.Context(), network.WithDriver("bridge"))
 	require.NoError(t, err)
 	t.Cleanup(func() { net.Remove(context.Background()) })
 
-	lapi := startLAPI(t, image, net.Name)
+	lapi := startLAPI(t, image.Tag, net.Name)
 	hostLAPI := containerURL(t, lapi, "8080", "http")
 
 	key := addBouncer(t, lapi)
 	addMachine(t, lapi)
 	credsPath := writeAppsecCreds(t, "http://lapi:8080")
 
-	appsecBan := startAppsec(t, image, net.Name, "./configs/appsec-ban.yaml", credsPath)
-	appsecCaptcha := startAppsec(t, image, net.Name, "./configs/appsec-captcha.yaml", credsPath)
+	appsecBan := startAppsec(t, image.Tag, net.Name, "./configs/appsec-ban.yaml", credsPath)
+	appsecCaptcha := startAppsec(t, image.Tag, net.Name, "./configs/appsec-captcha.yaml", credsPath)
 
 	appsecBanURL := containerURL(t, appsecBan, "7422", "http")
 	appsecCaptchaURL := containerURL(t, appsecCaptcha, "7422", "http")
@@ -139,6 +142,7 @@ func setupEnv(t *testing.T, image string) *testEnv {
 	return &testEnv{
 		image:            image,
 		network:          net.Name,
+		credsPath:        credsPath,
 		lapi:             lapi,
 		appsecBan:        appsecBan,
 		appsecCaptcha:    appsecCaptcha,
@@ -147,6 +151,14 @@ func setupEnv(t *testing.T, image string) *testEnv {
 		appsecCaptchaURL: appsecCaptchaURL.String(),
 		apiKey:           key,
 	}
+}
+
+func startAppsecChallenge(t *testing.T, env *testEnv) string {
+	t.Helper()
+
+	appsecChallenge := startAppsec(t, env.image.Tag, env.network, "./configs/appsec-challenge.yaml", env.credsPath)
+	u := containerURL(t, appsecChallenge, "7422", "http")
+	return u.String()
 }
 
 func startLAPI(t *testing.T, image, netName string) testcontainers.Container {
@@ -350,4 +362,14 @@ func startServer(t *testing.T, ctx context.Context, srv *server.Server, addr str
 		cancel()
 		<-done
 	}
+}
+
+func extractAPIKey(output string) (string, error) {
+	lines := strings.Split(output, "\n")
+	if len(lines) < 3 {
+		return "", fmt.Errorf("expected at least 3 lines, got %d", len(lines))
+	}
+
+	key := lines[2]
+	return strings.TrimSpace(key), nil
 }

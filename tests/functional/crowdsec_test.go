@@ -6,7 +6,7 @@ import "testing"
 
 func TestCrowdsec(t *testing.T) {
 	for _, image := range CrowdsecImages {
-		t.Run(image, func(t *testing.T) {
+		t.Run(image.Tag, func(t *testing.T) {
 			env := setupEnv(t, image)
 
 			t.Run("bouncer", func(t *testing.T) { testBouncer(t, env) })
@@ -15,6 +15,11 @@ func TestCrowdsec(t *testing.T) {
 			t.Run("health", func(t *testing.T) { testHealthProbes(t, env) })
 			t.Run("webhook", func(t *testing.T) { testWebhookEvents(t, env) })
 			t.Run("tls", func(t *testing.T) { testBouncerTLS(t, env) })
+			if image.SupportsBotChallenge {
+				t.Run("bouncer-challenge", func(t *testing.T) {
+					testBouncerChallenge(t, env, startAppsecChallenge(t, env))
+				})
+			}
 		})
 	}
 }

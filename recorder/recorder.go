@@ -152,16 +152,18 @@ func newMetrics(reg prometheus.Registerer) (*Metrics, error) {
 	}
 
 	m.requestsTotalChildren = map[string]prometheus.Counter{
-		"allow":   m.RequestsTotal.WithLabelValues("allow"),
-		"ban":     m.RequestsTotal.WithLabelValues("ban"),
-		"captcha": m.RequestsTotal.WithLabelValues("captcha"),
-		"error":   m.RequestsTotal.WithLabelValues("error"),
+		"allow":     m.RequestsTotal.WithLabelValues("allow"),
+		"ban":       m.RequestsTotal.WithLabelValues("ban"),
+		"captcha":   m.RequestsTotal.WithLabelValues("captcha"),
+		"challenge": m.RequestsTotal.WithLabelValues("challenge"),
+		"error":     m.RequestsTotal.WithLabelValues("error"),
 	}
 	m.wafRequestsTotalChildren = map[string]prometheus.Counter{
-		"allow":   m.WAFRequestsTotal.WithLabelValues("allow"),
-		"ban":     m.WAFRequestsTotal.WithLabelValues("ban"),
-		"captcha": m.WAFRequestsTotal.WithLabelValues("captcha"),
-		"error":   m.WAFRequestsTotal.WithLabelValues("error"),
+		"allow":     m.WAFRequestsTotal.WithLabelValues("allow"),
+		"ban":       m.WAFRequestsTotal.WithLabelValues("ban"),
+		"captcha":   m.WAFRequestsTotal.WithLabelValues("captcha"),
+		"challenge": m.WAFRequestsTotal.WithLabelValues("challenge"),
+		"error":     m.WAFRequestsTotal.WithLabelValues("error"),
 	}
 	m.componentDurationChildren = map[string]prometheus.Observer{
 		"decision_cache": m.ComponentDuration.WithLabelValues("decision_cache"),

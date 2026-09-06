@@ -32,15 +32,40 @@ func TestRecorder_NilReg_NoOp(t *testing.T) {
 }
 
 func TestRecorder_IncRequestsTotal(t *testing.T) {
-	r, m := newTestRecorder(t)
-	r.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+	t.Run("increments allow and ban independently", func(t *testing.T) {
+		r, m := newTestRecorder(t)
+		r.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
 
-	r.IncRequestsTotal("allow")
-	r.IncRequestsTotal("allow")
-	r.IncRequestsTotal("ban")
+		r.IncRequestsTotal("allow")
+		r.IncRequestsTotal("allow")
+		r.IncRequestsTotal("ban")
 
-	assert.Equal(t, float64(2), testutil.ToFloat64(m.RequestsTotal.WithLabelValues("allow")), "expected 2 allow requests")
-	assert.Equal(t, float64(1), testutil.ToFloat64(m.RequestsTotal.WithLabelValues("ban")), "expected 1 ban request")
+		assert.Equal(t, float64(2), testutil.ToFloat64(m.RequestsTotal.WithLabelValues("allow")))
+		assert.Equal(t, float64(1), testutil.ToFloat64(m.RequestsTotal.WithLabelValues("ban")))
+	})
+
+	t.Run("increments challenge", func(t *testing.T) {
+		r, m := newTestRecorder(t)
+		r.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+		r.IncRequestsTotal("challenge")
+
+		assert.Equal(t, float64(1), testutil.ToFloat64(m.RequestsTotal.WithLabelValues("challenge")))
+	})
+}
+
+func TestRecorder_IncWAFRequestsTotal(t *testing.T) {
+	t.Run("increments challenge and ban independently", func(t *testing.T) {
+		r, m := newTestRecorder(t)
+		r.now = func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) }
+
+		r.IncWAFRequestsTotal("challenge")
+		r.IncWAFRequestsTotal("challenge")
+		r.IncWAFRequestsTotal("ban")
+
+		assert.Equal(t, float64(2), testutil.ToFloat64(m.WAFRequestsTotal.WithLabelValues("challenge")))
+		assert.Equal(t, float64(1), testutil.ToFloat64(m.WAFRequestsTotal.WithLabelValues("ban")))
+	})
 }
 
 func TestRecorder_SetDecisionCacheSize(t *testing.T) {

@@ -26,6 +26,7 @@ When WAF is enabled, requests that pass the bouncer IP check are forwarded to th
 - **allow** — request proceeds
 - **ban** — request is denied immediately
 - **captcha** — a CAPTCHA challenge is issued (requires CAPTCHA to be enabled)
+- **challenge** — AppSec's own bot challenge (browser fingerprint / proof-of-work) is issued. The bouncer passes AppSec's rendered page, headers, and cookies straight through to the client; no local configuration is required. Requires an AppSec engine built from a CrowdSec version that supports challenge mode.
 
 If AppSec inspection fails — for example an AppSec outage, a timeout, or AppSec returning an `error` action — the request fails closed by default. Set `waf.failOpen: true` to instead allow the request and treat the WAF as unavailable on WAF errors. This is scoped to the WAF stage only — IP-based LAPI decisions enforced by the bouncer are still applied.
 
