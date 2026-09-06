@@ -524,10 +524,8 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 	if session == nil {
-		logger.Debug("captcha result", "required", false, slog.String("ip", parsed.RealIP))
 		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", http.StatusOK, nil, "", parsed, nil)
 	}
-	logger.Debug("captcha result", "required", true, slog.String("ip", parsed.RealIP))
 	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", http.StatusFound, decision, session.ChallengeURL, parsed, session)
 }
 
@@ -557,8 +555,6 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 	wafResult.Action = strings.ToLower(wafResult.Action)
 
-	logger.Debug("waf result", "action", wafResult.Action, slog.String("ip", parsed.RealIP))
-
 	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
 
 	if wafResult.Action == "error" {
@@ -567,9 +563,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	}
 
 	if wafResult.Action == "challenge" {
-		challengeResult := b.buildChallengeResponse(parsed, wafResult)
-		logger.Debug("challenge issued", "status", challengeResult.HTTPStatus, slog.String("ip", parsed.RealIP))
-		return challengeResult
+		return b.buildChallengeResponse(parsed, wafResult)
 	}
 
 	if wafResult.Action != "allow" {
