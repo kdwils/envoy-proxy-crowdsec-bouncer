@@ -100,7 +100,11 @@ func startStalledAppSecServer(t *testing.T, port int, appsecURL, apiKey string, 
 	rec, err := recorder.New(reg)
 	require.NoError(t, err)
 
-	b, err := bouncer.New(cfg, rec, &http.Client{Transport: stalledRoundTripper{}})
+	stalledClient := &http.Client{Transport: stalledRoundTripper{}}
+	decisionCache, w, captchaService, metricsService, err := bouncer.NewComponents(cfg, rec, stalledClient)
+	require.NoError(t, err)
+
+	b, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
 
 	srv := server.NewServer(cfg, b, b.CaptchaService, webhook.NewNoopNotifier(), templateStore, slogger, rec, reg)
@@ -152,7 +156,10 @@ func testBouncer(t *testing.T, env *testEnv) {
 	rec, err := recorder.New(reg)
 	require.NoError(t, err)
 
-	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+	decisionCache, w, captchaService, metricsService, err := bouncer.NewComponents(cfg, rec, http.DefaultClient)
+	require.NoError(t, err)
+
+	testBouncer, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
 
@@ -409,7 +416,10 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 	rec, err := recorder.New(reg)
 	require.NoError(t, err)
 
-	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+	decisionCache, w, captchaService, metricsService, err := bouncer.NewComponents(cfg, rec, http.DefaultClient)
+	require.NoError(t, err)
+
+	testBouncer, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
 

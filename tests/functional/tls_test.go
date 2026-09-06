@@ -112,7 +112,10 @@ func testBouncerTLS(t *testing.T, env *testEnv) {
 
 	rec := recorder.NewNoOp()
 
-	b, err := bouncer.New(cfg, rec, http.DefaultClient)
+	decisionCache, w, captchaService, metricsService, err := bouncer.NewComponents(cfg, rec, http.DefaultClient)
+	require.NoError(t, err)
+
+	b, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
 
 	go b.Sync(ctx)

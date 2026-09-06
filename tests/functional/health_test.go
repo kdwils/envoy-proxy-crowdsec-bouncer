@@ -41,7 +41,10 @@ func testHealthProbes(t *testing.T, env *testEnv) {
 
 	rec := recorder.NewNoOp()
 
-	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+	decisionCache, w, captchaService, metricsService, err := bouncer.NewComponents(cfg, rec, http.DefaultClient)
+	require.NoError(t, err)
+
+	testBouncer, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
 	go testBouncer.Sync(ctx)
 
@@ -122,7 +125,10 @@ func TestHealthProbesWithDisabledBouncer(t *testing.T) {
 
 	rec := recorder.NewNoOp()
 
-	testBouncer, err := bouncer.New(cfg, rec, http.DefaultClient)
+	decisionCache, w, captchaService, metricsService, err := bouncer.NewComponents(cfg, rec, http.DefaultClient)
+	require.NoError(t, err)
+
+	testBouncer, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
 
 	templateStore, err := template.NewStore(template.Config{})
