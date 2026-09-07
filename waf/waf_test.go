@@ -326,19 +326,18 @@ func TestNormalizeHost(t *testing.T) {
 func TestHostMatches(t *testing.T) {
 	tests := []struct {
 		name     string
-		patterns []string
-		host     string
+		patterns [][]string
+		host     []string
 		want     bool
 	}{
-		{name: "exact match", patterns: []string{"api.example.com"}, host: "api.example.com", want: true},
-		{name: "exact match case-insensitive", patterns: []string{"API.example.com"}, host: "api.example.com", want: true},
-		{name: "wildcard subdomain match", patterns: []string{"*.example.com"}, host: "api.example.com", want: true},
-		{name: "catch-all match", patterns: []string{"*"}, host: "anything.example.com", want: true},
-		{name: "no pattern matches", patterns: []string{"api.example.com"}, host: "other.example.com", want: false},
-		{name: "wildcard subdomain does not match apex", patterns: []string{"*.example.com"}, host: "example.com", want: false},
-		{name: "wildcard subdomain does not match nested subdomain", patterns: []string{"*.example.com"}, host: "a.b.example.com", want: false},
-		{name: "multi-level wildcard matches exact depth", patterns: []string{"*.test.example.com"}, host: "foo.test.example.com", want: true},
-		{name: "multi-level wildcard does not match deeper depth", patterns: []string{"*.test.example.com"}, host: "foo.bar.test.example.com", want: false},
+		{name: "exact match", patterns: [][]string{{"api", "example", "com"}}, host: []string{"api", "example", "com"}, want: true},
+		{name: "wildcard subdomain match", patterns: [][]string{{"*", "example", "com"}}, host: []string{"api", "example", "com"}, want: true},
+		{name: "catch-all match", patterns: [][]string{{"*"}}, host: []string{"anything", "example", "com"}, want: true},
+		{name: "no pattern matches", patterns: [][]string{{"api", "example", "com"}}, host: []string{"other", "example", "com"}, want: false},
+		{name: "wildcard subdomain does not match apex", patterns: [][]string{{"*", "example", "com"}}, host: []string{"example", "com"}, want: false},
+		{name: "wildcard subdomain does not match nested subdomain", patterns: [][]string{{"*", "example", "com"}}, host: []string{"a", "b", "example", "com"}, want: false},
+		{name: "multi-level wildcard matches exact depth", patterns: [][]string{{"*", "test", "example", "com"}}, host: []string{"foo", "test", "example", "com"}, want: true},
+		{name: "multi-level wildcard does not match deeper depth", patterns: [][]string{{"*", "test", "example", "com"}}, host: []string{"foo", "bar", "test", "example", "com"}, want: false},
 	}
 
 	for _, tt := range tests {

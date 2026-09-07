@@ -21,7 +21,6 @@ import (
 
 type WAF struct {
 	APIKey      string
-	APIURL      string
 	apiURL      url.URL
 	http        types.HTTPClient
 	httpTimeout time.Duration
@@ -29,8 +28,8 @@ type WAF struct {
 }
 
 type route struct {
-	hosts  []string
-	apiURL url.URL
+	hostPatterns [][]string
+	apiURL       url.URL
 }
 
 type WAFResponse struct {
@@ -60,11 +59,14 @@ func NewWAF(cfg config.WAF, http types.HTTPClient) (WAF, error) {
 
 	routes := make([]route, 0, len(cfg.Routes))
 	for _, rc := range cfg.Routes {
-		routes = append(routes, route{hosts: rc.Hosts, apiURL: *apiURL.JoinPath(rc.Path)})
+		patterns := make([][]string, 0, len(rc.Hosts))
+		for _, h := range rc.Hosts {
+			patterns = append(patterns, strings.Split(strings.ToLower(h), "."))
+		}
+		routes = append(routes, route{hostPatterns: patterns, apiURL: *apiURL.JoinPath(rc.Path)})
 	}
 
 	return WAF{
-		APIURL:      cfg.AppSecURL,
 		apiURL:      *apiURL,
 		http:        http,
 		APIKey:      cfg.ApiKey,
@@ -120,8 +122,9 @@ func (w WAF) target(host string) (route, bool) {
 		return route{apiURL: w.apiURL}, true
 	}
 	host = normalizeHost(host)
+	hostLabels := strings.Split(host, ".")
 	for _, r := range w.routes {
-		if hostMatches(r.hosts, host) {
+		if hostMatches(r.hostPatterns, hostLabels) {
 			return r, true
 		}
 	}
@@ -135,14 +138,12 @@ func normalizeHost(host string) string {
 	return strings.ToLower(host)
 }
 
-func hostMatches(patterns []string, host string) bool {
-	hostLabels := strings.Split(host, ".")
-	for _, pattern := range patterns {
-		pattern = strings.ToLower(pattern)
-		if pattern == "*" {
+func hostMatches(patterns [][]string, hostLabels []string) bool {
+	for _, patternLabels := range patterns {
+		if len(patternLabels) == 1 && patternLabels[0] == "*" {
 			return true
 		}
-		if labelsMatch(strings.Split(pattern, "."), hostLabels) {
+		if labelsMatch(patternLabels, hostLabels) {
 			return true
 		}
 	}
