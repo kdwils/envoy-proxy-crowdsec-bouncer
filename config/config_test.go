@@ -70,6 +70,78 @@ func TestBouncer_ValidateAuth(t *testing.T) {
 	}
 }
 
+func TestWAF_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     WAF
+		wantErr string
+	}{
+		{
+			name:    "disabled with nothing configured",
+			cfg:     WAF{},
+			wantErr: "",
+		},
+		{
+			name:    "disabled with routes and appSecURL still returns nil",
+			cfg:     WAF{AppSecURL: "http://test.com", Routes: []WAFRoute{{}}},
+			wantErr: "",
+		},
+		{
+			name:    "enabled with no appSecURL and no routes",
+			cfg:     WAF{Enabled: true},
+			wantErr: "appSecURL or routes required",
+		},
+		{
+			name:    "enabled with routes only",
+			cfg:     WAF{Enabled: true, Routes: []WAFRoute{{Hosts: []string{"api.example.com"}, AppSecURL: "http://appsec:7422/api-waf"}}},
+			wantErr: "",
+		},
+		{
+			name:    "enabled with top-level appSecURL only",
+			cfg:     WAF{Enabled: true, AppSecURL: "http://test.com"},
+			wantErr: "",
+		},
+		{
+			name:    "route with empty hosts",
+			cfg:     WAF{Enabled: true, Routes: []WAFRoute{{Hosts: nil, AppSecURL: "http://appsec:7422/api-waf"}}},
+			wantErr: "route requires at least one host",
+		},
+		{
+			name:    "route with empty appSecURL",
+			cfg:     WAF{Enabled: true, Routes: []WAFRoute{{Hosts: []string{"api.example.com"}, AppSecURL: ""}}},
+			wantErr: "route requires appSecURL",
+		},
+		{
+			name: "duplicate host across routes",
+			cfg: WAF{Enabled: true, Routes: []WAFRoute{
+				{Hosts: []string{"api.example.com"}, AppSecURL: "http://appsec:7422/api-waf"},
+				{Hosts: []string{"api.example.com"}, AppSecURL: "http://appsec:7422/browser-waf"},
+			}},
+			wantErr: `duplicate route host "api.example.com"`,
+		},
+		{
+			name: "duplicate host across routes is case-insensitive",
+			cfg: WAF{Enabled: true, Routes: []WAFRoute{
+				{Hosts: []string{"Example.com"}, AppSecURL: "http://appsec:7422/api-waf"},
+				{Hosts: []string{"example.com"}, AppSecURL: "http://appsec:7422/browser-waf"},
+			}},
+			wantErr: `duplicate route host "example.com"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Equal(t, tt.wantErr, err.Error())
+		})
+	}
+}
+
 func TestNew(t *testing.T) {
 	t.Run("nil viper returns error", func(t *testing.T) {
 		c, err := New(nil)
@@ -94,6 +166,10 @@ func TestNew(t *testing.T) {
 		v.Set("waf.appSecURL", "http://test.com")
 		v.Set("waf.httpTimeout", "1s")
 		v.Set("waf.failOpen", true)
+		v.Set("waf.routes", []WAFRoute{
+			{Hosts: []string{"browser.example.com"}, AppSecURL: "http://appsec:7422/browser-waf", ApiKey: "browser-key"},
+			{Hosts: []string{"api.example.com"}, AppSecURL: "http://appsec:7422/api-waf"},
+		})
 		v.Set("http.maxIdleConns", 42)
 		v.Set("http.maxIdleConnsPerHost", 7)
 		v.Set("http.idleConnTimeout", "5s")
@@ -130,6 +206,10 @@ func TestNew(t *testing.T) {
 				ApiKey:      "test-key",
 				HTTPTimeout: time.Second,
 				FailOpen:    true,
+				Routes: []WAFRoute{
+					{Hosts: []string{"browser.example.com"}, AppSecURL: "http://appsec:7422/browser-waf", ApiKey: "browser-key"},
+					{Hosts: []string{"api.example.com"}, AppSecURL: "http://appsec:7422/api-waf", ApiKey: ""},
+				},
 			},
 			Captcha: Captcha{
 				Enabled:                          false,
@@ -175,6 +255,7 @@ func TestNew(t *testing.T) {
 		}
 		assert.Equal(t, want, c)
 	})
+
 }
 
 func TestHTTP_NewClient(t *testing.T) {
@@ -264,6 +345,7 @@ func TestGetViper(t *testing.T) {
 				ApiKey:      "",
 				HTTPTimeout: 5 * time.Second,
 				FailOpen:    false,
+				Routes:      nil,
 			},
 			Captcha: Captcha{
 				Enabled:                          false,
