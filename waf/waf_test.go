@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kdwils/envoy-proxy-bouncer/config"
 	mocks "github.com/kdwils/envoy-proxy-bouncer/types/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,8 +18,7 @@ import (
 )
 
 func TestNewForwardRequest(t *testing.T) {
-	apiURL, err := url.Parse("http://crowdsec:8080/v1/")
-	assert.NoError(t, err)
+	apiURL := url.URL{Scheme: "http", Host: "crowdsec:8080", Path: "/v1/"}
 
 	t.Run("get request builds appsec headers", func(t *testing.T) {
 		areq := AppSecRequest{
@@ -36,7 +36,8 @@ func TestNewForwardRequest(t *testing.T) {
 		r := newForwardRequest(t.Context(), apiURL, areq, "key")
 
 		assert.Equal(t, nethttp.MethodGet, r.Method)
-		assert.Equal(t, apiURL, r.URL)
+		require.NotNil(t, r.URL)
+		assert.Equal(t, apiURL, *r.URL)
 		assert.Equal(t, apiURL.Host, r.Host)
 		assert.Equal(t, nethttp.NoBody, r.Body)
 		assert.Equal(t, t.Context(), r.Context())
@@ -92,14 +93,17 @@ func TestNewForwardRequest(t *testing.T) {
 
 func TestWAF_Inspect(t *testing.T) {
 	t.Run("error on request build", func(t *testing.T) {
-		_, err := NewWAF(":badurl", "", time.Second, nil)
+		cfg := config.WAF{AppSecURL: ":badurl"}
+		got, err := NewWAF(cfg, nil)
 		assert.Error(t, err)
+		assert.Equal(t, WAF{}, got)
 	})
 
 	t.Run("http error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "", time.Second, mockHTTP)
+		cfg := config.WAF{AppSecURL: "http://test", HTTPTimeout: time.Second}
+		waf, err := NewWAF(cfg, mockHTTP)
 		require.NoError(t, err)
 		expectedHeaders := map[string]string{
 			"User-Agent":             "UA",
@@ -125,7 +129,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("non-OK status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "", time.Second, mockHTTP)
+		cfg := config.WAF{AppSecURL: "http://test", HTTPTimeout: time.Second}
+		waf, err := NewWAF(cfg, mockHTTP)
 		require.NoError(t, err)
 		response := &nethttp.Response{StatusCode: 500, Status: "500 error", Body: io.NopCloser(strings.NewReader(""))}
 		expectedHeaders := map[string]string{
@@ -152,7 +157,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "key", time.Second, mockHTTP)
+		cfg := config.WAF{AppSecURL: "http://test", ApiKey: "key", HTTPTimeout: time.Second}
+		waf, err := NewWAF(cfg, mockHTTP)
 		require.NoError(t, err)
 		respBody := `{"action":"ban","http_status":403}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
@@ -183,7 +189,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("with body", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "key", time.Second, mockHTTP)
+		cfg := config.WAF{AppSecURL: "http://test", ApiKey: "key", HTTPTimeout: time.Second}
+		waf, err := NewWAF(cfg, mockHTTP)
 		require.NoError(t, err)
 		respBody := `{"action":"captcha"}`
 		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(respBody))}
@@ -215,7 +222,8 @@ func TestWAF_Inspect(t *testing.T) {
 	t.Run("hung appsec returns an error once the timeout elapses", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "", 50*time.Millisecond, mockHTTP)
+		cfg := config.WAF{AppSecURL: "http://test", HTTPTimeout: 50 * time.Millisecond}
+		waf, err := NewWAF(cfg, mockHTTP)
 		require.NoError(t, err)
 
 		mockHTTP.EXPECT().Do(gomock.Any()).DoAndReturn(func(r *nethttp.Request) (*nethttp.Response, error) {
@@ -232,7 +240,8 @@ func TestWAF_Inspect(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
-		waf, err := NewWAF("http://test", "key", time.Second, nethttp.DefaultClient)
+		cfg := config.WAF{AppSecURL: "http://test", ApiKey: "key", HTTPTimeout: time.Second}
+		waf, err := NewWAF(cfg, nethttp.DefaultClient)
 		require.NoError(t, err)
 		waf.http = mockHTTP
 		respBody := `{"action":"challenge","http_status":401,"user_body_content":"<html>challenge</html>","user_cookies":["cs_challenge=abc123; Path=/; HttpOnly"],"user_headers":{"Content-Type":["text/html"],"Content-Security-Policy":["default-src 'self'"]}}`
@@ -251,4 +260,210 @@ func TestWAF_Inspect(t *testing.T) {
 		require.Contains(t, result.UserHeaders, "Content-Security-Policy")
 		assert.Equal(t, []string{"default-src 'self'"}, result.UserHeaders["Content-Security-Policy"])
 	})
+
+	t.Run("routes to the matching host's target", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{
+			AppSecURL:   "http://test",
+			ApiKey:      "key",
+			HTTPTimeout: time.Second,
+			Routes:      []config.WAFRoute{{Hosts: []string{"api.example.com"}, Path: "/api-waf"}},
+		}
+		routedWAF, err := NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+
+		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "api.example.com", Path: "/foo"}}
+		result, err := routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://test/api-waf", gotReq.URL.String())
+	})
+
+	t.Run("multiple routes: exact host match wins over wildcard and catch-all", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{
+			AppSecURL:   "http://test",
+			ApiKey:      "key",
+			HTTPTimeout: time.Second,
+			Routes: []config.WAFRoute{
+				{Hosts: []string{"api.example.com"}, Path: "/api-waf"},
+				{Hosts: []string{"*.example.com"}, Path: "/browser-waf"},
+				{Hosts: []string{"*"}, Path: "/default-waf"},
+			},
+		}
+		routedWAF, err := NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+
+		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "api.example.com", Path: "/foo"}}
+		result, err := routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://test/api-waf", gotReq.URL.String())
+	})
+
+	t.Run("multiple routes: wildcard subdomain match wins over catch-all", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{
+			AppSecURL:   "http://test",
+			ApiKey:      "key",
+			HTTPTimeout: time.Second,
+			Routes: []config.WAFRoute{
+				{Hosts: []string{"api.example.com"}, Path: "/api-waf"},
+				{Hosts: []string{"*.example.com"}, Path: "/browser-waf"},
+				{Hosts: []string{"*"}, Path: "/default-waf"},
+			},
+		}
+		routedWAF, err := NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+
+		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "other.example.com", Path: "/foo"}}
+		result, err := routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://test/browser-waf", gotReq.URL.String())
+	})
+
+	t.Run("multiple routes: catch-all matches an unrelated host", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{
+			AppSecURL:   "http://test",
+			ApiKey:      "key",
+			HTTPTimeout: time.Second,
+			Routes: []config.WAFRoute{
+				{Hosts: []string{"api.example.com"}, Path: "/api-waf"},
+				{Hosts: []string{"*.example.com"}, Path: "/browser-waf"},
+				{Hosts: []string{"*"}, Path: "/default-waf"},
+			},
+		}
+		routedWAF, err := NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+
+		response := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response, nil).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "unrelated.test", Path: "/foo"}}
+		result, err := routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://test/default-waf", gotReq.URL.String())
+	})
+
+	t.Run("unmatched host is allowed without dispatching to any route", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{
+			AppSecURL:   "http://test",
+			ApiKey:      "key",
+			HTTPTimeout: time.Second,
+			Routes:      []config.WAFRoute{{Hosts: []string{"api.example.com"}, Path: "/api-waf"}},
+		}
+		routedWAF, err := NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+
+		mockHTTP.EXPECT().Do(gomock.Any()).Times(0)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "unmatched.example.com", Path: "/foo"}}
+		result, err := routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "allow"}, result)
+	})
+
+	t.Run("route with a port dispatches to that port, leaving unrouted requests on the default port", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{
+			AppSecURL:   "http://appsec",
+			ApiKey:      "key",
+			HTTPTimeout: time.Second,
+			Routes: []config.WAFRoute{
+				{Hosts: []string{"api.example.com"}, Path: "/api-waf", Port: 7423},
+				{Hosts: []string{"browser.example.com"}, Path: "/browser-waf"},
+			},
+		}
+		routedWAF, err := NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+
+		response1 := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response1, nil).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "api.example.com", Path: "/foo"}}
+		result, err := routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://appsec:7423/api-waf", gotReq.URL.String())
+
+		gotReq = nil
+		response2 := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response2, nil).Times(1)
+		areq = AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "browser.example.com", Path: "/foo"}}
+		result, err = routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://appsec/browser-waf", gotReq.URL.String())
+	})
+}
+
+func TestNormalizeHost(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "lowercased unchanged", host: "Example.com", want: "example.com"},
+		{name: "port stripped", host: "Example.com:8080", want: "example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, normalizeHost(tt.host))
+		})
+	}
+}
+
+func TestHostMatches(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns [][]string
+		host     []string
+		want     bool
+	}{
+		{name: "exact match", patterns: [][]string{{"api", "example", "com"}}, host: []string{"api", "example", "com"}, want: true},
+		{name: "wildcard subdomain match", patterns: [][]string{{"*", "example", "com"}}, host: []string{"api", "example", "com"}, want: true},
+		{name: "catch-all match", patterns: [][]string{{"*"}}, host: []string{"anything", "example", "com"}, want: true},
+		{name: "no pattern matches", patterns: [][]string{{"api", "example", "com"}}, host: []string{"other", "example", "com"}, want: false},
+		{name: "wildcard subdomain does not match apex", patterns: [][]string{{"*", "example", "com"}}, host: []string{"example", "com"}, want: false},
+		{name: "wildcard subdomain does not match nested subdomain", patterns: [][]string{{"*", "example", "com"}}, host: []string{"a", "b", "example", "com"}, want: false},
+		{name: "multi-level wildcard matches exact depth", patterns: [][]string{{"*", "test", "example", "com"}}, host: []string{"foo", "test", "example", "com"}, want: true},
+		{name: "multi-level wildcard does not match deeper depth", patterns: [][]string{{"*", "test", "example", "com"}}, host: []string{"foo", "bar", "test", "example", "com"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, hostMatches(tt.patterns, tt.host))
+		})
+	}
 }

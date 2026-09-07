@@ -368,10 +368,13 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 
 	switch result.Action {
 	case "allow":
-		return getAllowedResponse(), nil
+		s.logger.Debug("request allowed", "ip", result.IP, "action", result.Action, "reason", result.Reason)
+		return getAllowedResponse(result.ResponseHeaders), nil
 	case "captcha":
+		s.logger.Debug("captcha challenge issued", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return getRedirectResponse(result.RedirectURL), nil
 	case "challenge":
+		s.logger.Debug("waf challenge issued", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return getChallengeResponse(httpStatusToEnvoyStatus(result.HTTPStatus), result.ResponseBody, result.ResponseHeaders), nil
 	case "ban":
 		s.logger.Debug("request denied", "ip", result.IP, "action", result.Action, "reason", result.Reason)
@@ -464,12 +467,16 @@ func httpStatusToEnvoyStatus(httpStatus int) envoy_type.StatusCode {
 	return envoy_type.StatusCode(httpStatus)
 }
 
-func getAllowedResponse() *auth.CheckResponse {
+func getAllowedResponse(headers map[string][]string) *auth.CheckResponse {
 	return &auth.CheckResponse{
 		Status: &rpc_status.Status{
 			Code: 0,
 		},
-		HttpResponse: &auth.CheckResponse_OkResponse{},
+		HttpResponse: &auth.CheckResponse_OkResponse{
+			OkResponse: &auth.OkHttpResponse{
+				ResponseHeadersToAdd: buildMultiHeaderValues(headers),
+			},
+		},
 	}
 }
 

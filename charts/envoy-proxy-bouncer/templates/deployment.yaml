@@ -13,10 +13,11 @@ spec:
       {{- include "envoy-proxy-bouncer.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        checksum/config: {{ include "envoy-proxy-bouncer.cleanConfig" .Values.config | sha256sum }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "envoy-proxy-bouncer.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}

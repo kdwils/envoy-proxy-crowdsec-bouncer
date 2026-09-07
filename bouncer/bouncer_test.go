@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
 	"github.com/crowdsecurity/crowdsec/pkg/models"
@@ -19,6 +20,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/decisions"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
+	httpmocks "github.com/kdwils/envoy-proxy-bouncer/types/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/waf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -1234,6 +1236,63 @@ func TestBouncer_Check(t *testing.T) {
 		}, r.MetricsService.GetSnapshot())
 	})
 
+	t.Run("waf allow verdict with headers and cookies populates response headers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "9.9.9.10").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{
+			Action:      "allow",
+			UserHeaders: map[string][]string{"X-Foo": {"bar"}},
+			UserCookies: []string{"cs_authorized=1; Path=/"},
+		}, nil)
+
+		got := r.Check(t.Context(), mkCheckRequest("9.9.9.10", "https", "ex", "/ok", "GET", "HTTP/2", ""))
+		want := CheckedRequest{
+			IP:            "9.9.9.10",
+			Action:        "allow",
+			Reason:        "ok",
+			HTTPStatus:    200,
+			ParsedRequest: wantParsed("9.9.9.10", "https", "ex", "/ok", "GET", nil, 2, 0),
+			ResponseHeaders: map[string][]string{
+				"X-Foo":      {"bar"},
+				"Set-Cookie": {"cs_authorized=1; Path=/"},
+			},
+		}
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("appsec challenge submit succeeds and carries cookie through", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "9.9.9.11").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{
+			Action:          "challenge",
+			HTTPStatus:      200,
+			UserBodyContent: `{"status":"ok"}`,
+			UserCookies:     []string{"cs_authorized=1; Path=/"},
+		}, nil)
+
+		got := r.Check(t.Context(), mkCheckRequest("9.9.9.11", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", "HTTP/2", ""))
+		want := CheckedRequest{
+			IP:            "9.9.9.11",
+			Action:        "challenge",
+			Reason:        "crowdsec challenge",
+			HTTPStatus:    200,
+			ParsedRequest: wantParsed("9.9.9.11", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0),
+			ResponseBody:  `{"status":"ok"}`,
+			ResponseHeaders: map[string][]string{
+				"Set-Cookie": {"cs_authorized=1; Path=/"},
+			},
+		}
+		assert.Equal(t, want, got)
+	})
+
 	t.Run("waf disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
@@ -1255,6 +1314,72 @@ func TestBouncer_Check(t *testing.T) {
 			ProtoMajor:   2,
 			ProtoMinor:   0,
 		}, nil)
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("appsec challenge path denies when waf disabled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: false}}, decisionCache, waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.1.1").Return(nil, nil)
+
+		got := r.Check(t.Context(), mkCheckRequest("10.0.1.1", "https", "ex", "/crowdsec-internal/challenge/challenge.js", "GET", "HTTP/2", ""))
+		want := NewCheckedRequest("10.0.1.1", "ban", "appsec challenge path requires waf", 403, nil, "", &ParsedRequest{
+			IP:           "10.0.1.1",
+			RealIP:       "10.0.1.1",
+			ParsedRealIP: netip.MustParseAddr("10.0.1.1"),
+			Headers:      nil,
+			Cookies:      nil,
+			URL:          url.URL{Scheme: "https", Host: "ex", Path: "/crowdsec-internal/challenge/challenge.js"},
+			Method:       "GET",
+			UserAgent:    "UT",
+			Body:         nil,
+			ProtoMajor:   2,
+			ProtoMinor:   0,
+		}, nil)
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("appsec challenge path fails closed when waf inspect errors regardless of failOpen", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true, FailOpen: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.1.2").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
+
+		got := r.Check(t.Context(), mkCheckRequest("10.0.1.2", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", "HTTP/2", ""))
+		want := NewCheckedRequest("10.0.1.2", "ban", "appsec challenge path waf error", 403, nil, "", wantParsed("10.0.1.2", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0), nil)
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("appsec challenge path fails closed when waf returns error action regardless of failOpen", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true, FailOpen: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.1.3").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
+
+		got := r.Check(t.Context(), mkCheckRequest("10.0.1.3", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", "HTTP/2", ""))
+		want := NewCheckedRequest("10.0.1.3", "ban", "appsec challenge path waf error", 403, nil, "", wantParsed("10.0.1.3", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0), nil)
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("non-challenge path still fails open when waf inspect errors and failOpen is set", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true, FailOpen: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.1.4").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
+
+		got := r.Check(t.Context(), mkCheckRequest("10.0.1.4", "https", "ex", "/ok", "GET", "HTTP/2", ""))
+		want := NewCheckedRequest("10.0.1.4", "allow", wafFailOpenReason, 200, nil, "", wantParsed("10.0.1.4", "https", "ex", "/ok", "GET", nil, 2, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1576,6 +1701,30 @@ func Test_parseCookies(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestNewWAF(t *testing.T) {
+	t.Run("disabled returns noop", func(t *testing.T) {
+		got, err := newWAF(config.WAF{Enabled: false}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, waf.NewNoopWAF(), got)
+	})
+
+	t.Run("invalid config returns validation error", func(t *testing.T) {
+		_, err := newWAF(config.WAF{Enabled: true}, nil)
+		assert.EqualError(t, err, "appSecURL required")
+	})
+
+	t.Run("enabled builds a waf.WAF from the config", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := httpmocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{Enabled: true, AppSecURL: "http://appsec:7422", ApiKey: "top-key", HTTPTimeout: time.Second}
+		got, err := newWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+		want, err := waf.NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	})
 }
 
 func TestBouncer_IsReady(t *testing.T) {

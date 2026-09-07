@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -110,7 +111,44 @@ type WAF struct {
 	// FailOpen allows requests to proceed when AppSec inspection returns an
 	// error (transport error or AppSec error action), instead of failing
 	// closed. IP-based LAPI decisions are still enforced.
-	FailOpen bool `yaml:"failOpen" json:"failOpen"`
+	FailOpen bool       `yaml:"failOpen" json:"failOpen"`
+	Routes   []WAFRoute `yaml:"routes" json:"routes"`
+}
+
+type WAFRoute struct {
+	Hosts []string `yaml:"hosts" json:"hosts"`
+	Path  string   `yaml:"path" json:"path"`
+	// Port overrides the port of the top-level appSecURL for this route.
+	// CrowdSec AppSec acquisitions each bind their own listen_addr, so
+	// routing to a distinct AppSec instance requires a distinct port.
+	Port int `yaml:"port" json:"port"`
+}
+
+func (w WAF) Validate() error {
+	if !w.Enabled {
+		return nil
+	}
+	if w.AppSecURL == "" {
+		return errors.New("appSecURL required")
+	}
+
+	seen := make(map[string]struct{}, len(w.Routes))
+	for _, route := range w.Routes {
+		if len(route.Hosts) == 0 {
+			return errors.New("route requires at least one host")
+		}
+		if route.Port < 0 || route.Port > 65535 {
+			return fmt.Errorf("route port %d out of range", route.Port)
+		}
+		for _, host := range route.Hosts {
+			key := strings.ToLower(host)
+			if _, ok := seen[key]; ok {
+				return fmt.Errorf("duplicate route host %q", host)
+			}
+			seen[key] = struct{}{}
+		}
+	}
+	return nil
 }
 
 type Webhook struct {
@@ -192,6 +230,7 @@ func GetViper(cfgFile string) *viper.Viper {
 	v.SetDefault("waf.appSecURL", "")
 	v.SetDefault("waf.httpTimeout", "5s")
 	v.SetDefault("waf.failOpen", false)
+	v.SetDefault("waf.routes", nil)
 
 	v.SetDefault("captcha.enabled", false)
 	v.SetDefault("captcha.provider", "")

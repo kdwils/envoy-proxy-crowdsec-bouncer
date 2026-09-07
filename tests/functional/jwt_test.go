@@ -74,7 +74,7 @@ func testJWTCompleteVerificationFlow(t *testing.T, env *testEnv) {
 	decisionCache, err := decisions.NewCache(cfg.Bouncer, nil, dcRec)
 	require.NoError(t, err)
 
-	wafClient, err := waf.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, http.DefaultClient)
+	wafClient, err := waf.NewWAF(cfg.WAF, http.DefaultClient)
 	require.NoError(t, err)
 
 	mockProvider := captchamocks.NewMockCaptchaProvider(ctrl)
