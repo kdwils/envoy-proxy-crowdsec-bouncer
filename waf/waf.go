@@ -63,7 +63,7 @@ func NewWAF(cfg config.WAF, http types.HTTPClient) (WAF, error) {
 		for _, h := range rc.Hosts {
 			patterns = append(patterns, strings.Split(strings.ToLower(h), "."))
 		}
-		routes = append(routes, route{hostPatterns: patterns, apiURL: *apiURL.JoinPath(rc.Path)})
+		routes = append(routes, route{hostPatterns: patterns, apiURL: withPort(*apiURL.JoinPath(rc.Path), rc.Port)})
 	}
 
 	return WAF{
@@ -129,6 +129,16 @@ func (w WAF) target(host string) (route, bool) {
 		}
 	}
 	return route{}, false
+}
+
+// withPort overrides the port of u, keeping its host, scheme, and any
+// existing path
+func withPort(u url.URL, port int) url.URL {
+	if port == 0 {
+		return u
+	}
+	u.Host = net.JoinHostPort(u.Hostname(), strconv.Itoa(port))
+	return u
 }
 
 func normalizeHost(host string) string {

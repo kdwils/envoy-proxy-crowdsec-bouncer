@@ -388,6 +388,43 @@ func TestWAF_Inspect(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, WAFResponse{Action: "allow"}, result)
 	})
+
+	t.Run("route with a port dispatches to that port, leaving unrouted requests on the default port", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := mocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{
+			AppSecURL:   "http://appsec",
+			ApiKey:      "key",
+			HTTPTimeout: time.Second,
+			Routes: []config.WAFRoute{
+				{Hosts: []string{"api.example.com"}, Path: "/api-waf", Port: 7423},
+				{Hosts: []string{"browser.example.com"}, Path: "/browser-waf"},
+			},
+		}
+		routedWAF, err := NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+
+		response1 := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		var gotReq *nethttp.Request
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response1, nil).Times(1)
+
+		areq := AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "api.example.com", Path: "/foo"}}
+		result, err := routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://appsec:7423/api-waf", gotReq.URL.String())
+
+		gotReq = nil
+		response2 := &nethttp.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"action":"ban"}`))}
+		mockHTTP.EXPECT().Do(gomock.Any()).Do(func(r *nethttp.Request) { gotReq = r }).Return(response2, nil).Times(1)
+		areq = AppSecRequest{Method: "GET", Headers: map[string]string{}, RealIP: "1.2.3.4", URL: url.URL{Scheme: "http", Host: "browser.example.com", Path: "/foo"}}
+		result, err = routedWAF.Inspect(t.Context(), areq)
+		require.NoError(t, err)
+		assert.Equal(t, WAFResponse{Action: "ban"}, result)
+		require.NotNil(t, gotReq)
+		assert.Equal(t, "http://appsec/browser-waf", gotReq.URL.String())
+	})
 }
 
 func TestNormalizeHost(t *testing.T) {

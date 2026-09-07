@@ -118,6 +118,10 @@ type WAF struct {
 type WAFRoute struct {
 	Hosts []string `yaml:"hosts" json:"hosts"`
 	Path  string   `yaml:"path" json:"path"`
+	// Port overrides the port of the top-level appSecURL for this route.
+	// CrowdSec AppSec acquisitions each bind their own listen_addr, so
+	// routing to a distinct AppSec instance requires a distinct port.
+	Port int `yaml:"port" json:"port"`
 }
 
 func (w WAF) Validate() error {
@@ -132,6 +136,9 @@ func (w WAF) Validate() error {
 	for _, route := range w.Routes {
 		if len(route.Hosts) == 0 {
 			return errors.New("route requires at least one host")
+		}
+		if route.Port < 0 || route.Port > 65535 {
+			return fmt.Errorf("route port %d out of range", route.Port)
 		}
 		for _, host := range route.Hosts {
 			key := strings.ToLower(host)

@@ -122,6 +122,21 @@ func TestWAF_Validate(t *testing.T) {
 			}},
 			wantErr: `duplicate route host "example.com"`,
 		},
+		{
+			name:    "route with valid port",
+			cfg:     WAF{Enabled: true, AppSecURL: "http://appsec:7422", Routes: []WAFRoute{{Hosts: []string{"api.example.com"}, Port: 7423}}},
+			wantErr: "",
+		},
+		{
+			name:    "route with negative port",
+			cfg:     WAF{Enabled: true, AppSecURL: "http://appsec:7422", Routes: []WAFRoute{{Hosts: []string{"api.example.com"}, Port: -1}}},
+			wantErr: "route port -1 out of range",
+		},
+		{
+			name:    "route with out of range port",
+			cfg:     WAF{Enabled: true, AppSecURL: "http://appsec:7422", Routes: []WAFRoute{{Hosts: []string{"api.example.com"}, Port: 70000}}},
+			wantErr: "route port 70000 out of range",
+		},
 	}
 
 	for _, tt := range tests {
