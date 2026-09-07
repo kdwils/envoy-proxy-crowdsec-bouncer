@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -432,13 +433,8 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 
 	switch wafResult.Action {
 	case "allow":
-		reason := "ok"
-		if wafResult.Reason == wafFailOpenReason {
-			reason = wafResult.Reason
-		}
-		finalResult := NewCheckedRequest(parsed.RealIP, "allow", reason, http.StatusOK, bouncerResult.Decision, "", parsed, nil)
-		b.recordFinalMetric(finalResult)
-		return finalResult
+		b.recordFinalMetric(wafResult)
+		return wafResult
 	case "captcha":
 		captchaResult := b.checkCaptcha(ctx, parsed, bouncerResult.Decision)
 		b.recordFinalMetric(captchaResult)
@@ -529,14 +525,7 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", http.StatusFound, decision, session.ChallengeURL, parsed, session)
 }
 
-func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
-	logger := logger.FromContext(ctx)
-	if !b.config.WAF.Enabled {
-		return NewCheckedRequest(parsed.RealIP, "allow", "", http.StatusOK, nil, "", parsed, nil)
-	}
-	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
-	defer stop()
-
+func (b *Bouncer) inspectAppSec(ctx context.Context, parsed *ParsedRequest) (waf.WAFResponse, error) {
 	wafReq := waf.AppSecRequest{
 		Method:     parsed.Method,
 		URL:        parsed.URL,
@@ -547,19 +536,38 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 		ProtoMinor: parsed.ProtoMinor,
 	}
 
-	wafResult, wafErr := b.WAF.Inspect(ctx, wafReq)
-	if wafErr != nil {
-		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
-		return b.wafFailure(parsed)
+	wafResult, err := b.WAF.Inspect(ctx, wafReq)
+	if err != nil {
+		return wafResult, err
+	}
+	wafResult.Action = strings.ToLower(wafResult.Action)
+	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
+	return wafResult, nil
+}
+
+func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRequest {
+	logger := logger.FromContext(ctx)
+	challengePath := isAppSecChallengePath(parsed.URL.Path)
+
+	if !b.config.WAF.Enabled {
+		if challengePath {
+			return NewCheckedRequest(parsed.RealIP, "ban", "appsec challenge path requires waf", b.getBanStatusCode(), nil, "", parsed, nil)
+		}
+		return NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, nil, "", parsed, nil)
 	}
 
-	wafResult.Action = strings.ToLower(wafResult.Action)
+	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
+	defer stop()
 
-	b.PrometheusRecorder.IncWAFRequestsTotal(wafResult.Action)
+	wafResult, wafErr := b.inspectAppSec(ctx, parsed)
+	if wafErr != nil {
+		logger.Debug("waf error", "error", wafErr, slog.String("ip", parsed.RealIP))
+		return b.wafFailure(parsed, challengePath)
+	}
 
 	if wafResult.Action == "error" {
 		logger.Debug("waf returned error action", slog.String("ip", parsed.RealIP))
-		return b.wafFailure(parsed)
+		return b.wafFailure(parsed, challengePath)
 	}
 
 	if wafResult.Action == "challenge" {
@@ -570,7 +578,18 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
 	}
 
-	return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ok", http.StatusOK, nil, "", parsed, nil)
+	return b.buildAllowResponse(parsed, wafResult)
+}
+
+func (b *Bouncer) buildAllowResponse(parsed *ParsedRequest, wafResult waf.WAFResponse) CheckedRequest {
+	return CheckedRequest{
+		IP:              parsed.RealIP,
+		Action:          wafResult.Action,
+		Reason:          "ok",
+		HTTPStatus:      http.StatusOK,
+		ParsedRequest:   parsed,
+		ResponseHeaders: buildResponseHeaders(wafResult.UserHeaders, wafResult.UserCookies),
+	}
 }
 
 // buildChallengeResponse converts an AppSec challenge response into a CheckedRequest,
@@ -583,24 +602,49 @@ func (b *Bouncer) buildChallengeResponse(parsed *ParsedRequest, wafResult waf.WA
 		status = b.getBanStatusCode()
 	}
 
-	headers := make(map[string][]string, len(wafResult.UserHeaders)+1)
-	for k, v := range wafResult.UserHeaders {
-		headers[k] = append([]string(nil), v...)
+	return CheckedRequest{
+		IP:              parsed.RealIP,
+		Action:          "challenge",
+		Reason:          "crowdsec challenge",
+		HTTPStatus:      status,
+		ParsedRequest:   parsed,
+		ResponseBody:    wafResult.UserBodyContent,
+		ResponseHeaders: buildResponseHeaders(wafResult.UserHeaders, wafResult.UserCookies),
 	}
-	if len(wafResult.UserCookies) > 0 {
-		headers["Set-Cookie"] = append(headers["Set-Cookie"], wafResult.UserCookies...)
+}
+
+func buildResponseHeaders(userHeaders map[string][]string, userCookies []string) map[string][]string {
+	headerCount := len(userHeaders)
+	cookieCount := len(userCookies)
+	if headerCount == 0 && cookieCount == 0 {
+		return nil
 	}
 
-	result := NewCheckedRequest(parsed.RealIP, "challenge", "crowdsec challenge", status, nil, "", parsed, nil)
-	result.ResponseBody = wafResult.UserBodyContent
-	result.ResponseHeaders = headers
-	return result
+	cap := headerCount
+	if cookieCount > 0 {
+		cap++
+	}
+	headers := make(map[string][]string, cap)
+	maps.Copy(headers, userHeaders)
+	if cookieCount > 0 {
+		headers["Set-Cookie"] = userCookies
+	}
+	return headers
 }
 
 const wafFailOpenReason = "waf-unavailable"
 
-func (b *Bouncer) wafFailure(parsed *ParsedRequest) CheckedRequest {
+const appSecChallengePathPrefix = "/crowdsec-internal/challenge/"
+
+func isAppSecChallengePath(path string) bool {
+	return strings.HasPrefix(path, appSecChallengePathPrefix)
+}
+
+func (b *Bouncer) wafFailure(parsed *ParsedRequest, challengePath bool) CheckedRequest {
 	b.PrometheusRecorder.IncWAFErrorsTotal()
+	if challengePath {
+		return NewCheckedRequest(parsed.RealIP, "ban", "appsec challenge path waf error", b.getBanStatusCode(), nil, "", parsed, nil)
+	}
 	if b.config.WAF.FailOpen {
 		return NewCheckedRequest(parsed.RealIP, "allow", wafFailOpenReason, http.StatusOK, nil, "", parsed, nil)
 	}
