@@ -46,6 +46,7 @@ Integrates with Envoy as an external authorization service. Each request is eval
     - Allow: request proceeds
     - Ban: return 403 with ban page
     - Captcha: redirect to challenge page
+    - Challenge: pass AppSec's bot challenge page through to the client
 
 ![Ban Page](docs/images/ban.jpeg)
 
