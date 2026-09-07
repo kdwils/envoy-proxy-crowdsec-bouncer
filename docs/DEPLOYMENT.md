@@ -125,6 +125,8 @@ helm upgrade bouncer oci://ghcr.io/kdwils/charts/envoy-proxy-bouncer \
   -f values.yaml
 ```
 
+The deployment carries `checksum/config` (hash of `config.*` values) and, when custom templates are set, `checksum/templates` (hash of `templates.deniedTemplateContent`/`captchaTemplateContent`) pod annotations, so changing those values triggers an automatic pod restart.
+
 ### Uninstall
 
 ```bash

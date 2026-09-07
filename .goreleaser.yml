@@ -67,11 +67,36 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    # Features
-    * (#234) Added a new configuration for the WAF check path where requests are allowed if AppSec errors or times out instead of failing closed so that IP-based LAPI decisions can still be enforced. This can be configured via [`waf.failOpen`](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/examples/config/example.yaml#L45-L48)
+    # New Features
+    ### AppSec bot challenge
+    * Added support for CrowdSec's AppSec `challenge` action (browser fingerprint / proof-of-work). See [CrowdSec's docs](https://doc.crowdsec.net/docs/next/appsec/bot_detection/enable/) to enable it in CrowdSec, and [docs/CROWDSEC.md](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/CROWDSEC.md#waf--appsec) for the bouncer's implementation.
+    * **Requires [Request Body Forwarding](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/DEPLOYMENT.md#request-body-forwarding) (`bodyToExtAuth`)** — without it the challenge response never reaches AppSec and every challenge fails.
+    * `bouncer_requests_total` and `bouncer_waf_requests_total` now track a `challenge` outcome. See [docs/METRICS.md](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/METRICS.md).
 
-    # Bugfixes
-    * (#234) Fixed an issue where WAF requests were not setting a http timeout via context cancellation. By default, the timeout is 5s, but can be configured via [`waf.httpTimeout`](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/examples/config/example.yaml#L44)
+    ### Per-host AppSec routing
+    * Added route configurations to send requests to different AppSec listeners or paths by host. See [docs/CONFIGURATION.md](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/blob/main/docs/CONFIGURATION.md#waf) for configuration details.
+    * Combine this with the bot challenge above to scope bot protection (or other configurations) to specific hosts.
+      ```yaml
+      acquisitions:
+        - source: appsec
+          listen_addr: "0.0.0.0:7423"
+          path: /
+          appsec_configs:
+            - crowdsecurity/virtual-patching
+          labels:
+            type: appsec
+        - source: appsec
+          listen_addr: "0.0.0.0:7422"
+          path: /
+          appsec_configs:
+            - crowdsecurity/virtual-patching
+            - crowdsecurity/appsec-bot-*
+          labels:
+            type: appsec
+      ```
+
+    ### Helm chart
+    * Config/template value changes now trigger automatic pod restarts via `checksum/config` and `checksum/templates` annotations.
 
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}

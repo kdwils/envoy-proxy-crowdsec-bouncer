@@ -341,6 +341,10 @@
                         "httpTimeout": {
                             "default": "5s",
                             "type": "string"
+                        },
+                        "routes": {
+                            "default": [],
+                            "type": "array"
                         }
                     }
                 },

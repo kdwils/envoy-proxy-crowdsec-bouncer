@@ -17,6 +17,7 @@
 - CAPTCHA challenges for suspicious IPs with support for:
   - Google reCAPTCHA v2
   - Cloudflare Turnstile
+- Crowdsec AppSec bot challenges
 
 ## Supported CrowdSec Versions
 
@@ -31,6 +32,8 @@ The following CrowdSec versions have been tested. Other versions may work but ha
 | v1.7.6           | ✅ |
 | v1.7.7           | ✅ |
 | v1.7.8           | ✅ |
+| v1.8.0           | ✅ |
+| v1.8.1           | ✅ |
 
 ## How It Works
 
@@ -43,6 +46,7 @@ Integrates with Envoy as an external authorization service. Each request is eval
     - Allow: request proceeds
     - Ban: return 403 with ban page
     - Captcha: redirect to challenge page
+    - Challenge: pass AppSec's bot challenge page through to the client
 
 ![Ban Page](docs/images/ban.jpeg)
 

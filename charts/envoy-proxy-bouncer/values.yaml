@@ -77,6 +77,14 @@ config:
     httpTimeout: "5s" # @schema default: "5s"
     failOpen: false # @schema default: false
 
+    # per-host AppSec routing override, e.g.:
+    # routes:
+    #   - hosts:
+    #       - api.example.com
+    #     path: /api-waf
+    #     port: 7423
+    routes: [] # @schema default: []
+
   # enable endpoint for prometheus metrics scraping on the configured port
   prometheus:
     enabled: false # @schema default: false

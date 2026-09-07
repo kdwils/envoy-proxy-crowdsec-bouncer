@@ -91,6 +91,7 @@ export ENVOY_BOUNCER_BOUNCER_TLS_INSECURESKIPVERIFY=false
 | `appSecURL` | string | `""` | Yes (when enabled) | CrowdSec AppSec service URL |
 | `httpTimeout` | duration | `5s` | No | Max time to wait for an AppSec inspection before returning an error |
 | `failOpen` | bool | `false` | No | On WAF error (transport error or AppSec `error` action), allow the request and treat the WAF as unavailable instead of failing closed. IP-based LAPI decisions are still enforced. Allowed requests carry reason `waf-unavailable` |
+| `routes` | []object | `[]` | No | Per-host AppSec routing overrides. See below |
 
 ```yaml
 waf:
@@ -108,6 +109,65 @@ export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 export ENVOY_BOUNCER_WAF_HTTPTIMEOUT=5s
 export ENVOY_BOUNCER_WAF_FAILOPEN=false
 ```
+
+### Routes
+
+Overrides `appSecURL`'s path/port per host — for routing to different AppSec listeners (each acquisition binds its own `listen_addr`) or a host-specific path.
+
+When no routes are configured, the `appSecURL` path and port is used for all requests.
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `hosts` | []string | Yes | Hosts this route matches. A standalone `*` entry matches every host |
+| `path` | string | No | Path appended to `appSecURL` |
+| `port` | int | No | Overrides `appSecURL`'s port |
+
+```yaml
+waf:
+  enabled: true
+  apiKey: "<lapi-key>"
+  appSecURL: "http://appsec:7422"
+  routes:
+    - hosts:
+        - api.example.com
+      path: /api-waf
+      port: 7423
+    - hosts:
+        - "*.example.com"
+      path: /default-waf
+```
+
+| Request host | Matches | Inspected at |
+|--------------|---------|--------------|
+| `api.example.com` | route 1 | `http://appsec:7423/api-waf` |
+| `foo.example.com` | route 2 (`*` = one label) | `http://appsec:7422/default-waf` |
+| `a.b.example.com` | none (`*` doesn't span `b.example.com`) | not inspected, allowed |
+| `example.com` | none | not inspected, allowed |
+
+> **Note:** If `routes` is set and a host matches none of them, the request is allowed through with no inspection at all — no exceptions. Add a standalone `*` route as a catch-all if you want every host inspected.
+
+To inspect every host instead of allowing unmatched ones through, add a catch-all route with a standalone `*`. Put it last — routes are evaluated in order, so an earlier catch-all would shadow any more specific routes after it:
+
+```yaml
+waf:
+  enabled: true
+  apiKey: "<lapi-key>"
+  appSecURL: "http://appsec:7422"
+  routes:
+    - hosts:
+        - api.example.com
+      path: /api-waf
+      port: 7423
+    - hosts:
+        - "*"
+      path: /default-waf
+```
+
+| Request host | Matches | Inspected at |
+|--------------|---------|--------------|
+| `api.example.com` | route 1 | `http://appsec:7423/api-waf` |
+| `foo.example.com` | route 2 (catch-all) | `http://appsec:7422/default-waf` |
+| `a.b.example.com` | route 2 (catch-all) | `http://appsec:7422/default-waf` |
 
 ## Network
 
