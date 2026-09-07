@@ -17,6 +17,7 @@
 - CAPTCHA challenges for suspicious IPs with support for:
   - Google reCAPTCHA v2
   - Cloudflare Turnstile
+- Crowdsec AppSec bot challenges
 
 ## Supported CrowdSec Versions
 
