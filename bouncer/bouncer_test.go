@@ -1262,6 +1262,35 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 	})
 
+	t.Run("appsec challenge submit succeeds and carries cookie through", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
+		mockWAF := remediationmocks.NewMockWAF(ctrl)
+		r := newTestBouncer(t, config.Config{WAF: config.WAF{Enabled: true}}, decisionCache, mockWAF, captcha.NewNoopCaptchaService(), nil)
+
+		decisionCache.EXPECT().GetDecision(gomock.Any(), "9.9.9.11").Return(nil, nil)
+		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{
+			Action:          "challenge",
+			HTTPStatus:      200,
+			UserBodyContent: `{"status":"ok"}`,
+			UserCookies:     []string{"cs_authorized=1; Path=/"},
+		}, nil)
+
+		got := r.Check(t.Context(), mkCheckRequest("9.9.9.11", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", "HTTP/2", ""))
+		want := CheckedRequest{
+			IP:            "9.9.9.11",
+			Action:        "challenge",
+			Reason:        "crowdsec challenge",
+			HTTPStatus:    200,
+			ParsedRequest: wantParsed("9.9.9.11", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0),
+			ResponseBody:  `{"status":"ok"}`,
+			ResponseHeaders: map[string][]string{
+				"Set-Cookie": {"cs_authorized=1; Path=/"},
+			},
+		}
+		assert.Equal(t, want, got)
+	})
+
 	t.Run("waf disabled", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		decisionCache := remediationmocks.NewMockDecisionCache(ctrl)
