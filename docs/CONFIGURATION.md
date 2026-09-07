@@ -91,6 +91,7 @@ export ENVOY_BOUNCER_BOUNCER_TLS_INSECURESKIPVERIFY=false
 | `appSecURL` | string | `""` | Yes (when enabled) | CrowdSec AppSec service URL |
 | `httpTimeout` | duration | `5s` | No | Max time to wait for an AppSec inspection before returning an error |
 | `failOpen` | bool | `false` | No | On WAF error (transport error or AppSec `error` action), allow the request and treat the WAF as unavailable instead of failing closed. IP-based LAPI decisions are still enforced. Allowed requests carry reason `waf-unavailable` |
+| `routes` | []object | `[]` | No | Per-host AppSec routing overrides. See below |
 
 ```yaml
 waf:
@@ -108,6 +109,38 @@ export ENVOY_BOUNCER_WAF_APIKEY=your-appsec-api-key
 export ENVOY_BOUNCER_WAF_HTTPTIMEOUT=5s
 export ENVOY_BOUNCER_WAF_FAILOPEN=false
 ```
+
+### Routes
+
+Overrides `appSecURL`'s path/port per host — for routing to different AppSec listeners (each acquisition binds its own `listen_addr`) or a host-specific path. Empty (default): all requests go to `appSecURL`. First matching route wins; if `routes` is set and a host matches none, the request is allowed without inspection. YAML-only — no env var support.
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `hosts` | []string | Yes | Hosts this route matches. `*` matches exactly one label |
+| `path` | string | No | Path appended to `appSecURL` |
+| `port` | int | No | Overrides `appSecURL`'s port |
+
+```yaml
+waf:
+  enabled: true
+  apiKey: "<lapi-key>"
+  appSecURL: "http://appsec:7422"
+  routes:
+    - hosts:
+        - api.example.com
+      path: /api-waf
+      port: 7423
+    - hosts:
+        - "*.example.com"
+      path: /default-waf
+```
+
+| Request host | Matches | Inspected at |
+|--------------|---------|--------------|
+| `api.example.com` | route 1 | `http://appsec:7423/api-waf` |
+| `foo.example.com` | route 2 (`*` = one label) | `http://appsec:7422/default-waf` |
+| `a.b.example.com` | none (`*` doesn't span `b.example.com`) | not inspected, allowed |
+| `example.com` | none | not inspected, allowed |
 
 ## Network
 

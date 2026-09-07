@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.7.2](https://img.shields.io/badge/Version-0.7.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.7.2](https://img.shields.io/badge/AppVersion-v0.7.2-informational?style=flat-square)
+![Version: 0.8.1](https://img.shields.io/badge/Version-0.8.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.8.1](https://img.shields.io/badge/AppVersion-v0.8.1-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -74,6 +74,7 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.waf.enabled | bool | `false` |  |
 | config.waf.failOpen | bool | `false` |  |
 | config.waf.httpTimeout | string | `"5s"` |  |
+| config.waf.routes | list | `[]` |  |
 | config.webhook.bufferSize | int | `100` |  |
 | config.webhook.signingKey | string | `""` |  |
 | config.webhook.signingKeySecretRef.key | string | `""` |  |
