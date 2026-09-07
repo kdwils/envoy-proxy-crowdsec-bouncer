@@ -116,26 +116,22 @@ type WAF struct {
 }
 
 type WAFRoute struct {
-	Hosts     []string `yaml:"hosts" json:"hosts"`
-	AppSecURL string   `yaml:"appSecURL" json:"appSecURL"`
-	ApiKey    string   `yaml:"apiKey" json:"apiKey"`
+	Hosts []string `yaml:"hosts" json:"hosts"`
+	Path  string   `yaml:"path" json:"path"`
 }
 
 func (w WAF) Validate() error {
 	if !w.Enabled {
 		return nil
 	}
-	if w.AppSecURL == "" && len(w.Routes) == 0 {
-		return errors.New("appSecURL or routes required")
+	if w.AppSecURL == "" {
+		return errors.New("appSecURL required")
 	}
 
 	seen := make(map[string]struct{}, len(w.Routes))
 	for _, route := range w.Routes {
 		if len(route.Hosts) == 0 {
 			return errors.New("route requires at least one host")
-		}
-		if route.AppSecURL == "" {
-			return errors.New("route requires appSecURL")
 		}
 		for _, host := range route.Hosts {
 			key := strings.ToLower(host)

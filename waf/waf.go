@@ -23,7 +23,7 @@ import (
 type WAF struct {
 	APIKey      string
 	APIURL      string
-	apiURL      *url.URL
+	apiURL      url.URL
 	http        types.HTTPClient
 	httpTimeout time.Duration
 	routes      []route
@@ -31,8 +31,7 @@ type WAF struct {
 
 type route struct {
 	hosts  []string
-	apiURL *url.URL
-	apiKey string
+	apiURL url.URL
 }
 
 type WAFResponse struct {
@@ -55,34 +54,24 @@ type AppSecRequest struct {
 }
 
 func NewWAF(cfg config.WAF, http types.HTTPClient) (WAF, error) {
-	if len(cfg.Routes) == 0 {
-		apiURL, err := url.Parse(cfg.AppSecURL)
-		if err != nil {
-			return WAF{}, fmt.Errorf("failed to parse API URL: %w", err)
-		}
-		return WAF{
-			APIURL:      cfg.AppSecURL,
-			apiURL:      apiURL,
-			http:        http,
-			APIKey:      cfg.ApiKey,
-			httpTimeout: cfg.HTTPTimeout,
-		}, nil
+	apiURL, err := url.Parse(cfg.AppSecURL)
+	if err != nil {
+		return WAF{}, fmt.Errorf("failed to parse API URL: %w", err)
 	}
 
 	routes := make([]route, 0, len(cfg.Routes))
 	for _, rc := range cfg.Routes {
-		apiURL, err := url.Parse(rc.AppSecURL)
-		if err != nil {
-			return WAF{}, fmt.Errorf("failed to parse API URL: %w", err)
-		}
-		apiKey := rc.ApiKey
-		if apiKey == "" {
-			apiKey = cfg.ApiKey
-		}
-		routes = append(routes, route{hosts: rc.Hosts, apiURL: apiURL, apiKey: apiKey})
+		routes = append(routes, route{hosts: rc.Hosts, apiURL: *apiURL.JoinPath(rc.Path)})
 	}
 
-	return WAF{http: http, httpTimeout: cfg.HTTPTimeout, routes: routes}, nil
+	return WAF{
+		APIURL:      cfg.AppSecURL,
+		apiURL:      *apiURL,
+		http:        http,
+		APIKey:      cfg.ApiKey,
+		httpTimeout: cfg.HTTPTimeout,
+		routes:      routes,
+	}, nil
 }
 
 // Inspect forwards the request to the CrowdSec AppSec component and returns the action.
@@ -103,7 +92,7 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 	ctx, cancel := context.WithTimeout(ctx, w.httpTimeout)
 	defer cancel()
 
-	forwardReq := newForwardRequest(ctx, r.apiURL, req, r.apiKey)
+	forwardReq := newForwardRequest(ctx, r.apiURL, req, w.APIKey)
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
@@ -129,7 +118,7 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 
 func (w WAF) target(host string) (route, bool) {
 	if len(w.routes) == 0 {
-		return route{apiURL: w.apiURL, apiKey: w.APIKey}, true
+		return route{apiURL: w.apiURL}, true
 	}
 	host = normalizeHost(host)
 	for _, r := range w.routes {
@@ -157,7 +146,7 @@ func hostMatches(patterns []string, host string) bool {
 	return false
 }
 
-func newForwardRequest(ctx context.Context, apiURL *url.URL, request AppSecRequest, apiKey string) *http.Request {
+func newForwardRequest(ctx context.Context, apiURL url.URL, request AppSecRequest, apiKey string) *http.Request {
 	headers := make(http.Header, len(request.Headers)+7)
 	for k, v := range request.Headers {
 		if len(k) > 0 && k[0] == ':' {
@@ -178,7 +167,7 @@ func newForwardRequest(ctx context.Context, apiURL *url.URL, request AppSecReque
 
 	httpRequest := &http.Request{
 		Method: http.MethodGet,
-		URL:    apiURL,
+		URL:    &apiURL,
 		Host:   apiURL.Host,
 		Header: headers,
 		Body:   http.NoBody,

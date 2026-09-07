@@ -18,8 +18,7 @@ import (
 )
 
 func TestNewForwardRequest(t *testing.T) {
-	apiURL, err := url.Parse("http://crowdsec:8080/v1/")
-	assert.NoError(t, err)
+	apiURL := url.URL{Scheme: "http", Host: "crowdsec:8080", Path: "/v1/"}
 
 	t.Run("get request builds appsec headers", func(t *testing.T) {
 		areq := AppSecRequest{
@@ -37,7 +36,8 @@ func TestNewForwardRequest(t *testing.T) {
 		r := newForwardRequest(t.Context(), apiURL, areq, "key")
 
 		assert.Equal(t, nethttp.MethodGet, r.Method)
-		assert.Equal(t, apiURL, r.URL)
+		require.NotNil(t, r.URL)
+		assert.Equal(t, apiURL, *r.URL)
 		assert.Equal(t, apiURL.Host, r.Host)
 		assert.Equal(t, nethttp.NoBody, r.Body)
 		assert.Equal(t, t.Context(), r.Context())
@@ -265,8 +265,10 @@ func TestWAF_Inspect(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		cfg := config.WAF{
+			AppSecURL:   "http://test",
+			ApiKey:      "key",
 			HTTPTimeout: time.Second,
-			Routes:      []config.WAFRoute{{Hosts: []string{"api.example.com"}, AppSecURL: "http://test", ApiKey: "key"}},
+			Routes:      []config.WAFRoute{{Hosts: []string{"api.example.com"}, Path: "/api-waf"}},
 		}
 		routedWAF, err := NewWAF(cfg, mockHTTP)
 		require.NoError(t, err)
@@ -280,15 +282,17 @@ func TestWAF_Inspect(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, WAFResponse{Action: "ban"}, result)
 		require.NotNil(t, gotReq)
-		assert.Equal(t, "http://test", gotReq.URL.String())
+		assert.Equal(t, "http://test/api-waf", gotReq.URL.String())
 	})
 
 	t.Run("unmatched host is allowed without dispatching to any route", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockHTTP := mocks.NewMockHTTPClient(ctrl)
 		cfg := config.WAF{
+			AppSecURL:   "http://test",
+			ApiKey:      "key",
 			HTTPTimeout: time.Second,
-			Routes:      []config.WAFRoute{{Hosts: []string{"api.example.com"}, AppSecURL: "http://test", ApiKey: "key"}},
+			Routes:      []config.WAFRoute{{Hosts: []string{"api.example.com"}, Path: "/api-waf"}},
 		}
 		routedWAF, err := NewWAF(cfg, mockHTTP)
 		require.NoError(t, err)

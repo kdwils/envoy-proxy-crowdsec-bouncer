@@ -1712,7 +1712,7 @@ func TestNewWAF(t *testing.T) {
 
 	t.Run("invalid config returns validation error", func(t *testing.T) {
 		_, err := newWAF(config.WAF{Enabled: true}, nil)
-		assert.EqualError(t, err, "appSecURL or routes required")
+		assert.EqualError(t, err, "appSecURL required")
 	})
 
 	t.Run("enabled builds a waf.WAF from the config", func(t *testing.T) {
