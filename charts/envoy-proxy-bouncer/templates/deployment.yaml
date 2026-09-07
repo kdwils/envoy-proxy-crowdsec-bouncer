@@ -16,7 +16,7 @@ spec:
       annotations:
         checksum/config: {{ include "envoy-proxy-bouncer.cleanConfig" .Values.config | sha256sum }}
         {{- if or .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent }}
-        checksum/templates: {{ print .Values.templates.deniedTemplateContent .Values.templates.captchaTemplateContent | sha256sum }}
+        checksum/templates: {{ printf "%s%s" (.Values.templates.deniedTemplateContent | sha256sum) (.Values.templates.captchaTemplateContent | sha256sum) }}
         {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
