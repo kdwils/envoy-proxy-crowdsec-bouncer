@@ -22,6 +22,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
+	"github.com/kdwils/envoy-proxy-bouncer/types"
 	bouncerVersion "github.com/kdwils/envoy-proxy-bouncer/version"
 	"github.com/kdwils/envoy-proxy-bouncer/waf"
 
@@ -175,13 +176,9 @@ func NewComponents(cfg config.Config, prom *recorder.Recorder, httpClient *http.
 		decisionCache = dc
 	}
 
-	var w WAF = waf.NewNoopWAF()
-	if cfg.WAF.Enabled {
-		realWAF, err := waf.NewWAF(cfg.WAF.AppSecURL, cfg.WAF.ApiKey, cfg.WAF.HTTPTimeout, httpClient)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		w = realWAF
+	w, err := newWAF(cfg.WAF, httpClient)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 
 	var captchaService CaptchaService = captcha.NewNoopCaptchaService()
@@ -194,6 +191,16 @@ func NewComponents(cfg config.Config, prom *recorder.Recorder, httpClient *http.
 	}
 
 	return decisionCache, w, captchaService, metricsService, nil
+}
+
+func newWAF(cfg config.WAF, httpClient types.HTTPClient) (WAF, error) {
+	if !cfg.Enabled {
+		return waf.NewNoopWAF(), nil
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return waf.NewWAF(cfg, httpClient)
 }
 
 func (b *Bouncer) Sync(ctx context.Context) error {

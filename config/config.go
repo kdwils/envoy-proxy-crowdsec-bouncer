@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -110,7 +111,37 @@ type WAF struct {
 	// FailOpen allows requests to proceed when AppSec inspection returns an
 	// error (transport error or AppSec error action), instead of failing
 	// closed. IP-based LAPI decisions are still enforced.
-	FailOpen bool `yaml:"failOpen" json:"failOpen"`
+	FailOpen bool       `yaml:"failOpen" json:"failOpen"`
+	Routes   []WAFRoute `yaml:"routes" json:"routes"`
+}
+
+type WAFRoute struct {
+	Hosts []string `yaml:"hosts" json:"hosts"`
+	Path  string   `yaml:"path" json:"path"`
+}
+
+func (w WAF) Validate() error {
+	if !w.Enabled {
+		return nil
+	}
+	if w.AppSecURL == "" {
+		return errors.New("appSecURL required")
+	}
+
+	seen := make(map[string]struct{}, len(w.Routes))
+	for _, route := range w.Routes {
+		if len(route.Hosts) == 0 {
+			return errors.New("route requires at least one host")
+		}
+		for _, host := range route.Hosts {
+			key := strings.ToLower(host)
+			if _, ok := seen[key]; ok {
+				return fmt.Errorf("duplicate route host %q", host)
+			}
+			seen[key] = struct{}{}
+		}
+	}
+	return nil
 }
 
 type Webhook struct {
@@ -192,6 +223,7 @@ func GetViper(cfgFile string) *viper.Viper {
 	v.SetDefault("waf.appSecURL", "")
 	v.SetDefault("waf.httpTimeout", "5s")
 	v.SetDefault("waf.failOpen", false)
+	v.SetDefault("waf.routes", nil)
 
 	v.SetDefault("captcha.enabled", false)
 	v.SetDefault("captcha.provider", "")

@@ -7,27 +7,29 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/types"
 )
 
-type Config struct {
-	APIKey  string
-	APIURL  string
-	Timeout time.Duration
-}
-
 type WAF struct {
 	APIKey      string
-	APIURL      string
-	apiURL      *url.URL
+	apiURL      url.URL
 	http        types.HTTPClient
 	httpTimeout time.Duration
+	routes      []route
+}
+
+type route struct {
+	hostPatterns [][]string
+	apiURL       url.URL
 }
 
 type WAFResponse struct {
@@ -49,17 +51,27 @@ type AppSecRequest struct {
 	ProtoMinor int
 }
 
-func NewWAF(appsecURL, apiKey string, httpTimeout time.Duration, http types.HTTPClient) (WAF, error) {
-	apiURL, err := url.Parse(appsecURL)
+func NewWAF(cfg config.WAF, http types.HTTPClient) (WAF, error) {
+	apiURL, err := url.Parse(cfg.AppSecURL)
 	if err != nil {
 		return WAF{}, fmt.Errorf("failed to parse API URL: %w", err)
 	}
+
+	routes := make([]route, 0, len(cfg.Routes))
+	for _, rc := range cfg.Routes {
+		patterns := make([][]string, 0, len(rc.Hosts))
+		for _, h := range rc.Hosts {
+			patterns = append(patterns, strings.Split(strings.ToLower(h), "."))
+		}
+		routes = append(routes, route{hostPatterns: patterns, apiURL: *apiURL.JoinPath(rc.Path)})
+	}
+
 	return WAF{
-		APIURL:      appsecURL,
-		apiURL:      apiURL,
+		apiURL:      *apiURL,
 		http:        http,
-		APIKey:      apiKey,
-		httpTimeout: httpTimeout,
+		APIKey:      cfg.ApiKey,
+		httpTimeout: cfg.HTTPTimeout,
+		routes:      routes,
 	}, nil
 }
 
@@ -73,10 +85,15 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 		return result, fmt.Errorf("method cannot be empty")
 	}
 
+	r, ok := w.target(req.URL.Host)
+	if !ok {
+		return WAFResponse{Action: "allow"}, nil
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, w.httpTimeout)
 	defer cancel()
 
-	forwardReq := newForwardRequest(ctx, w.apiURL, req, w.APIKey)
+	forwardReq := newForwardRequest(ctx, r.apiURL, req, w.APIKey)
 
 	resp, err := w.http.Do(forwardReq)
 	if err != nil {
@@ -100,7 +117,52 @@ func (w WAF) Inspect(ctx context.Context, req AppSecRequest) (WAFResponse, error
 	return result, nil
 }
 
-func newForwardRequest(ctx context.Context, apiURL *url.URL, request AppSecRequest, apiKey string) *http.Request {
+func (w WAF) target(host string) (route, bool) {
+	if len(w.routes) == 0 {
+		return route{apiURL: w.apiURL}, true
+	}
+	host = normalizeHost(host)
+	hostLabels := strings.Split(host, ".")
+	for _, r := range w.routes {
+		if hostMatches(r.hostPatterns, hostLabels) {
+			return r, true
+		}
+	}
+	return route{}, false
+}
+
+func normalizeHost(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.ToLower(host)
+}
+
+func hostMatches(patterns [][]string, hostLabels []string) bool {
+	for _, patternLabels := range patterns {
+		if len(patternLabels) == 1 && patternLabels[0] == "*" {
+			return true
+		}
+		if labelsMatch(patternLabels, hostLabels) {
+			return true
+		}
+	}
+	return false
+}
+
+func labelsMatch(patternLabels, hostLabels []string) bool {
+	if len(patternLabels) != len(hostLabels) {
+		return false
+	}
+	for i, p := range patternLabels {
+		if p != "*" && p != hostLabels[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func newForwardRequest(ctx context.Context, apiURL url.URL, request AppSecRequest, apiKey string) *http.Request {
 	headers := make(http.Header, len(request.Headers)+7)
 	for k, v := range request.Headers {
 		if len(k) > 0 && k[0] == ':' {
@@ -121,7 +183,7 @@ func newForwardRequest(ctx context.Context, apiURL *url.URL, request AppSecReque
 
 	httpRequest := &http.Request{
 		Method: http.MethodGet,
-		URL:    apiURL,
+		URL:    &apiURL,
 		Host:   apiURL.Host,
 		Header: headers,
 		Body:   http.NoBody,

@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
 	"github.com/crowdsecurity/crowdsec/pkg/models"
@@ -19,6 +20,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/decisions"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
+	httpmocks "github.com/kdwils/envoy-proxy-bouncer/types/mocks"
 	"github.com/kdwils/envoy-proxy-bouncer/waf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -1699,6 +1701,30 @@ func Test_parseCookies(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestNewWAF(t *testing.T) {
+	t.Run("disabled returns noop", func(t *testing.T) {
+		got, err := newWAF(config.WAF{Enabled: false}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, waf.NewNoopWAF(), got)
+	})
+
+	t.Run("invalid config returns validation error", func(t *testing.T) {
+		_, err := newWAF(config.WAF{Enabled: true}, nil)
+		assert.EqualError(t, err, "appSecURL required")
+	})
+
+	t.Run("enabled builds a waf.WAF from the config", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockHTTP := httpmocks.NewMockHTTPClient(ctrl)
+		cfg := config.WAF{Enabled: true, AppSecURL: "http://appsec:7422", ApiKey: "top-key", HTTPTimeout: time.Second}
+		got, err := newWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+		want, err := waf.NewWAF(cfg, mockHTTP)
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	})
 }
 
 func TestBouncer_IsReady(t *testing.T) {
