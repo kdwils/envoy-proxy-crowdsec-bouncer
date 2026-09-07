@@ -83,7 +83,6 @@ release:
           path: /
           appsec_configs:
             - crowdsecurity/virtual-patching
-            - homelab/appsec-challenge
           labels:
             type: appsec
         - source: appsec
@@ -92,7 +91,6 @@ release:
           appsec_configs:
             - crowdsecurity/virtual-patching
             - crowdsecurity/appsec-bot-*
-            - homelab/appsec-challenge
           labels:
             type: appsec
       ```
