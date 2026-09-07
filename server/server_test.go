@@ -180,6 +180,38 @@ func TestServer_Check(t *testing.T) {
 		assert.Nil(t, resp.GetDeniedResponse())
 	})
 
+	t.Run("request allowed with response headers passes them through", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
+			Action:     "allow",
+			Reason:     "ok",
+			HTTPStatus: 200,
+			ResponseHeaders: map[string][]string{
+				"Set-Cookie": {"cs_challenge=abc123; Path=/"},
+			},
+		})
+
+		mockCaptcha := remediationmocks.NewMockCaptchaService(ctrl)
+
+		rec := recorder.NewNoOp()
+		s := NewServer(getDefaultConfig(), mockBouncer, mockCaptcha, webhook.NewNoopNotifier(), mocks.NewMockTemplateStore(ctrl), log, rec, nil)
+
+		resp, err := s.Check(t.Context(), &auth.CheckRequest{})
+
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), resp.Status.Code)
+
+		ok := resp.GetOkResponse()
+		require.NotNil(t, ok)
+
+		cookie, found := findHeader(ok.ResponseHeadersToAdd, "Set-Cookie")
+		assert.True(t, found, "expected Set-Cookie header")
+		assert.Equal(t, "cs_challenge=abc123; Path=/", cookie)
+	})
+
 	t.Run("appsec challenge served verbatim", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -837,12 +869,26 @@ func TestServer_handleCaptchaChallenge(t *testing.T) {
 
 func TestServer_getAllowedResponse(t *testing.T) {
 	t.Run("creates correct allowed response", func(t *testing.T) {
-		resp := getAllowedResponse()
+		resp := getAllowedResponse(nil)
 
 		assert.NotNil(t, resp)
 		assert.Equal(t, int32(0), resp.Status.Code)
 		assert.NotNil(t, resp.HttpResponse)
 		assert.Nil(t, resp.GetDeniedResponse())
+		assert.Nil(t, resp.GetOkResponse().ResponseHeadersToAdd)
+	})
+
+	t.Run("carries response headers", func(t *testing.T) {
+		resp := getAllowedResponse(map[string][]string{
+			"Set-Cookie": {"cs_challenge=abc123; Path=/"},
+		})
+
+		ok := resp.GetOkResponse()
+		require.NotNil(t, ok)
+
+		cookie, found := findHeader(ok.ResponseHeadersToAdd, "Set-Cookie")
+		assert.True(t, found, "expected Set-Cookie header")
+		assert.Equal(t, "cs_challenge=abc123; Path=/", cookie)
 	})
 }
 

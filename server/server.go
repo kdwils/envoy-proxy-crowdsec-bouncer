@@ -369,7 +369,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	switch result.Action {
 	case "allow":
 		s.logger.Debug("request allowed", "ip", result.IP, "action", result.Action, "reason", result.Reason)
-		return getAllowedResponse(), nil
+		return getAllowedResponse(result.ResponseHeaders), nil
 	case "captcha":
 		s.logger.Debug("captcha challenge issued", "ip", result.IP, "action", result.Action, "reason", result.Reason)
 		return getRedirectResponse(result.RedirectURL), nil
@@ -467,12 +467,16 @@ func httpStatusToEnvoyStatus(httpStatus int) envoy_type.StatusCode {
 	return envoy_type.StatusCode(httpStatus)
 }
 
-func getAllowedResponse() *auth.CheckResponse {
+func getAllowedResponse(headers map[string][]string) *auth.CheckResponse {
 	return &auth.CheckResponse{
 		Status: &rpc_status.Status{
 			Code: 0,
 		},
-		HttpResponse: &auth.CheckResponse_OkResponse{},
+		HttpResponse: &auth.CheckResponse_OkResponse{
+			OkResponse: &auth.OkHttpResponse{
+				ResponseHeadersToAdd: buildMultiHeaderValues(headers),
+			},
+		},
 	}
 }
 
