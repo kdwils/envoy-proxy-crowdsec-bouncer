@@ -336,6 +336,9 @@ func TestHostMatches(t *testing.T) {
 		{name: "catch-all match", patterns: []string{"*"}, host: "anything.example.com", want: true},
 		{name: "no pattern matches", patterns: []string{"api.example.com"}, host: "other.example.com", want: false},
 		{name: "wildcard subdomain does not match apex", patterns: []string{"*.example.com"}, host: "example.com", want: false},
+		{name: "wildcard subdomain does not match nested subdomain", patterns: []string{"*.example.com"}, host: "a.b.example.com", want: false},
+		{name: "multi-level wildcard matches exact depth", patterns: []string{"*.test.example.com"}, host: "foo.test.example.com", want: true},
+		{name: "multi-level wildcard does not match deeper depth", patterns: []string{"*.test.example.com"}, host: "foo.bar.test.example.com", want: false},
 	}
 
 	for _, tt := range tests {

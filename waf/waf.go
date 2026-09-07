@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -137,13 +136,29 @@ func normalizeHost(host string) string {
 }
 
 func hostMatches(patterns []string, host string) bool {
+	hostLabels := strings.Split(host, ".")
 	for _, pattern := range patterns {
-		ok, err := path.Match(strings.ToLower(pattern), host)
-		if err == nil && ok {
+		pattern = strings.ToLower(pattern)
+		if pattern == "*" {
+			return true
+		}
+		if labelsMatch(strings.Split(pattern, "."), hostLabels) {
 			return true
 		}
 	}
 	return false
+}
+
+func labelsMatch(patternLabels, hostLabels []string) bool {
+	if len(patternLabels) != len(hostLabels) {
+		return false
+	}
+	for i, p := range patternLabels {
+		if p != "*" && p != hostLabels[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func newForwardRequest(ctx context.Context, apiURL url.URL, request AppSecRequest, apiKey string) *http.Request {
