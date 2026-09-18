@@ -19,7 +19,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/sync v0.23.0
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
