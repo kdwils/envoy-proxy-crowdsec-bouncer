@@ -221,9 +221,10 @@ export ENVOY_BOUNCER_EXEMPTIPS=10.0.0.0/8,172.16.0.0/12
 | Option | Type | Default | Required | Description |
 |--------|------|---------|----------|-------------|
 | `enabled` | bool | `false` | No | Enable CAPTCHA challenges |
-| `provider` | string | `""` | Yes | CAPTCHA provider: `recaptcha` or `turnstile` |
+| `provider` | string | `""` | Yes | CAPTCHA provider: `recaptcha`, `turnstile`, or `cap` |
 | `siteKey` | string | `""` | Yes | Public site key from CAPTCHA provider |
 | `secretKey` | string | `""` | Yes | Secret key from CAPTCHA provider |
+| `serverURL` | string | `""` | Yes (when provider is `cap`) | Base URL of a self-hosted [Cap](https://trycap.dev) instance. Not used by `recaptcha`/`turnstile`, which hit a fixed public host |
 | `signingKey` | string | `""` | Yes | JWT signing key (minimum 32 bytes). See [Signing Key Generation](SIGNING_KEYS.md) |
 | `callbackURL` | string | `""` | Yes | Base URL for CAPTCHA callbacks (public-facing hostname) |
 | `cookieDomain` | string | `""` | Yes | Parent domain for cookies (e.g., `.example.com`) to share across subdomains |
@@ -240,6 +241,7 @@ captcha:
   provider: "recaptcha"
   siteKey: "<your-site-key>"
   secretKey: "<your-secret-key>"
+  serverURL: "" # required when provider is "cap", e.g. https://cap.yourdomain.com
   signingKey: "<your-jwt-signing-key>"
   callbackURL: "https://yourdomain.com"
   cookieDomain: ".yourdomain.com"
@@ -256,6 +258,7 @@ export ENVOY_BOUNCER_CAPTCHA_ENABLED=true
 export ENVOY_BOUNCER_CAPTCHA_PROVIDER=recaptcha
 export ENVOY_BOUNCER_CAPTCHA_SITEKEY=your-site-key
 export ENVOY_BOUNCER_CAPTCHA_SECRETKEY=your-secret-key
+export ENVOY_BOUNCER_CAPTCHA_SERVERURL=https://cap.yourdomain.com
 export ENVOY_BOUNCER_CAPTCHA_SIGNINGKEY=your-jwt-signing-key
 export ENVOY_BOUNCER_CAPTCHA_CALLBACKURL=https://yourdomain.com
 export ENVOY_BOUNCER_CAPTCHA_COOKIEDOMAIN=.yourdomain.com

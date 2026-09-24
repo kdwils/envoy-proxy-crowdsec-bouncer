@@ -308,6 +308,7 @@ func (s *Server) handleCaptchaChallenge(w http.ResponseWriter, r *http.Request) 
 	data := template.CaptchaTemplateData{
 		Provider:       session.Provider,
 		SiteKey:        session.SiteKey,
+		ServerURL:      session.ServerURL,
 		CallbackURL:    session.CallbackURL,
 		RedirectURL:    session.RedirectURL,
 		ChallengeToken: session.ID,

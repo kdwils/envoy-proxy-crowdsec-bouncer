@@ -18,7 +18,7 @@ go install github.com/kdwils/envoy-proxy-bouncer@v<tag>
 
 ### Download Pre-built Binary
 
-Check the [releases page](https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/releases) for pre-built binaries.
+See [INSTALL.md](INSTALL.md) for step-by-step binary installation.
 
 ### Running the Binary
 
@@ -257,6 +257,7 @@ grpcurl -plaintext localhost:8080 list
 
 ## See Also
 
+- [Installation](INSTALL.md)
 - [Configuration Reference](CONFIGURATION.md)
 - [CrowdSec Configuration](CROWDSEC.md) - CrowdSec bouncer and WAF setup
 - [CAPTCHA Configuration](CAPTCHA.md) - CAPTCHA challenge setup

@@ -47,10 +47,14 @@ type Server struct {
 }
 
 type Captcha struct {
-	Enabled           bool          `yaml:"enabled" json:"enabled"`
-	Provider          string        `yaml:"provider" json:"provider"`
-	SiteKey           string        `yaml:"siteKey" json:"siteKey"`
-	SecretKey         string        `yaml:"secretKey" json:"secretKey"`
+	Enabled   bool   `yaml:"enabled" json:"enabled"`
+	Provider  string `yaml:"provider" json:"provider"`
+	SiteKey   string `yaml:"siteKey" json:"siteKey"`
+	SecretKey string `yaml:"secretKey" json:"secretKey"`
+	// ServerURL is the base URL of a self-hosted CAPTCHA provider's instance
+	// (e.g. a Cap Standalone deployment). Only required for providers that
+	// aren't a fixed public host, unlike reCAPTCHA/Turnstile.
+	ServerURL         string        `yaml:"serverURL" json:"serverURL"`
 	SigningKey        string        `yaml:"signingKey" json:"signingKey"`
 	CallbackURL       string        `yaml:"callbackURL" json:"callbackURL"`
 	CookieDomain      string        `yaml:"cookieDomain" json:"cookieDomain"`
@@ -236,6 +240,7 @@ func GetViper(cfgFile string) *viper.Viper {
 	v.SetDefault("captcha.provider", "")
 	v.SetDefault("captcha.siteKey", "")
 	v.SetDefault("captcha.secretKey", "")
+	v.SetDefault("captcha.serverURL", "")
 	v.SetDefault("captcha.signingKey", "")
 	v.SetDefault("captcha.callbackURL", "")
 	v.SetDefault("captcha.cookieDomain", "")

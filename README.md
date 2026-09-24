@@ -52,6 +52,7 @@ Integrates with Envoy as an external authorization service. Each request is eval
 
 ## Documentation
 
+- [Installation](docs/INSTALL.md)
 - [Configuration Reference](docs/CONFIGURATION.md)
 - [CrowdSec Integration](docs/CROWDSEC.md)
 - [CAPTCHA Integration](docs/CAPTCHA.md)

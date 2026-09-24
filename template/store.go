@@ -88,6 +88,7 @@ func (s *Store) RenderDenied(data DeniedTemplateData) (string, error) {
 type CaptchaTemplateData struct {
 	Provider       string
 	SiteKey        string
+	ServerURL      string
 	CallbackURL    string
 	RedirectURL    string
 	ChallengeToken string
