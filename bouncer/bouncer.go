@@ -511,7 +511,7 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 		origin = crowdsec.DecisionOrigin(decision)
 	}
 	if !b.CaptchaService.IsEnabled() {
-		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", cleanOrigin, http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", origin, http.StatusOK, nil, "", parsed, nil)
 	}
 	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
 	defer stop()
@@ -524,10 +524,10 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	if err != nil {
 		logger.Error("error creating session", "error", err, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncCaptchaErrorsTotal()
-		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", cleanOrigin, http.StatusInternalServerError, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", origin, http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 	if session == nil {
-		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", cleanOrigin, http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", origin, http.StatusOK, nil, "", parsed, nil)
 	}
 	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", origin, http.StatusFound, decision, session.ChallengeURL, parsed, session)
 }

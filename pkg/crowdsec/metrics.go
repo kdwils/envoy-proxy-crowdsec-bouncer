@@ -195,13 +195,26 @@ func (mc *MetricsService) Calculate() *models.AllMetrics {
 	currentMetrics := mc.GetSnapshot()
 
 	var items []*models.MetricsDetailItem
+	var processedTotal int64
 
 	for _, metric := range currentMetrics {
+		if metric.Name == "processed" {
+			processedTotal += metric.Value
+			continue
+		}
 		items = append(items, &models.MetricsDetailItem{
 			Name:   new(metric.Name),
 			Unit:   new(metric.Unit),
 			Value:  new(float64(metric.Value)),
 			Labels: metric.Labels,
+		})
+	}
+
+	if processedTotal > 0 {
+		items = append(items, &models.MetricsDetailItem{
+			Name:  new("processed"),
+			Unit:  new("request"),
+			Value: new(float64(processedTotal)),
 		})
 	}
 

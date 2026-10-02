@@ -283,8 +283,14 @@ func testBouncer(t *testing.T, env *testEnv) {
 			"processed:clean:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  5,
+				Value:  1,
 				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
+			},
+			"processed:clean_appsec:ipv4": {
+				Name:   "processed",
+				Unit:   "request",
+				Value:  4,
+				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
 			},
 			"processed:cscli:ipv4": {
 				Name:   "processed",
@@ -347,8 +353,14 @@ func testBouncer(t *testing.T, env *testEnv) {
 			"processed:clean:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  7,
+				Value:  3,
 				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
+			},
+			"processed:clean_appsec:ipv4": {
+				Name:   "processed",
+				Unit:   "request",
+				Value:  4,
+				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
 			},
 			"processed:cscli:ipv4": {
 				Name:   "processed",
@@ -640,11 +652,11 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed:clean:ipv4": {
+			"processed:clean_appsec:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
 				Value:  1,
-				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
 			},
 			"processed:cscli:ipv4": {
 				Name:   "processed",

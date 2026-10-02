@@ -1451,7 +1451,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockCaptcha.EXPECT().IsEnabled().Return(false)
 
 		got := r.Check(t.Context(), mkCheckRequest("11.11.11.11", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("11.11.11.11", "allow", "captcha disabled", cleanOrigin, 200, nil, "", wantParsed("11.11.11.11", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("11.11.11.11", "allow", "captcha disabled", appSecOrigin, 200, nil, "", wantParsed("11.11.11.11", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1465,7 +1465,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("12.12.12.12", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("12.12.12.12", "allow", "captcha disabled", cleanOrigin, 200, nil, "", wantParsed("12.12.12.12", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("12.12.12.12", "allow", "captcha disabled", appSecOrigin, 200, nil, "", wantParsed("12.12.12.12", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1483,7 +1483,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockCaptcha.EXPECT().CreateSession("13.13.13.13", "https://example.com/test", "").Return(nil, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("13.13.13.13", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("13.13.13.13", "allow", "captcha not required", cleanOrigin, 200, nil, "", wantParsed("13.13.13.13", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("13.13.13.13", "allow", "captcha not required", appSecOrigin, 200, nil, "", wantParsed("13.13.13.13", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1501,7 +1501,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockCaptcha.EXPECT().CreateSession("14.14.14.14", "https://example.com/test", "").Return(nil, fmt.Errorf("session creation failed"))
 
 		got := r.Check(t.Context(), mkCheckRequest("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("14.14.14.14", "error", "captcha error", cleanOrigin, 500, nil, "", wantParsed("14.14.14.14", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("14.14.14.14", "error", "captcha error", appSecOrigin, 500, nil, "", wantParsed("14.14.14.14", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1588,7 +1588,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "17.17.17.17").Return(&models.Decision{Type: new("captcha")}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("17.17.17.17", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("17.17.17.17", "allow", "captcha disabled", cleanOrigin, 200, nil, "", &ParsedRequest{
+		want := NewCheckedRequest("17.17.17.17", "allow", "captcha disabled", crowdsec.DefaultDecisionOrigin, 200, nil, "", &ParsedRequest{
 			IP:           "17.17.17.17",
 			RealIP:       "17.17.17.17",
 			ParsedRealIP: netip.MustParseAddr("17.17.17.17"),
