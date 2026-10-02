@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	models "github.com/crowdsecurity/crowdsec/pkg/models"
+	decisions "github.com/kdwils/envoy-proxy-bouncer/decisions"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -68,6 +69,20 @@ func (m *MockDecisionCache) GetOriginCounts() map[string]int {
 func (mr *MockDecisionCacheMockRecorder) GetOriginCounts() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOriginCounts", reflect.TypeOf((*MockDecisionCache)(nil).GetOriginCounts))
+}
+
+// GetOriginRemediationIPTypeCounts mocks base method.
+func (m *MockDecisionCache) GetOriginRemediationIPTypeCounts() map[decisions.OriginRemediationIPType]int64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOriginRemediationIPTypeCounts")
+	ret0, _ := ret[0].(map[decisions.OriginRemediationIPType]int64)
+	return ret0
+}
+
+// GetOriginRemediationIPTypeCounts indicates an expected call of GetOriginRemediationIPTypeCounts.
+func (mr *MockDecisionCacheMockRecorder) GetOriginRemediationIPTypeCounts() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOriginRemediationIPTypeCounts", reflect.TypeOf((*MockDecisionCache)(nil).GetOriginRemediationIPTypeCounts))
 }
 
 // IsReady mocks base method.

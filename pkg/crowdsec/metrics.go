@@ -61,14 +61,18 @@ func (c *crowdSecClient) SendMetrics(ctx context.Context, metrics *models.AllMet
 type MetricsService struct {
 	cache       *cache.Cache[string, Metric]
 	apiClient   CrowdsecClient
+	name        string
 	bouncerType string
 	version     string
 	startupTS   int64
+	lastSentTS  int64
+	nowTS       func() int64
 }
 
 // MetricsConfig holds the configuration required to create a new MetricsService.
 type MetricsConfig struct {
 	APIClient   *apiclient.ApiClient
+	Name        string
 	BouncerType string
 	Version     string
 }
@@ -78,6 +82,9 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 	if cfg.APIClient == nil {
 		return nil, errors.New("api client is required")
 	}
+	if cfg.Name == "" {
+		return nil, errors.New("name is required")
+	}
 	if cfg.BouncerType == "" {
 		return nil, errors.New("bouncer type is required")
 	}
@@ -85,12 +92,16 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 		return nil, errors.New("version is required")
 	}
 
+	startupTS := time.Now().UTC().Unix()
 	return &MetricsService{
 		cache:       cache.New[string, Metric](),
 		apiClient:   &crowdSecClient{client: cfg.APIClient},
+		name:        cfg.Name,
 		bouncerType: cfg.BouncerType,
 		version:     cfg.Version,
-		startupTS:   time.Now().UTC().Unix(),
+		startupTS:   startupTS,
+		lastSentTS:  startupTS,
+		nowTS:       time.Now().Unix,
 	}, nil
 }
 
@@ -168,10 +179,9 @@ func (mc *MetricsService) GetSnapshot() map[string]Metric {
 }
 
 // Calculate transforms the current metrics snapshot into the CrowdSec AllMetrics format.
-// The interval parameter specifies the time window over which these metrics were collected.
 // This method includes system information and metadata required by the CrowdSec API.
 // Users should not call this method when using Run, as it handles calculation automatically.
-func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
+func (mc *MetricsService) Calculate() *models.AllMetrics {
 	currentMetrics := mc.GetSnapshot()
 
 	var items []*models.MetricsDetailItem
@@ -185,8 +195,8 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 		})
 	}
 
-	windowSizeSeconds := int64(interval.Seconds())
-	utcNowTimestamp := time.Now().Unix()
+	utcNowTimestamp := mc.nowTS()
+	windowSizeSeconds := max(utcNowTimestamp-mc.lastSentTS, 0)
 
 	detailedMetrics := []*models.DetailedMetrics{
 		{
@@ -214,6 +224,7 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 
 	remediationMetrics := &models.RemediationComponentsMetrics{
 		BaseMetrics: *baseMetrics,
+		Name:        mc.name,
 		Type:        mc.bouncerType,
 	}
 
@@ -257,8 +268,9 @@ func (mc *MetricsService) Run(ctx context.Context, interval time.Duration) error
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			allMetrics := mc.Calculate(interval)
+			allMetrics := mc.Calculate()
 			if err := mc.Send(ctx, allMetrics); err == nil {
+				mc.lastSentTS = mc.nowTS()
 				mc.Reset()
 			}
 		}

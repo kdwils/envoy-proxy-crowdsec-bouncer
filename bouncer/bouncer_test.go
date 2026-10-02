@@ -66,7 +66,8 @@ func newMetricsService(t *testing.T) *crowdsec.MetricsService {
 	t.Helper()
 	collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
 		APIClient:   &apiclient.ApiClient{},
-		BouncerType: "test-bouncer",
+		Name:        "test-bouncer",
+		BouncerType: "test-bouncer-type",
 		Version:     "v1.0.0",
 	})
 	require.NoError(t, err)
@@ -947,7 +948,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(&models.Decision{Type: new("ban")}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("1.2.3.4", "ban", "crowdsec ban", 403, &models.Decision{Type: new("ban")}, "", &ParsedRequest{
+		want := NewCheckedRequest("1.2.3.4", "ban", "crowdsec ban", defaultDecisionOrigin, 403, &models.Decision{Type: new("ban")}, "", &ParsedRequest{
 			IP:           "1.2.3.4",
 			RealIP:       "1.2.3.4",
 			ParsedRealIP: netip.MustParseAddr("1.2.3.4"),
@@ -963,7 +964,8 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"CAPI:ban": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": "CAPI", "remediation": "ban"}},
+			"processed":                         {Name: "processed", Unit: "request", Value: 1, Labels: nil},
+			defaultDecisionOrigin + ":ban:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": defaultDecisionOrigin, "remediation": "ban", "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -976,7 +978,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "2.2.2.2").Return(decision, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("2.2.2.2", "http", "example.com", "/foo", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("2.2.2.2", "ban", "crowdsecurity/test", 403, decision, "", &ParsedRequest{
+		want := NewCheckedRequest("2.2.2.2", "ban", "crowdsecurity/test", "CAPI", 403, decision, "", &ParsedRequest{
 			IP:           "2.2.2.2",
 			RealIP:       "2.2.2.2",
 			ParsedRealIP: netip.MustParseAddr("2.2.2.2"),
@@ -1000,7 +1002,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "3.3.3.3").Return(nil, fmt.Errorf("boom"))
 
 		got := r.Check(t.Context(), mkCheckRequest("3.3.3.3", "http", "example.com", "/foo", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("3.3.3.3", "error", "decision cache error", 500, nil, "", &ParsedRequest{
+		want := NewCheckedRequest("3.3.3.3", "error", "decision cache error", cleanOrigin, 500, nil, "", &ParsedRequest{
 			IP:           "3.3.3.3",
 			RealIP:       "3.3.3.3",
 			ParsedRealIP: netip.MustParseAddr("3.3.3.3"),
@@ -1015,7 +1017,9 @@ func TestBouncer_Check(t *testing.T) {
 		}, nil)
 		assert.Equal(t, want, got)
 
-		assert.Empty(t, r.MetricsService.GetSnapshot())
+		assert.Equal(t, map[string]crowdsec.Metric{
+			"processed": {Name: "processed", Unit: "request", Value: 1, Labels: nil},
+		}, r.MetricsService.GetSnapshot())
 	})
 
 	t.Run("bouncer allows - waf bans", func(t *testing.T) {
@@ -1028,11 +1032,12 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "ban"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("4.4.4.4", "https", "host", "/bar", "POST", "HTTP/2", "abc"))
-		want := NewCheckedRequest("4.4.4.4", "ban", "ban", 403, nil, "", wantParsed("4.4.4.4", "https", "host", "/bar", "POST", []byte("abc"), 2, 0), nil)
+		want := NewCheckedRequest("4.4.4.4", "ban", "ban", appSecOrigin, 403, nil, "", wantParsed("4.4.4.4", "https", "host", "/bar", "POST", []byte("abc"), 2, 0), nil)
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"CAPI:ban": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": "CAPI", "remediation": "ban"}},
+			"processed":                {Name: "processed", Unit: "request", Value: 1, Labels: nil},
+			appSecOrigin + ":ban:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "ban", "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1045,7 +1050,8 @@ func TestBouncer_Check(t *testing.T) {
 
 		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
 			APIClient:   &apiclient.ApiClient{},
-			BouncerType: "test-bouncer",
+			Name:        "test-bouncer",
+			BouncerType: "test-bouncer-type",
 			Version:     "v1.0.0",
 		})
 		require.NoError(t, err)
@@ -1056,7 +1062,6 @@ func TestBouncer_Check(t *testing.T) {
 			WAF:                mw,
 			MetricsService:     collector,
 			PrometheusRecorder: rec,
-			remediationMetrics: newRemediationMetrics(),
 			config: config.Config{
 				Bouncer: config.Bouncer{
 					BanStatusCode: 403,
@@ -1083,6 +1088,7 @@ func TestBouncer_Check(t *testing.T) {
 			IP:          "4.4.4.4",
 			Action:      "challenge",
 			Reason:      "crowdsec challenge",
+			Origin:      appSecOrigin,
 			HTTPStatus:  401,
 			RedirectURL: "",
 			ParsedRequest: &ParsedRequest{
@@ -1105,18 +1111,10 @@ func TestBouncer_Check(t *testing.T) {
 		require.Equal(t, want, got)
 
 		actualMetrics := r.MetricsService.GetSnapshot()
-		wantMetric := crowdsec.Metric{
-			Name:  "dropped",
-			Unit:  "request",
-			Value: 1,
-			Labels: map[string]string{
-				"origin":      "CAPI",
-				"remediation": "challenge",
-			},
-		}
-		metric, ok := actualMetrics["CAPI:challenge"]
-		require.True(t, ok, "expected CAPI:challenge metric to exist")
-		assert.Equal(t, wantMetric, metric)
+		require.Equal(t, map[string]crowdsec.Metric{
+			"processed":                      {Name: "processed", Unit: "request", Value: 1, Labels: nil},
+			appSecOrigin + ":challenge:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "challenge", "ip_type": "ipv4"}},
+		}, actualMetrics)
 	})
 
 	t.Run("waf error", func(t *testing.T) {
@@ -1129,7 +1127,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(t.Context(), mkCheckRequest("6.6.6.6", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("6.6.6.6", "error", "error", 500, nil, "", wantParsed("6.6.6.6", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("6.6.6.6", "error", "error", cleanOrigin, 500, nil, "", wantParsed("6.6.6.6", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1143,7 +1141,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.2", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("10.0.0.2", "allow", "waf-unavailable", 200, nil, "", wantParsed("10.0.0.2", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("10.0.0.2", "allow", "waf-unavailable", cleanAppSecOrigin, 200, nil, "", wantParsed("10.0.0.2", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1157,7 +1155,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.4", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("10.0.0.4", "allow", "waf-unavailable", 200, nil, "", wantParsed("10.0.0.4", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("10.0.0.4", "allow", "waf-unavailable", cleanAppSecOrigin, 200, nil, "", wantParsed("10.0.0.4", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1172,7 +1170,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.Any()).Times(0)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.3", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("10.0.0.3", "ban", "crowdsec ban", 403, decision, "", wantParsed("10.0.0.3", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("10.0.0.3", "ban", "crowdsec ban", defaultDecisionOrigin, 403, decision, "", wantParsed("10.0.0.3", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1186,7 +1184,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "ALLOW"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.5", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("10.0.0.5", "allow", "ok", 200, nil, "", wantParsed("10.0.0.5", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("10.0.0.5", "allow", "ok", cleanAppSecOrigin, 200, nil, "", wantParsed("10.0.0.5", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1200,7 +1198,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("7.7.7.7", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("7.7.7.7", "error", "error", 500, nil, "", wantParsed("7.7.7.7", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("7.7.7.7", "error", "error", cleanOrigin, 500, nil, "", wantParsed("7.7.7.7", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1214,7 +1212,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "unknown"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("8.8.8.8", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("8.8.8.8", "unknown", "unknown action", 500, nil, "", wantParsed("8.8.8.8", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("8.8.8.8", "unknown", "unknown action", cleanOrigin, 500, nil, "", wantParsed("8.8.8.8", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1228,11 +1226,11 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "allow"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("9.9.9.9", "https", "ex", "/ok", "GET", "HTTP/2", ""))
-		want := NewCheckedRequest("9.9.9.9", "allow", "ok", 200, nil, "", wantParsed("9.9.9.9", "https", "ex", "/ok", "GET", nil, 2, 0), nil)
+		want := NewCheckedRequest("9.9.9.9", "allow", "ok", cleanAppSecOrigin, 200, nil, "", wantParsed("9.9.9.9", "https", "ex", "/ok", "GET", nil, 2, 0), nil)
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"CAPI:bypass": {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"origin": "CAPI", "remediation": "bypass"}},
+			"processed": {Name: "processed", Unit: "request", Value: 1, Labels: nil},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1254,6 +1252,7 @@ func TestBouncer_Check(t *testing.T) {
 			IP:            "9.9.9.10",
 			Action:        "allow",
 			Reason:        "ok",
+			Origin:        cleanAppSecOrigin,
 			HTTPStatus:    200,
 			ParsedRequest: wantParsed("9.9.9.10", "https", "ex", "/ok", "GET", nil, 2, 0),
 			ResponseHeaders: map[string][]string{
@@ -1283,6 +1282,7 @@ func TestBouncer_Check(t *testing.T) {
 			IP:            "9.9.9.11",
 			Action:        "challenge",
 			Reason:        "crowdsec challenge",
+			Origin:        appSecOrigin,
 			HTTPStatus:    200,
 			ParsedRequest: wantParsed("9.9.9.11", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0),
 			ResponseBody:  `{"status":"ok"}`,
@@ -1301,7 +1301,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.0.1").Return(nil, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.1", "https", "ex", "/ok", "GET", "HTTP/2", ""))
-		want := NewCheckedRequest("10.0.0.1", "allow", "ok", 200, nil, "", &ParsedRequest{
+		want := NewCheckedRequest("10.0.0.1", "allow", "ok", cleanOrigin, 200, nil, "", &ParsedRequest{
 			IP:           "10.0.0.1",
 			RealIP:       "10.0.0.1",
 			ParsedRealIP: netip.MustParseAddr("10.0.0.1"),
@@ -1325,7 +1325,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "10.0.1.1").Return(nil, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.1.1", "https", "ex", "/crowdsec-internal/challenge/challenge.js", "GET", "HTTP/2", ""))
-		want := NewCheckedRequest("10.0.1.1", "ban", "appsec challenge path requires waf", 403, nil, "", &ParsedRequest{
+		want := NewCheckedRequest("10.0.1.1", "ban", "appsec challenge path requires waf", appSecOrigin, 403, nil, "", &ParsedRequest{
 			IP:           "10.0.1.1",
 			RealIP:       "10.0.1.1",
 			ParsedRealIP: netip.MustParseAddr("10.0.1.1"),
@@ -1351,7 +1351,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.1.2", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", "HTTP/2", ""))
-		want := NewCheckedRequest("10.0.1.2", "ban", "appsec challenge path waf error", 403, nil, "", wantParsed("10.0.1.2", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0), nil)
+		want := NewCheckedRequest("10.0.1.2", "ban", "appsec challenge path waf error", appSecOrigin, 403, nil, "", wantParsed("10.0.1.2", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1365,7 +1365,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "error"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.1.3", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", "HTTP/2", ""))
-		want := NewCheckedRequest("10.0.1.3", "ban", "appsec challenge path waf error", 403, nil, "", wantParsed("10.0.1.3", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0), nil)
+		want := NewCheckedRequest("10.0.1.3", "ban", "appsec challenge path waf error", appSecOrigin, 403, nil, "", wantParsed("10.0.1.3", "https", "ex", "/crowdsec-internal/challenge/submit", "POST", nil, 2, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1379,7 +1379,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{}, fmt.Errorf("waf down"))
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.1.4", "https", "ex", "/ok", "GET", "HTTP/2", ""))
-		want := NewCheckedRequest("10.0.1.4", "allow", wafFailOpenReason, 200, nil, "", wantParsed("10.0.1.4", "https", "ex", "/ok", "GET", nil, 2, 0), nil)
+		want := NewCheckedRequest("10.0.1.4", "allow", wafFailOpenReason, cleanAppSecOrigin, 200, nil, "", wantParsed("10.0.1.4", "https", "ex", "/ok", "GET", nil, 2, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1425,7 +1425,7 @@ func TestBouncer_Check(t *testing.T) {
 		r := newTestBouncer(t, config.Config{ExemptIPs: []string{"10.0.0.0/8"}}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.1.2.3", "http", "example.com", "/foo", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("10.1.2.3", "allow", "ip is in exempt list", 200, nil, "", &ParsedRequest{
+		want := NewCheckedRequest("10.1.2.3", "allow", "ip is in exempt list", cleanOrigin, 200, nil, "", &ParsedRequest{
 			IP:           "10.1.2.3",
 			RealIP:       "10.1.2.3",
 			ParsedRealIP: netip.MustParseAddr("10.1.2.3"),
@@ -1453,7 +1453,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockCaptcha.EXPECT().IsEnabled().Return(false)
 
 		got := r.Check(t.Context(), mkCheckRequest("11.11.11.11", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("11.11.11.11", "allow", "captcha disabled", 200, nil, "", wantParsed("11.11.11.11", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("11.11.11.11", "allow", "captcha disabled", cleanOrigin, 200, nil, "", wantParsed("11.11.11.11", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1467,7 +1467,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.AssignableToTypeOf(waf.AppSecRequest{})).Return(waf.WAFResponse{Action: "captcha"}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("12.12.12.12", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("12.12.12.12", "allow", "captcha disabled", 200, nil, "", wantParsed("12.12.12.12", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("12.12.12.12", "allow", "captcha disabled", cleanOrigin, 200, nil, "", wantParsed("12.12.12.12", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1485,7 +1485,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockCaptcha.EXPECT().CreateSession("13.13.13.13", "https://example.com/test", "").Return(nil, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("13.13.13.13", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("13.13.13.13", "allow", "captcha not required", 200, nil, "", wantParsed("13.13.13.13", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("13.13.13.13", "allow", "captcha not required", cleanOrigin, 200, nil, "", wantParsed("13.13.13.13", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1503,7 +1503,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockCaptcha.EXPECT().CreateSession("14.14.14.14", "https://example.com/test", "").Return(nil, fmt.Errorf("session creation failed"))
 
 		got := r.Check(t.Context(), mkCheckRequest("14.14.14.14", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("14.14.14.14", "error", "captcha error", 500, nil, "", wantParsed("14.14.14.14", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
+		want := NewCheckedRequest("14.14.14.14", "error", "captcha error", cleanOrigin, 500, nil, "", wantParsed("14.14.14.14", "https", "example.com", "/test", "GET", nil, 1, 1), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1522,11 +1522,12 @@ func TestBouncer_Check(t *testing.T) {
 		mockCaptcha.EXPECT().CreateSession("15.15.15.15", "https://example.com/test", "").Return(session, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("15.15.15.15", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("15.15.15.15", "captcha", "captcha required", 302, nil, session.ChallengeURL, wantParsed("15.15.15.15", "https", "example.com", "/test", "GET", nil, 1, 1), session)
+		want := NewCheckedRequest("15.15.15.15", "captcha", "captcha required", appSecOrigin, 302, nil, session.ChallengeURL, wantParsed("15.15.15.15", "https", "example.com", "/test", "GET", nil, 1, 1), session)
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"CAPI:captcha": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": "CAPI", "remediation": "captcha"}},
+			"processed":                    {Name: "processed", Unit: "request", Value: 1, Labels: nil},
+			appSecOrigin + ":captcha:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "captcha", "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1565,7 +1566,7 @@ func TestBouncer_Check(t *testing.T) {
 		}
 
 		got := r.Check(t.Context(), req)
-		want := NewCheckedRequest("16.16.16.16", "captcha", "captcha required", 302, &models.Decision{Type: new("captcha")}, session.ChallengeURL, &ParsedRequest{
+		want := NewCheckedRequest("16.16.16.16", "captcha", "captcha required", defaultDecisionOrigin, 302, &models.Decision{Type: new("captcha")}, session.ChallengeURL, &ParsedRequest{
 			IP:           "16.16.16.16",
 			RealIP:       "16.16.16.16",
 			ParsedRealIP: netip.MustParseAddr("16.16.16.16"),
@@ -1589,7 +1590,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "17.17.17.17").Return(&models.Decision{Type: new("captcha")}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("17.17.17.17", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("17.17.17.17", "allow", "captcha disabled", 200, nil, "", &ParsedRequest{
+		want := NewCheckedRequest("17.17.17.17", "allow", "captcha disabled", cleanOrigin, 200, nil, "", &ParsedRequest{
 			IP:           "17.17.17.17",
 			RealIP:       "17.17.17.17",
 			ParsedRealIP: netip.MustParseAddr("17.17.17.17"),
@@ -1613,7 +1614,7 @@ func TestBouncer_Check(t *testing.T) {
 		}, decisions.NewNoopCache(), waf.NewNoopWAF(), captcha.NewNoopCaptchaService(), nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("18.18.18.18", "https", "example.com", "/test", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("18.18.18.18", "allow", "ok", 200, nil, "", &ParsedRequest{
+		want := NewCheckedRequest("18.18.18.18", "allow", "ok", cleanOrigin, 200, nil, "", &ParsedRequest{
 			IP:           "18.18.18.18",
 			RealIP:       "18.18.18.18",
 			ParsedRealIP: netip.MustParseAddr("18.18.18.18"),

@@ -23,7 +23,8 @@ func newTestCollector(t *testing.T) *MetricsService {
 
 	collector, err := NewMetricsService(MetricsConfig{
 		APIClient:   &apiclient.ApiClient{},
-		BouncerType: "envoy-proxy",
+		Name:        "envoy-proxy",
+		BouncerType: "envoy-proxy-type",
 		Version:     "v1.0.0",
 	})
 	require.NoError(t, err)
@@ -34,12 +35,15 @@ func newTestCollector(t *testing.T) *MetricsService {
 func newStaticCollector(t *testing.T) *MetricsService {
 	collector, err := NewMetricsService(MetricsConfig{
 		APIClient:   &apiclient.ApiClient{},
-		BouncerType: "envoy-proxy",
+		Name:        "envoy-proxy",
+		BouncerType: "envoy-proxy-type",
 		Version:     "v1.0.0",
 	})
 	require.NoError(t, err)
 
 	collector.startupTS = staticStartupTS
+	collector.lastSentTS = staticStartupTS
+	collector.nowTS = func() int64 { return staticStartupTS }
 
 	return collector
 }
@@ -47,7 +51,8 @@ func newStaticCollector(t *testing.T) *MetricsService {
 func newMockCollector(t *testing.T, client CrowdsecClient) *MetricsService {
 	collector, err := NewMetricsService(MetricsConfig{
 		APIClient:   &apiclient.ApiClient{},
-		BouncerType: "envoy-proxy",
+		Name:        "envoy-proxy",
+		BouncerType: "envoy-proxy-type",
 		Version:     "v1.0.0",
 	})
 	require.NoError(t, err)
@@ -67,7 +72,8 @@ func TestNewMetricsService(t *testing.T) {
 	t.Run("creates collector with valid config", func(t *testing.T) {
 		collector, err := NewMetricsService(MetricsConfig{
 			APIClient:   &apiclient.ApiClient{},
-			BouncerType: "envoy-proxy",
+			Name:        "envoy-proxy",
+			BouncerType: "envoy-proxy-type",
 			Version:     "v1.0.0",
 		})
 
@@ -75,7 +81,8 @@ func TestNewMetricsService(t *testing.T) {
 		require.NotNil(t, collector)
 		require.NotNil(t, collector.cache)
 		require.NotNil(t, collector.apiClient)
-		assert.Equal(t, "envoy-proxy", collector.bouncerType)
+		assert.Equal(t, "envoy-proxy", collector.name)
+		assert.Equal(t, "envoy-proxy-type", collector.bouncerType)
 		assert.Equal(t, "v1.0.0", collector.version)
 	})
 
@@ -87,17 +94,22 @@ func TestNewMetricsService(t *testing.T) {
 		}{
 			{
 				name: "nil api client",
-				cfg:  MetricsConfig{BouncerType: "envoy-proxy", Version: "v1.0.0"},
+				cfg:  MetricsConfig{Name: "envoy-proxy", BouncerType: "envoy-proxy-type", Version: "v1.0.0"},
 				want: "api client is required",
 			},
 			{
+				name: "empty name",
+				cfg:  MetricsConfig{APIClient: &apiclient.ApiClient{}, BouncerType: "envoy-proxy-type", Version: "v1.0.0"},
+				want: "name is required",
+			},
+			{
 				name: "empty bouncer type",
-				cfg:  MetricsConfig{APIClient: &apiclient.ApiClient{}, Version: "v1.0.0"},
+				cfg:  MetricsConfig{Name: "envoy-proxy", APIClient: &apiclient.ApiClient{}, Version: "v1.0.0"},
 				want: "bouncer type is required",
 			},
 			{
 				name: "empty version",
-				cfg:  MetricsConfig{APIClient: &apiclient.ApiClient{}, BouncerType: "envoy-proxy"},
+				cfg:  MetricsConfig{Name: "envoy-proxy", APIClient: &apiclient.ApiClient{}, BouncerType: "envoy-proxy-type"},
 				want: "version is required",
 			},
 		}
@@ -326,7 +338,8 @@ func TestMetricsService_Calculate(t *testing.T) {
 		collector.Inc("requests", "http_requests_total", "count", map[string]string{"origin": "capi"})
 		collector.Set("active", "active_connections", "gauge", 5, nil)
 
-		got := collector.Calculate(30 * time.Second)
+		collector.lastSentTS = staticStartupTS - 30
+		got := collector.Calculate()
 		component := got.RemediationComponents[0]
 		require.NotNil(t, component.Os)
 		require.NotNil(t, component.Metrics[0].Meta.UtcNowTimestamp)
@@ -349,7 +362,7 @@ func TestMetricsService_Calculate(t *testing.T) {
 		sortItems(items)
 		sortItems(component.Metrics[0].Items)
 
-		want := wantMetrics(component, 30*time.Second, items)
+		want := wantMetrics(component, 30, items)
 
 		assert.Equal(t, want, got)
 	})
@@ -357,13 +370,14 @@ func TestMetricsService_Calculate(t *testing.T) {
 	t.Run("handles empty metrics", func(t *testing.T) {
 		collector := newStaticCollector(t)
 
-		got := collector.Calculate(10 * time.Second)
+		collector.lastSentTS = staticStartupTS - 10
+		got := collector.Calculate()
 		component := got.RemediationComponents[0]
 		require.NotNil(t, component.Os)
 		require.NotNil(t, component.Metrics[0].Meta.UtcNowTimestamp)
 		component.Metrics[0].Meta.UtcNowTimestamp = nil
 
-		want := wantMetrics(component, 10*time.Second, nil)
+		want := wantMetrics(component, 10, nil)
 
 		assert.Equal(t, want, got)
 	})
@@ -372,20 +386,20 @@ func TestMetricsService_Calculate(t *testing.T) {
 		collector := newStaticCollector(t)
 		collector.Inc("test", "test_metric", "count", nil)
 
-		first := collector.Calculate(10 * time.Second)
+		first := collector.Calculate()
 		firstComponent := first.RemediationComponents[0]
 		require.NotNil(t, firstComponent.Os)
 		require.NotNil(t, firstComponent.Metrics[0].Meta.UtcNowTimestamp)
 		firstComponent.Metrics[0].Meta.UtcNowTimestamp = nil
 
 		collector.Inc("test", "test_metric", "count", nil)
-		second := collector.Calculate(20 * time.Second)
+		second := collector.Calculate()
 		secondComponent := second.RemediationComponents[0]
 		require.NotNil(t, secondComponent.Os)
 		require.NotNil(t, secondComponent.Metrics[0].Meta.UtcNowTimestamp)
 		secondComponent.Metrics[0].Meta.UtcNowTimestamp = nil
 
-		wantFirst := wantMetrics(firstComponent, 10*time.Second, []*models.MetricsDetailItem{
+		wantFirst := wantMetrics(firstComponent, 0, []*models.MetricsDetailItem{
 			{
 				Name:   new("test_metric"),
 				Unit:   new("count"),
@@ -393,7 +407,7 @@ func TestMetricsService_Calculate(t *testing.T) {
 				Labels: nil,
 			},
 		})
-		wantSecond := wantMetrics(secondComponent, 20*time.Second, []*models.MetricsDetailItem{
+		wantSecond := wantMetrics(secondComponent, 0, []*models.MetricsDetailItem{
 			{
 				Name:   new("test_metric"),
 				Unit:   new("count"),
@@ -405,13 +419,24 @@ func TestMetricsService_Calculate(t *testing.T) {
 		assert.Equal(t, wantFirst, first)
 		assert.Equal(t, wantSecond, second)
 	})
+
+	t.Run("window_size_seconds is clamped to zero", func(t *testing.T) {
+		collector := newStaticCollector(t)
+		collector.lastSentTS = staticStartupTS + 10
+
+		got := collector.Calculate()
+		component := got.RemediationComponents[0]
+		require.NotNil(t, component.Metrics[0].Meta.WindowSizeSeconds)
+		assert.Equal(t, int64(0), *component.Metrics[0].Meta.WindowSizeSeconds)
+	})
 }
 
-func wantMetrics(component *models.RemediationComponentsMetrics, interval time.Duration, items []*models.MetricsDetailItem) *models.AllMetrics {
+func wantMetrics(component *models.RemediationComponentsMetrics, windowSizeSeconds int64, items []*models.MetricsDetailItem) *models.AllMetrics {
 	return &models.AllMetrics{
 		RemediationComponents: []*models.RemediationComponentsMetrics{
 			{
-				Type: "envoy-proxy",
+				Name: "envoy-proxy",
+				Type: "envoy-proxy-type",
 				BaseMetrics: models.BaseMetrics{
 					Os:                  component.Os,
 					Version:             new("v1.0.0"),
@@ -419,7 +444,7 @@ func wantMetrics(component *models.RemediationComponentsMetrics, interval time.D
 					UtcStartupTimestamp: new(staticStartupTS),
 					Metrics: []*models.DetailedMetrics{
 						{
-							Meta:  &models.MetricsMeta{WindowSizeSeconds: new(int64(interval.Seconds()))},
+							Meta:  &models.MetricsMeta{WindowSizeSeconds: &windowSizeSeconds},
 							Items: items,
 						},
 					},

@@ -279,23 +279,26 @@ func testBouncer(t *testing.T, env *testEnv) {
 	t.Run("Verify metrics after basic scenarios", func(t *testing.T) {
 		snapshot := testBouncer.MetricsService.GetSnapshot()
 
-		bypassMetric, ok := snapshot["CAPI:bypass"]
-		require.True(t, ok, "expected CAPI:bypass metric to exist")
-		assert.Equal(t, crowdsec.Metric{
-			Name:   "processed",
-			Unit:   "request",
-			Value:  5,
-			Labels: map[string]string{"origin": "CAPI", "remediation": "bypass"},
-		}, bypassMetric)
-
-		banMetric, ok := snapshot["CAPI:ban"]
-		require.True(t, ok, "expected CAPI:ban metric to exist")
-		assert.Equal(t, crowdsec.Metric{
-			Name:   "dropped",
-			Unit:   "request",
-			Value:  4,
-			Labels: map[string]string{"origin": "CAPI", "remediation": "ban"},
-		}, banMetric)
+		assert.Equal(t, map[string]crowdsec.Metric{
+			"processed": {
+				Name:   "processed",
+				Unit:   "request",
+				Value:  9,
+				Labels: nil,
+			},
+			"cscli:ban:ipv4": {
+				Name:   "dropped",
+				Unit:   "request",
+				Value:  3,
+				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+			},
+			"appsec:ban:ipv4": {
+				Name:   "dropped",
+				Unit:   "request",
+				Value:  1,
+				Labels: map[string]string{"origin": "appsec", "remediation": "ban", "ip_type": "ipv4"},
+			},
+		}, snapshot)
 
 		originCounts := testBouncer.DecisionCache.GetOriginCounts()
 		assert.Equal(t, map[string]int{"cscli": 0}, originCounts)
@@ -328,23 +331,26 @@ func testBouncer(t *testing.T, env *testEnv) {
 
 		snapshot := testBouncer.MetricsService.GetSnapshot()
 
-		bypassMetric, ok := snapshot["CAPI:bypass"]
-		require.True(t, ok, "expected CAPI:bypass metric to exist")
-		assert.Equal(t, crowdsec.Metric{
-			Name:   "processed",
-			Unit:   "request",
-			Value:  7,
-			Labels: map[string]string{"origin": "CAPI", "remediation": "bypass"},
-		}, bypassMetric)
-
-		banMetric, ok := snapshot["CAPI:ban"]
-		require.True(t, ok, "expected CAPI:ban metric to exist")
-		assert.Equal(t, crowdsec.Metric{
-			Name:   "dropped",
-			Unit:   "request",
-			Value:  5,
-			Labels: map[string]string{"origin": "CAPI", "remediation": "ban"},
-		}, banMetric)
+		assert.Equal(t, map[string]crowdsec.Metric{
+			"processed": {
+				Name:   "processed",
+				Unit:   "request",
+				Value:  12,
+				Labels: nil,
+			},
+			"cscli:ban:ipv4": {
+				Name:   "dropped",
+				Unit:   "request",
+				Value:  4,
+				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+			},
+			"appsec:ban:ipv4": {
+				Name:   "dropped",
+				Unit:   "request",
+				Value:  1,
+				Labels: map[string]string{"origin": "appsec", "remediation": "ban", "ip_type": "ipv4"},
+			},
+		}, snapshot)
 
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(7), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("allow")), "expected 7 allowed requests")
@@ -610,23 +616,29 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"CAPI:bypass": {
+			"processed": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  1,
-				Labels: map[string]string{"origin": "CAPI", "remediation": "bypass"},
+				Value:  5,
+				Labels: nil,
 			},
-			"CAPI:captcha": {
+			"cscli:captcha:ipv4": {
 				Name:   "dropped",
 				Unit:   "request",
-				Value:  4,
-				Labels: map[string]string{"origin": "CAPI", "remediation": "captcha"},
+				Value:  3,
+				Labels: map[string]string{"origin": "cscli", "remediation": "captcha", "ip_type": "ipv4"},
 			},
-			"active_decisions:cscli": {
+			"appsec:captcha:ipv4": {
+				Name:   "dropped",
+				Unit:   "request",
+				Value:  1,
+				Labels: map[string]string{"origin": "appsec", "remediation": "captcha", "ip_type": "ipv4"},
+			},
+			"active_decisions:cscli:captcha:ipv4": {
 				Name:   "active_decisions",
 				Unit:   "ip",
 				Value:  1,
-				Labels: map[string]string{"origin": "cscli"},
+				Labels: map[string]string{"origin": "cscli", "remediation": "captcha", "ip_type": "ipv4"},
 			},
 		}, testBouncer.MetricsService.GetSnapshot())
 
