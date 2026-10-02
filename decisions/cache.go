@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"maps"
 	"net/netip"
 	"strings"
 	"sync/atomic"
@@ -29,14 +28,14 @@ type OriginRemediationIPType struct {
 }
 
 type Cache struct {
-	stream                                   *csbouncer.StreamBouncer
-	decisions                                *cache.Cache[string, models.Decision]
-	MetricsService                           *crowdsec.MetricsService
-	prom                                     *recorder.Recorder
-	knownOrigins                             *cache.Cache[string, struct{}]
-	syncComplete                             atomic.Bool
-	cidrs                                    atomic.Pointer[bart.Table[models.Decision]]
-	activeDecisionsByOriginRemediationIPType map[OriginRemediationIPType]int64
+	stream          *csbouncer.StreamBouncer
+	decisions       *cache.Cache[string, models.Decision]
+	MetricsService  *crowdsec.MetricsService
+	prom            *recorder.Recorder
+	knownOrigins    *cache.Cache[string, struct{}]
+	syncComplete    atomic.Bool
+	cidrs           atomic.Pointer[bart.Table[models.Decision]]
+	activeDecisions *cache.Cache[OriginRemediationIPType, int64]
 }
 
 func NewCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom *recorder.Recorder) (*Cache, error) {
@@ -49,12 +48,12 @@ func NewCache(cfg config.Bouncer, metricsService *crowdsec.MetricsService, prom 
 		return nil, err
 	}
 	dc := &Cache{
-		stream:                                   stream,
-		decisions:                                cache.New[string, models.Decision](),
-		MetricsService:                           metricsService,
-		prom:                                     prom,
-		knownOrigins:                             cache.New[string, struct{}](),
-		activeDecisionsByOriginRemediationIPType: make(map[OriginRemediationIPType]int64),
+		stream:          stream,
+		decisions:       cache.New[string, models.Decision](),
+		MetricsService:  metricsService,
+		prom:            prom,
+		knownOrigins:    cache.New[string, struct{}](),
+		activeDecisions: cache.New[OriginRemediationIPType, int64](),
 	}
 
 	return dc, nil
@@ -167,8 +166,12 @@ func (dc *Cache) GetOriginCounts() map[string]int {
 }
 
 func (dc *Cache) GetOriginRemediationIPTypeCounts() map[OriginRemediationIPType]int64 {
-	counts := make(map[OriginRemediationIPType]int64, len(dc.activeDecisionsByOriginRemediationIPType))
-	maps.Copy(counts, dc.activeDecisionsByOriginRemediationIPType)
+	counts := make(map[OriginRemediationIPType]int64)
+	for _, key := range dc.activeDecisions.Keys() {
+		if value, ok := dc.activeDecisions.Get(key); ok {
+			counts[key] = value
+		}
+	}
 	return counts
 }
 
@@ -202,7 +205,11 @@ func (dc *Cache) addActiveDecision(decision models.Decision) {
 		Remediation: decisionRemediation(decision),
 		IPType:      decisionIPType(decision),
 	}
-	dc.activeDecisionsByOriginRemediationIPType[key]++
+	count, ok := dc.activeDecisions.Get(key)
+	if !ok {
+		count = 0
+	}
+	dc.activeDecisions.Set(key, count+1)
 }
 
 func (dc *Cache) removeActiveDecision(decision models.Decision) {
@@ -211,12 +218,18 @@ func (dc *Cache) removeActiveDecision(decision models.Decision) {
 		Remediation: decisionRemediation(decision),
 		IPType:      decisionIPType(decision),
 	}
-	if dc.activeDecisionsByOriginRemediationIPType[key] > 0 {
-		dc.activeDecisionsByOriginRemediationIPType[key]--
+	count, ok := dc.activeDecisions.Get(key)
+	if !ok {
+		return
 	}
-	if dc.activeDecisionsByOriginRemediationIPType[key] == 0 {
-		delete(dc.activeDecisionsByOriginRemediationIPType, key)
+	if count > 0 {
+		count--
 	}
+	if count == 0 {
+		dc.activeDecisions.Delete(key)
+		return
+	}
+	dc.activeDecisions.Set(key, count)
 }
 
 func (dc *Cache) buildIndex(ctx context.Context) *bart.Table[models.Decision] {
