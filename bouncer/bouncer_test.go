@@ -948,7 +948,7 @@ func TestBouncer_Check(t *testing.T) {
 		decisionCache.EXPECT().GetDecision(gomock.Any(), "1.2.3.4").Return(&models.Decision{Type: new("ban")}, nil)
 
 		got := r.Check(t.Context(), mkCheckRequest("1.2.3.4", "http", "example.com", "/foo", "GET", "HTTP/1.1", ""))
-		want := NewCheckedRequest("1.2.3.4", "ban", "crowdsec ban", defaultDecisionOrigin, 403, &models.Decision{Type: new("ban")}, "", &ParsedRequest{
+		want := NewCheckedRequest("1.2.3.4", "ban", "crowdsec ban", crowdsec.DefaultDecisionOrigin, 403, &models.Decision{Type: new("ban")}, "", &ParsedRequest{
 			IP:           "1.2.3.4",
 			RealIP:       "1.2.3.4",
 			ParsedRealIP: netip.MustParseAddr("1.2.3.4"),
@@ -964,8 +964,8 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed":                         {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			defaultDecisionOrigin + ":ban:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": defaultDecisionOrigin, "remediation": "ban", "ip_type": "ipv4"}},
+			"processed:" + crowdsec.DefaultDecisionOrigin + ":ipv4": {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"origin": crowdsec.DefaultDecisionOrigin, "ip_type": "ipv4"}},
+			crowdsec.DefaultDecisionOrigin + ":ban:ipv4":            {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": crowdsec.DefaultDecisionOrigin, "remediation": "ban", "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1017,9 +1017,7 @@ func TestBouncer_Check(t *testing.T) {
 		}, nil)
 		assert.Equal(t, want, got)
 
-		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-		}, r.MetricsService.GetSnapshot())
+		assert.Equal(t, map[string]crowdsec.Metric{}, r.MetricsService.GetSnapshot())
 	})
 
 	t.Run("bouncer allows - waf bans", func(t *testing.T) {
@@ -1036,8 +1034,8 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed":                {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			appSecOrigin + ":ban:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "ban", "ip_type": "ipv4"}},
+			"processed:" + appSecOrigin + ":ipv4": {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "ip_type": "ipv4"}},
+			appSecOrigin + ":ban:ipv4":            {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "ban", "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1112,8 +1110,8 @@ func TestBouncer_Check(t *testing.T) {
 
 		actualMetrics := r.MetricsService.GetSnapshot()
 		require.Equal(t, map[string]crowdsec.Metric{
-			"processed":                      {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			appSecOrigin + ":challenge:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "challenge", "ip_type": "ipv4"}},
+			"processed:" + appSecOrigin + ":ipv4": {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "ip_type": "ipv4"}},
+			appSecOrigin + ":challenge:ipv4":      {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "challenge", "ip_type": "ipv4"}},
 		}, actualMetrics)
 	})
 
@@ -1170,7 +1168,7 @@ func TestBouncer_Check(t *testing.T) {
 		mockWAF.EXPECT().Inspect(gomock.Any(), gomock.Any()).Times(0)
 
 		got := r.Check(t.Context(), mkCheckRequest("10.0.0.3", "http", "h", "/p", "GET", "HTTP/1.0", ""))
-		want := NewCheckedRequest("10.0.0.3", "ban", "crowdsec ban", defaultDecisionOrigin, 403, decision, "", wantParsed("10.0.0.3", "http", "h", "/p", "GET", nil, 1, 0), nil)
+		want := NewCheckedRequest("10.0.0.3", "ban", "crowdsec ban", crowdsec.DefaultDecisionOrigin, 403, decision, "", wantParsed("10.0.0.3", "http", "h", "/p", "GET", nil, 1, 0), nil)
 		assert.Equal(t, want, got)
 	})
 
@@ -1230,7 +1228,7 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {Name: "processed", Unit: "request", Value: 1, Labels: nil},
+			"processed:" + cleanAppSecOrigin + ":ipv4": {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"origin": cleanAppSecOrigin, "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1526,8 +1524,8 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed":                    {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			appSecOrigin + ":captcha:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "captcha", "ip_type": "ipv4"}},
+			"processed:" + appSecOrigin + ":ipv4": {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "ip_type": "ipv4"}},
+			appSecOrigin + ":captcha:ipv4":        {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "captcha", "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1566,7 +1564,7 @@ func TestBouncer_Check(t *testing.T) {
 		}
 
 		got := r.Check(t.Context(), req)
-		want := NewCheckedRequest("16.16.16.16", "captcha", "captcha required", defaultDecisionOrigin, 302, &models.Decision{Type: new("captcha")}, session.ChallengeURL, &ParsedRequest{
+		want := NewCheckedRequest("16.16.16.16", "captcha", "captcha required", crowdsec.DefaultDecisionOrigin, 302, &models.Decision{Type: new("captcha")}, session.ChallengeURL, &ParsedRequest{
 			IP:           "16.16.16.16",
 			RealIP:       "16.16.16.16",
 			ParsedRealIP: netip.MustParseAddr("16.16.16.16"),

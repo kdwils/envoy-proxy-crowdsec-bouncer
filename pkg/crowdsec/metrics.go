@@ -101,7 +101,7 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 		version:     cfg.Version,
 		startupTS:   startupTS,
 		lastSentTS:  startupTS,
-		nowTS:       time.Now().Unix,
+		nowTS:       func() int64 { return time.Now().UTC().Unix() },
 	}, nil
 }
 
@@ -156,13 +156,23 @@ func (mc *MetricsService) Set(key string, name string, unit string, value int64,
 	mc.cache.Set(key, metric)
 }
 
-// Reset clears all metrics from the internal cache.
+// Reset clears all counter metrics from the internal cache.
+// Gauge metrics such as active_decisions are preserved because they represent
+// current state rather than values accumulated over a reporting window.
 // This is typically called automatically after successfully sending metrics to CrowdSec.
 // Users should not call this method when using Run, as it handles resetting automatically.
 func (mc *MetricsService) Reset() {
 	for _, k := range mc.cache.Keys() {
+		if metric, ok := mc.cache.Get(k); ok && metric.Name == "active_decisions" {
+			continue
+		}
 		mc.cache.Delete(k)
 	}
+}
+
+// Delete removes a single metric from the internal cache.
+func (mc *MetricsService) Delete(key string) {
+	mc.cache.Delete(key)
 }
 
 // GetSnapshot returns a copy of all current metrics in the cache.

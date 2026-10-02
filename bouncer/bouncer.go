@@ -57,10 +57,9 @@ type CaptchaService interface {
 }
 
 const (
-	appSecOrigin          = "appsec"
-	cleanOrigin           = "clean"
-	cleanAppSecOrigin     = "clean_appsec"
-	defaultDecisionOrigin = "crowdsec"
+	appSecOrigin      = "appsec"
+	cleanOrigin       = "clean"
+	cleanAppSecOrigin = "clean_appsec"
 )
 
 type Bouncer struct {
@@ -190,26 +189,38 @@ func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
 		return
 	}
 
-	b.MetricsService.Inc("processed", "processed", "request", nil)
+	if result.Action == "error" {
+		return
+	}
+
+	ipType := ip.Type(result.ParsedRequest.ParsedRealIP)
+
+	processedLabels := map[string]string{"origin": result.Origin}
+	processedKey := "processed:" + result.Origin
+	if ipType != "" {
+		processedLabels["ip_type"] = ipType
+		processedKey += ":" + ipType
+	}
+	b.MetricsService.Inc(processedKey, "processed", "request", processedLabels)
 
 	remediation := result.Action
 	if remediation == "allow" {
 		remediation = "bypass"
 	}
-	if remediation == "bypass" || remediation == "error" {
+	if remediation == "bypass" {
 		return
 	}
 
-	labels := map[string]string{
+	droppedLabels := map[string]string{
 		"origin":      result.Origin,
 		"remediation": remediation,
 	}
-	key := result.Origin + ":" + remediation
-	if ipType := ip.Type(result.ParsedRequest.ParsedRealIP); ipType != "" {
-		labels["ip_type"] = ipType
-		key += ":" + ipType
+	droppedKey := result.Origin + ":" + remediation
+	if ipType != "" {
+		droppedLabels["ip_type"] = ipType
+		droppedKey += ":" + ipType
 	}
-	b.MetricsService.Inc(key, "dropped", "request", labels)
+	b.MetricsService.Inc(droppedKey, "dropped", "request", droppedLabels)
 }
 
 // ExtractRealIPFromHTTP extracts the real client IP from an HTTP request using trusted proxy logic.
@@ -349,9 +360,9 @@ type CheckedRequest struct {
 	ResponseHeaders map[string][]string
 }
 
-func NewCheckedRequest(ip, action, reason, origin string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *captcha.CaptchaSession) CheckedRequest {
+func NewCheckedRequest(clientIP, action, reason, origin string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *captcha.CaptchaSession) CheckedRequest {
 	return CheckedRequest{
-		IP:             ip,
+		IP:             clientIP,
 		Action:         action,
 		Reason:         reason,
 		Origin:         origin,

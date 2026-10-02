@@ -349,6 +349,11 @@ func (dc *Cache) Sync(ctx context.Context) error {
 			}
 
 			if dc.MetricsService != nil {
+				for key := range dc.MetricsService.GetSnapshot() {
+					if strings.HasPrefix(key, "active_decisions:") {
+						dc.MetricsService.Delete(key)
+					}
+				}
 				for key, count := range dc.GetOriginRemediationIPTypeCounts() {
 					metricKey := "active_decisions:" + key.Origin + ":" + key.Remediation + ":" + key.IPType
 					dc.MetricsService.Set(metricKey, "active_decisions", "ip", count, map[string]string{

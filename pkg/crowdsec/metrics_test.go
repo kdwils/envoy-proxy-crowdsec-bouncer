@@ -264,6 +264,23 @@ func TestMetricsService_Reset(t *testing.T) {
 
 		assert.Equal(t, 0, collector.cache.Size())
 	})
+
+	t.Run("preserves active_decisions gauges", func(t *testing.T) {
+		collector := newTestCollector(t)
+		collector.Inc("key1", "metric1", "count", nil)
+		collector.Set("active_decisions:cscli:ban:ipv4", "active_decisions", "ip", 5, map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"})
+
+		collector.Reset()
+
+		assert.Equal(t, map[string]Metric{
+			"active_decisions:cscli:ban:ipv4": {
+				Name:   "active_decisions",
+				Unit:   "ip",
+				Value:  5,
+				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+			},
+		}, collector.GetSnapshot())
+	})
 }
 
 func TestMetricsService_GetSnapshot(t *testing.T) {
