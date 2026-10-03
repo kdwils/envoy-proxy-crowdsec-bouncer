@@ -349,18 +349,26 @@ func (dc *Cache) Sync(ctx context.Context) error {
 			}
 
 			if dc.MetricsService != nil {
-				for key := range dc.MetricsService.GetSnapshot() {
-					if strings.HasPrefix(key, "active_decisions:") {
-						dc.MetricsService.Delete(key)
-					}
-				}
+				desiredActiveDecisions := make(map[string]crowdsec.Metric)
 				for key, count := range dc.GetOriginRemediationIPTypeCounts() {
 					metricKey := "active_decisions:" + key.Origin + ":" + key.Remediation + ":" + key.IPType
-					dc.MetricsService.Set(metricKey, "active_decisions", "ip", count, map[string]string{
-						"origin":      key.Origin,
-						"remediation": key.Remediation,
-						"ip_type":     key.IPType,
-					})
+					desiredActiveDecisions[metricKey] = crowdsec.Metric{
+						Name:   "active_decisions",
+						Unit:   "ip",
+						Value:  count,
+						Labels: map[string]string{"origin": key.Origin, "remediation": key.Remediation, "ip_type": key.IPType},
+					}
+				}
+
+				for metricKey, metric := range desiredActiveDecisions {
+					dc.MetricsService.Set(metricKey, metric.Name, metric.Unit, metric.Value, metric.Labels)
+				}
+				for key := range dc.MetricsService.GetSnapshot() {
+					if strings.HasPrefix(key, "active_decisions:") {
+						if _, ok := desiredActiveDecisions[key]; !ok {
+							dc.MetricsService.Delete(key)
+						}
+					}
 				}
 			}
 
