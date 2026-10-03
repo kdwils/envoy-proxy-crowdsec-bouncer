@@ -28,6 +28,8 @@ import (
 )
 
 func testBouncerChallenge(t *testing.T, env *testEnv, appsecChallengeURL string) {
+	env.resetDecisions(t)
+
 	v := newTestViper()
 	v.Set("bouncer.apiKey", env.apiKey)
 	v.Set("bouncer.lapiURL", env.lapiURL)
@@ -66,6 +68,7 @@ func testBouncerChallenge(t *testing.T, env *testEnv, appsecChallengeURL string)
 	}
 
 	waitForDecisionCache(t, testBouncer.DecisionCache, 10*time.Second)
+	waitForEmptyDecisionCache(t, testBouncer.DecisionCache, 10*time.Second)
 
 	templateStore, err := template.NewStore(template.Config{})
 	require.NoError(t, err)

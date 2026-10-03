@@ -350,6 +350,12 @@ func testBouncer(t *testing.T, env *testEnv) {
 				Value:  1,
 				Labels: map[string]string{"origin": "appsec", "remediation": "ban", "ip_type": "ipv4"},
 			},
+			"active_decisions:cscli:ban:ipv4": {
+				Name:   "active_decisions",
+				Unit:   "ip",
+				Value:  2,
+				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+			},
 		}, snapshot)
 
 		metrics := rec.GetMetrics()
