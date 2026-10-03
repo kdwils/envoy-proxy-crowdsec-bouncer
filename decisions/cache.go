@@ -316,8 +316,15 @@ func (dc *Cache) Sync(ctx context.Context) error {
 				}
 
 				logger.Debug("deleting decision", "decision", decision)
+				existing, hadExisting := dc.decisions.Get(*decision.Value)
 				dc.decisions.Delete(*decision.Value)
-				dc.removeActiveDecision(*decision)
+
+				toRemove := *decision
+				if hadExisting {
+					toRemove = existing
+				}
+				dc.removeActiveDecision(toRemove)
+
 				if decision.Origin != nil {
 					dc.prom.IncLAPIDecisionsDeletedTotal(*decision.Origin)
 				}

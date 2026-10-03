@@ -563,4 +563,30 @@ func TestCache_ActiveDecisionsByOriginRemediationIPType(t *testing.T) {
 			{Origin: "lists:blocklist-name", Remediation: "ban", IPType: "ipv4"}: 1,
 		}, dc.GetOriginRemediationIPTypeCounts())
 	})
+
+	t.Run("removal uses cached metadata when stream event lacks type", func(t *testing.T) {
+		dc := newCache(t)
+
+		ban := models.Decision{
+			Value:  new("192.168.1.100"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+		}
+		dc.decisions.Set(*ban.Value, ban)
+		dc.addActiveDecision(ban)
+
+		// Stream deletion events may only carry the decision value.
+		deletionEvent := models.Decision{Value: new("192.168.1.100")}
+
+		existing, hadExisting := dc.decisions.Get(*deletionEvent.Value)
+		dc.decisions.Delete(*deletionEvent.Value)
+
+		toRemove := deletionEvent
+		if hadExisting {
+			toRemove = existing
+		}
+		dc.removeActiveDecision(toRemove)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{}, dc.GetOriginRemediationIPTypeCounts())
+	})
 }
