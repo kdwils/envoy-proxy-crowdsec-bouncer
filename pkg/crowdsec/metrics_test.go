@@ -597,4 +597,21 @@ func TestMetricsService_Run(t *testing.T) {
 		assert.Equal(t, context.DeadlineExceeded, got)
 		assert.Equal(t, 1, collector.cache.Size())
 	})
+
+	t.Run("does not send when no metrics exist", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockClient := mocks.NewMockCrowdsecClient(ctrl)
+		collector := newTestCollector(t)
+		collector.apiClient = mockClient
+
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+
+		got := collector.Run(ctx, 20*time.Millisecond)
+
+		assert.Equal(t, context.DeadlineExceeded, got)
+		assert.Equal(t, 0, collector.cache.Size())
+	})
 }

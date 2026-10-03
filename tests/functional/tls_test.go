@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -180,13 +179,9 @@ func testBouncerTLS(t *testing.T, env *testEnv) {
 		snapshot := b.MetricsService.GetSnapshot()
 		require.NotEmpty(t, snapshot, "expected metrics to be collected")
 
-		var processedTotal int64
-		for key, metric := range snapshot {
-			if strings.HasPrefix(key, "processed:") {
-				processedTotal += metric.Value
-			}
-		}
-		require.Greater(t, processedTotal, int64(0), "expected processed count to be non-zero")
+		processedMetric, ok := snapshot["processed"]
+		require.True(t, ok, "expected processed metric to exist")
+		require.Greater(t, processedMetric.Value, int64(0), "expected processed count to be non-zero")
 
 		allMetrics := b.MetricsService.Calculate()
 		err := b.MetricsService.Send(t.Context(), allMetrics)

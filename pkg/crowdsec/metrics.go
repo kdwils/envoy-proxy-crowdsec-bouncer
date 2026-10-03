@@ -279,6 +279,16 @@ func (mc *MetricsService) Run(ctx context.Context, interval time.Duration) error
 			return ctx.Err()
 		case <-ticker.C:
 			allMetrics := mc.Calculate()
+			if len(allMetrics.RemediationComponents) == 0 {
+				continue
+			}
+			metrics := allMetrics.RemediationComponents[0].Metrics
+			if len(metrics) == 0 {
+				continue
+			}
+			if len(metrics[0].Items) == 0 {
+				continue
+			}
 			if err := mc.Send(ctx, allMetrics); err == nil {
 				mc.lastSentTS = mc.nowTS()
 				mc.Reset()

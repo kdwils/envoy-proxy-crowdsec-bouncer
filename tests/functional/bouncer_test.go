@@ -280,17 +280,11 @@ func testBouncer(t *testing.T, env *testEnv) {
 		snapshot := testBouncer.MetricsService.GetSnapshot()
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed:clean:ipv4": {
+			"processed": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  4,
-				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
-			},
-			"processed:clean_appsec:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  5,
-				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
+				Value:  9,
+				Labels: nil,
 			},
 			"cscli:ban:ipv4": {
 				Name:   "dropped",
@@ -338,17 +332,11 @@ func testBouncer(t *testing.T, env *testEnv) {
 		snapshot := testBouncer.MetricsService.GetSnapshot()
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed:clean:ipv4": {
+			"processed": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  7,
-				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
-			},
-			"processed:clean_appsec:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  5,
-				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
+				Value:  12,
+				Labels: nil,
 			},
 			"cscli:ban:ipv4": {
 				Name:   "dropped",
@@ -628,17 +616,11 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed:clean:ipv4": {
+			"processed": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  3,
-				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
-			},
-			"processed:clean_appsec:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  2,
-				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
+				Value:  5,
+				Labels: nil,
 			},
 			"cscli:captcha:ipv4": {
 				Name:   "dropped",
