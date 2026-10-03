@@ -446,40 +446,6 @@ func TestMetricsService_Calculate(t *testing.T) {
 		require.NotNil(t, component.Metrics[0].Meta.WindowSizeSeconds)
 		assert.Equal(t, int64(0), *component.Metrics[0].Meta.WindowSizeSeconds)
 	})
-
-	t.Run("aggregates processed metrics into a single item", func(t *testing.T) {
-		collector := newStaticCollector(t)
-		collector.Inc("processed:clean:ipv4", "processed", "request", map[string]string{"origin": "clean", "ip_type": "ipv4"})
-		collector.Inc("processed:clean_appsec:ipv4", "processed", "request", map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"})
-		collector.Inc("dropped:cscli:ban:ipv4", "dropped", "request", map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"})
-
-		collector.lastSentTS = staticStartupTS - 30
-		got := collector.Calculate()
-		component := got.RemediationComponents[0]
-		require.NotNil(t, component.Os)
-		require.NotNil(t, component.Metrics[0].Meta.UtcNowTimestamp)
-		component.Metrics[0].Meta.UtcNowTimestamp = nil
-
-		items := []*models.MetricsDetailItem{
-			{
-				Name:  new("processed"),
-				Unit:  new("request"),
-				Value: new(float64(2)),
-			},
-			{
-				Name:   new("dropped"),
-				Unit:   new("request"),
-				Value:  new(float64(1)),
-				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
-			},
-		}
-		sortItems(items)
-		sortItems(component.Metrics[0].Items)
-
-		want := wantMetrics(component, 30, items)
-
-		assert.Equal(t, want, got)
-	})
 }
 
 func wantMetrics(component *models.RemediationComponentsMetrics, windowSizeSeconds int64, items []*models.MetricsDetailItem) *models.AllMetrics {

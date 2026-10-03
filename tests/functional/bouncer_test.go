@@ -283,26 +283,14 @@ func testBouncer(t *testing.T, env *testEnv) {
 			"processed:clean:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  1,
+				Value:  4,
 				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
 			},
 			"processed:clean_appsec:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  4,
+				Value:  5,
 				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
-			},
-			"processed:cscli:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  3,
-				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
-			},
-			"processed:appsec:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  1,
-				Labels: map[string]string{"origin": "appsec", "ip_type": "ipv4"},
 			},
 			"cscli:ban:ipv4": {
 				Name:   "dropped",
@@ -353,26 +341,14 @@ func testBouncer(t *testing.T, env *testEnv) {
 			"processed:clean:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  3,
+				Value:  7,
 				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
 			},
 			"processed:clean_appsec:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  4,
+				Value:  5,
 				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
-			},
-			"processed:cscli:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  4,
-				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
-			},
-			"processed:appsec:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  1,
-				Labels: map[string]string{"origin": "appsec", "ip_type": "ipv4"},
 			},
 			"cscli:ban:ipv4": {
 				Name:   "dropped",
@@ -652,23 +628,17 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed:clean_appsec:ipv4": {
-				Name:   "processed",
-				Unit:   "request",
-				Value:  1,
-				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
-			},
-			"processed:cscli:ipv4": {
+			"processed:clean:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
 				Value:  3,
-				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "clean", "ip_type": "ipv4"},
 			},
-			"processed:appsec:ipv4": {
+			"processed:clean_appsec:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
-				Value:  1,
-				Labels: map[string]string{"origin": "appsec", "ip_type": "ipv4"},
+				Value:  2,
+				Labels: map[string]string{"origin": "clean_appsec", "ip_type": "ipv4"},
 			},
 			"cscli:captcha:ipv4": {
 				Name:   "dropped",
