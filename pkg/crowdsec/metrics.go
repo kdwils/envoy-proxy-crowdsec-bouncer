@@ -61,14 +61,18 @@ func (c *crowdSecClient) SendMetrics(ctx context.Context, metrics *models.AllMet
 type MetricsService struct {
 	cache       *cache.Cache[string, Metric]
 	apiClient   CrowdsecClient
+	name        string
 	bouncerType string
 	version     string
 	startupTS   int64
+	lastSentTS  int64
+	nowTS       func() int64
 }
 
 // MetricsConfig holds the configuration required to create a new MetricsService.
 type MetricsConfig struct {
 	APIClient   *apiclient.ApiClient
+	Name        string
 	BouncerType string
 	Version     string
 }
@@ -78,6 +82,9 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 	if cfg.APIClient == nil {
 		return nil, errors.New("api client is required")
 	}
+	if cfg.Name == "" {
+		return nil, errors.New("name is required")
+	}
 	if cfg.BouncerType == "" {
 		return nil, errors.New("bouncer type is required")
 	}
@@ -85,12 +92,16 @@ func NewMetricsService(cfg MetricsConfig) (*MetricsService, error) {
 		return nil, errors.New("version is required")
 	}
 
+	startupTS := time.Now().UTC().Unix()
 	return &MetricsService{
 		cache:       cache.New[string, Metric](),
 		apiClient:   &crowdSecClient{client: cfg.APIClient},
+		name:        cfg.Name,
 		bouncerType: cfg.BouncerType,
 		version:     cfg.Version,
-		startupTS:   time.Now().UTC().Unix(),
+		startupTS:   startupTS,
+		lastSentTS:  startupTS,
+		nowTS:       func() int64 { return time.Now().UTC().Unix() },
 	}, nil
 }
 
@@ -145,13 +156,33 @@ func (mc *MetricsService) Set(key string, name string, unit string, value int64,
 	mc.cache.Set(key, metric)
 }
 
-// Reset clears all metrics from the internal cache.
+// Reset decrements counter metrics by the values that were just sent, removing
+// them from the internal cache only when they reach zero. Gauge metrics such as
+// active_decisions are preserved because they represent current state rather
+// than values accumulated over a reporting window.
 // This is typically called automatically after successfully sending metrics to CrowdSec.
 // Users should not call this method when using Run, as it handles resetting automatically.
-func (mc *MetricsService) Reset() {
-	for _, k := range mc.cache.Keys() {
-		mc.cache.Delete(k)
+func (mc *MetricsService) Reset(snapshot map[string]Metric) {
+	for key, sent := range snapshot {
+		if sent.Name == "active_decisions" {
+			continue
+		}
+		current, ok := mc.cache.Get(key)
+		if !ok {
+			continue
+		}
+		current.Value -= sent.Value
+		if current.Value <= 0 {
+			mc.cache.Delete(key)
+			continue
+		}
+		mc.cache.Set(key, current)
 	}
+}
+
+// Delete removes a single metric from the internal cache.
+func (mc *MetricsService) Delete(key string) {
+	mc.cache.Delete(key)
 }
 
 // GetSnapshot returns a copy of all current metrics in the cache.
@@ -168,10 +199,9 @@ func (mc *MetricsService) GetSnapshot() map[string]Metric {
 }
 
 // Calculate transforms the current metrics snapshot into the CrowdSec AllMetrics format.
-// The interval parameter specifies the time window over which these metrics were collected.
 // This method includes system information and metadata required by the CrowdSec API.
 // Users should not call this method when using Run, as it handles calculation automatically.
-func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
+func (mc *MetricsService) Calculate() *models.AllMetrics {
 	currentMetrics := mc.GetSnapshot()
 
 	var items []*models.MetricsDetailItem
@@ -185,8 +215,8 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 		})
 	}
 
-	windowSizeSeconds := int64(interval.Seconds())
-	utcNowTimestamp := time.Now().Unix()
+	utcNowTimestamp := mc.nowTS()
+	windowSizeSeconds := max(utcNowTimestamp-mc.lastSentTS, 0)
 
 	detailedMetrics := []*models.DetailedMetrics{
 		{
@@ -214,6 +244,7 @@ func (mc *MetricsService) Calculate(interval time.Duration) *models.AllMetrics {
 
 	remediationMetrics := &models.RemediationComponentsMetrics{
 		BaseMetrics: *baseMetrics,
+		Name:        mc.name,
 		Type:        mc.bouncerType,
 	}
 
@@ -257,9 +288,21 @@ func (mc *MetricsService) Run(ctx context.Context, interval time.Duration) error
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			allMetrics := mc.Calculate(interval)
+			allMetrics := mc.Calculate()
+			if len(allMetrics.RemediationComponents) == 0 {
+				continue
+			}
+			metrics := allMetrics.RemediationComponents[0].Metrics
+			if len(metrics) == 0 {
+				continue
+			}
+			if len(metrics[0].Items) == 0 {
+				continue
+			}
+			snapshot := mc.GetSnapshot()
 			if err := mc.Send(ctx, allMetrics); err == nil {
-				mc.Reset()
+				mc.lastSentTS = mc.nowTS()
+				mc.Reset(snapshot)
 			}
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/server"
 	"github.com/kdwils/envoy-proxy-bouncer/template"
@@ -27,6 +28,8 @@ import (
 )
 
 func testBouncerChallenge(t *testing.T, env *testEnv, appsecChallengeURL string) {
+	env.resetDecisions(t)
+
 	v := newTestViper()
 	v.Set("bouncer.apiKey", env.apiKey)
 	v.Set("bouncer.lapiURL", env.lapiURL)
@@ -65,6 +68,7 @@ func testBouncerChallenge(t *testing.T, env *testEnv, appsecChallengeURL string)
 	}
 
 	waitForDecisionCache(t, testBouncer.DecisionCache, 10*time.Second)
+	waitForEmptyDecisionCache(t, testBouncer.DecisionCache, 10*time.Second)
 
 	templateStore, err := template.NewStore(template.Config{})
 	require.NoError(t, err)
@@ -106,5 +110,24 @@ func testBouncerChallenge(t *testing.T, env *testEnv, appsecChallengeURL string)
 		metrics := rec.GetMetrics()
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.RequestsTotal.WithLabelValues("challenge")), "expected 1 challenge request")
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("challenge")), "expected 1 challenge WAF request")
+
+		assert.Equal(t, map[string]crowdsec.Metric{
+			"processed": {
+				Name:   "processed",
+				Unit:   "request",
+				Value:  1,
+				Labels: nil,
+			},
+			"appsec:challenge:ipv4": {
+				Name:  "dropped",
+				Unit:  "request",
+				Value: 1,
+				Labels: map[string]string{
+					"origin":      "appsec",
+					"remediation": "challenge",
+					"ip_type":     "ipv4",
+				},
+			},
+		}, testBouncer.MetricsService.GetSnapshot())
 	})
 }

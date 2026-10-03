@@ -335,9 +335,10 @@ func TestGetViper(t *testing.T) {
 			},
 			Bouncer: Bouncer{
 				Enabled:         true,
+				Name:            "envoy-proxy-crowdsec-bouncer",
 				Metrics:         false,
 				TickerInterval:  "10s",
-				MetricsInterval: 10 * time.Minute,
+				MetricsInterval: 15 * time.Minute,
 				ApiKey:          "",
 				LAPIURL:         "",
 				BanStatusCode:   403,

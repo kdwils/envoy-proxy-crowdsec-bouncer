@@ -327,6 +327,19 @@ func waitForDecisionCache(t *testing.T, dc bouncer.DecisionCache, timeout time.D
 	t.Fatalf("decision cache did not become ready within %v", timeout)
 }
 
+func waitForEmptyDecisionCache(t *testing.T, dc bouncer.DecisionCache, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if len(dc.GetOriginRemediationIPTypeCounts()) == 0 {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("decision cache did not empty within %v", timeout)
+}
+
 func waitForDecision(t *testing.T, dc bouncer.DecisionCache, ip string, present bool, timeout time.Duration) {
 	t.Helper()
 

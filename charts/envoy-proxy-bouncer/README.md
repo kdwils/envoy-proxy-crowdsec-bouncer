@@ -19,7 +19,8 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.bouncer.enabled | bool | `true` |  |
 | config.bouncer.lapiURL | string | `""` |  |
 | config.bouncer.metrics | bool | `false` |  |
-| config.bouncer.metricsInterval | string | `"10m"` |  |
+| config.bouncer.metricsInterval | string | `"15m"` |  |
+| config.bouncer.name | string | `"envoy-proxy-crowdsec-bouncer"` |  |
 | config.bouncer.tickerInterval | string | `"10s"` |  |
 | config.bouncer.tls.caPath | string | `"/app/tls/ca.crt"` |  |
 | config.bouncer.tls.certPath | string | `"/app/tls/tls.crt"` |  |

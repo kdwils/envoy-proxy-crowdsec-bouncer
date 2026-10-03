@@ -24,11 +24,12 @@ trustedProxies:
 
 bouncer:
   enabled: true
+  name: "envoy-proxy-crowdsec-bouncer"
   apiKey: "<lapi-key>"
   lapiURL: "http://crowdsec:8080"
   metrics: false
   tickerInterval: "10s"
-  metricsInterval: "10m"
+  metricsInterval: "15m"
   banStatusCode: 403
   tls:
     enabled: false

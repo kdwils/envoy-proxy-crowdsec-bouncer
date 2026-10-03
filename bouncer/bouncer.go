@@ -19,6 +19,7 @@ import (
 	"github.com/kdwils/envoy-proxy-bouncer/captcha"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/decisions"
+	"github.com/kdwils/envoy-proxy-bouncer/ip"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
@@ -40,6 +41,7 @@ type DecisionCache interface {
 	Sync(ctx context.Context) error
 	Size() int
 	GetOriginCounts() map[string]int
+	GetOriginRemediationIPTypeCounts() map[decisions.OriginRemediationIPType]int64
 	IsReady() bool
 }
 
@@ -54,6 +56,12 @@ type CaptchaService interface {
 	StartCleanup(ctx context.Context)
 }
 
+const (
+	appSecOrigin      = "appsec"
+	cleanOrigin       = "clean"
+	cleanAppSecOrigin = "clean_appsec"
+)
+
 type Bouncer struct {
 	DecisionCache      DecisionCache
 	WAF                WAF
@@ -63,51 +71,7 @@ type Bouncer struct {
 	ExemptIPs          []netip.Prefix
 	MetricsService     *crowdsec.MetricsService
 	PrometheusRecorder *recorder.Recorder
-	remediationMetrics map[string]remediationMetric
 	config             config.Config
-}
-
-type remediationMetric struct {
-	key    string
-	name   string
-	labels map[string]string
-}
-
-func newRemediationMetrics() map[string]remediationMetric {
-	return map[string]remediationMetric{
-		"allow": {
-			key:  "CAPI:bypass",
-			name: "processed",
-			labels: map[string]string{
-				"origin":      "CAPI",
-				"remediation": "bypass",
-			},
-		},
-		"ban": {
-			key:  "CAPI:ban",
-			name: "dropped",
-			labels: map[string]string{
-				"origin":      "CAPI",
-				"remediation": "ban",
-			},
-		},
-		"captcha": {
-			key:  "CAPI:captcha",
-			name: "dropped",
-			labels: map[string]string{
-				"origin":      "CAPI",
-				"remediation": "captcha",
-			},
-		},
-		"challenge": {
-			key:  "CAPI:challenge",
-			name: "dropped",
-			labels: map[string]string{
-				"origin":      "CAPI",
-				"remediation": "challenge",
-			},
-		},
-	}
 }
 
 // New assembles a Bouncer from already-resolved components. Use NewComponents
@@ -134,7 +98,6 @@ func New(cfg config.Config, prom *recorder.Recorder, decisionCache DecisionCache
 		TrustedIPHeader:    cfg.TrustedIPHeader,
 		ExemptIPs:          exemptIPs,
 		PrometheusRecorder: prom,
-		remediationMetrics: newRemediationMetrics(),
 		config:             cfg,
 	}, nil
 }
@@ -157,6 +120,7 @@ func NewComponents(cfg config.Config, prom *recorder.Recorder, httpClient *http.
 
 		collector, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
 			APIClient:   client,
+			Name:        cfg.Bouncer.Name,
 			BouncerType: "envoy-proxy-crowdsec-bouncer",
 			Version:     bouncerVersion.Version,
 		})
@@ -224,9 +188,30 @@ func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
 	if b.MetricsService == nil {
 		return
 	}
-	if m, ok := b.remediationMetrics[result.Action]; ok {
-		b.MetricsService.Inc(m.key, m.name, "request", m.labels)
+
+	if result.Action == "error" {
+		return
 	}
+
+	ipType := ip.Type(result.ParsedRequest.ParsedRealIP)
+
+	b.MetricsService.Inc("processed", "processed", "request", nil)
+
+	remediation := result.Action
+	if remediation == "allow" {
+		return
+	}
+
+	droppedLabels := map[string]string{
+		"origin":      result.Origin,
+		"remediation": remediation,
+	}
+	droppedKey := result.Origin + ":" + remediation
+	if ipType != "" {
+		droppedLabels["ip_type"] = ipType
+		droppedKey += ":" + ipType
+	}
+	b.MetricsService.Inc(droppedKey, "dropped", "request", droppedLabels)
 }
 
 // ExtractRealIPFromHTTP extracts the real client IP from an HTTP request using trusted proxy logic.
@@ -356,6 +341,7 @@ type CheckedRequest struct {
 	IP              string
 	Action          string
 	Reason          string
+	Origin          string
 	HTTPStatus      int
 	RedirectURL     string
 	Decision        *models.Decision
@@ -365,11 +351,12 @@ type CheckedRequest struct {
 	ResponseHeaders map[string][]string
 }
 
-func NewCheckedRequest(ip, action, reason string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *captcha.CaptchaSession) CheckedRequest {
+func NewCheckedRequest(clientIP, action, reason, origin string, httpStatus int, decision *models.Decision, redirectURL string, parsedRequest *ParsedRequest, session *captcha.CaptchaSession) CheckedRequest {
 	return CheckedRequest{
-		IP:             ip,
+		IP:             clientIP,
 		Action:         action,
 		Reason:         reason,
+		Origin:         origin,
 		HTTPStatus:     httpStatus,
 		Decision:       decision,
 		RedirectURL:    redirectURL,
@@ -407,7 +394,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 
 	if b.isExemptIP(parsed.ParsedRealIP) {
 		log.Debug("ip is in exempt list, skipping request check", slog.String("ip", parsed.RealIP))
-		result := NewCheckedRequest(parsed.RealIP, "allow", "ip is in exempt list", http.StatusOK, nil, "", parsed, nil)
+		result := NewCheckedRequest(parsed.RealIP, "allow", "ip is in exempt list", cleanOrigin, http.StatusOK, nil, "", parsed, nil)
 		b.recordFinalMetric(result)
 		return result
 	}
@@ -427,11 +414,11 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.recordFinalMetric(bouncerResult)
 		return bouncerResult
 	case "error":
-		finalResult := NewCheckedRequest(parsed.RealIP, "error", bouncerResult.Reason, http.StatusInternalServerError, nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "error", bouncerResult.Reason, cleanOrigin, http.StatusInternalServerError, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, "ban", "unknown decision cache action", b.getBanStatusCode(), nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, "ban", "unknown decision cache action", crowdsec.DecisionOrigin(bouncerResult.Decision), b.getBanStatusCode(), bouncerResult.Decision, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
@@ -456,7 +443,7 @@ func (b *Bouncer) Check(ctx context.Context, req *auth.CheckRequest) CheckedRequ
 		b.recordFinalMetric(wafResult)
 		return wafResult
 	default:
-		finalResult := NewCheckedRequest(parsed.RealIP, wafResult.Action, "unknown action", http.StatusInternalServerError, nil, "", parsed, nil)
+		finalResult := NewCheckedRequest(parsed.RealIP, wafResult.Action, "unknown action", cleanOrigin, http.StatusInternalServerError, nil, "", parsed, nil)
 		b.recordFinalMetric(finalResult)
 		return finalResult
 	}
@@ -470,17 +457,17 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 	decision, err := b.DecisionCache.GetDecision(ctx, parsed.RealIP)
 	if err != nil {
 		logger.Error("decision cache error", "error", err, slog.String("ip", parsed.RealIP))
-		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", http.StatusInternalServerError, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "error", "decision cache error", cleanOrigin, http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 
 	if decision == nil {
 		logger.Debug("no decision found", slog.String("ip", parsed.RealIP))
-		return NewCheckedRequest(parsed.RealIP, "allow", "no decision", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "no decision", cleanOrigin, http.StatusOK, nil, "", parsed, nil)
 	}
 
 	if decision.Type == nil {
 		logger.Debug("decision has no type", slog.String("ip", parsed.RealIP))
-		return NewCheckedRequest(parsed.RealIP, "allow", "no decision type", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "no decision type", cleanOrigin, http.StatusOK, nil, "", parsed, nil)
 	}
 
 	decisionType := strings.ToLower(*decision.Type)
@@ -492,12 +479,12 @@ func (b *Bouncer) checkDecisionCache(ctx context.Context, parsed *ParsedRequest)
 		if decision.Scenario != nil && *decision.Scenario != "" {
 			reason = *decision.Scenario
 		}
-		return NewCheckedRequest(parsed.RealIP, "ban", reason, b.getBanStatusCode(), decision, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "ban", reason, crowdsec.DecisionOrigin(decision), b.getBanStatusCode(), decision, "", parsed, nil)
 	case "captcha":
-		return NewCheckedRequest(parsed.RealIP, "captcha", "crowdsec captcha", http.StatusFound, decision, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "captcha", "crowdsec captcha", crowdsec.DecisionOrigin(decision), http.StatusFound, decision, "", parsed, nil)
 	default:
 		logger.Debug("unhandled decision type, allowing", "type", decisionType, slog.String("ip", parsed.RealIP))
-		return NewCheckedRequest(parsed.RealIP, "allow", "decision allows", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "decision allows", cleanOrigin, http.StatusOK, nil, "", parsed, nil)
 	}
 }
 
@@ -510,8 +497,12 @@ func (b *Bouncer) getBanStatusCode() int {
 
 func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decision *models.Decision) CheckedRequest {
 	logger := logger.FromContext(ctx)
+	origin := appSecOrigin
+	if decision != nil {
+		origin = crowdsec.DecisionOrigin(decision)
+	}
 	if !b.CaptchaService.IsEnabled() {
-		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha disabled", origin, http.StatusOK, nil, "", parsed, nil)
 	}
 	stop := b.PrometheusRecorder.ObserveComponentDuration("captcha")
 	defer stop()
@@ -524,12 +515,12 @@ func (b *Bouncer) checkCaptcha(ctx context.Context, parsed *ParsedRequest, decis
 	if err != nil {
 		logger.Error("error creating session", "error", err, slog.String("ip", parsed.RealIP))
 		b.PrometheusRecorder.IncCaptchaErrorsTotal()
-		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", http.StatusInternalServerError, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "error", "captcha error", origin, http.StatusInternalServerError, nil, "", parsed, nil)
 	}
 	if session == nil {
-		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "captcha not required", origin, http.StatusOK, nil, "", parsed, nil)
 	}
-	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", http.StatusFound, decision, session.ChallengeURL, parsed, session)
+	return NewCheckedRequest(parsed.RealIP, "captcha", "captcha required", origin, http.StatusFound, decision, session.ChallengeURL, parsed, session)
 }
 
 func (b *Bouncer) inspectAppSec(ctx context.Context, parsed *ParsedRequest) (waf.WAFResponse, error) {
@@ -558,9 +549,9 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 
 	if !b.config.WAF.Enabled {
 		if challengePath {
-			return NewCheckedRequest(parsed.RealIP, "ban", "appsec challenge path requires waf", b.getBanStatusCode(), nil, "", parsed, nil)
+			return NewCheckedRequest(parsed.RealIP, "ban", "appsec challenge path requires waf", appSecOrigin, b.getBanStatusCode(), nil, "", parsed, nil)
 		}
-		return NewCheckedRequest(parsed.RealIP, "allow", "ok", http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", "ok", cleanOrigin, http.StatusOK, nil, "", parsed, nil)
 	}
 
 	stop := b.PrometheusRecorder.ObserveComponentDuration("waf")
@@ -582,7 +573,7 @@ func (b *Bouncer) checkWAF(ctx context.Context, parsed *ParsedRequest) CheckedRe
 	}
 
 	if wafResult.Action != "allow" {
-		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", b.getBanStatusCode(), nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, wafResult.Action, "ban", appSecOrigin, b.getBanStatusCode(), nil, "", parsed, nil)
 	}
 
 	return b.buildAllowResponse(parsed, wafResult)
@@ -593,6 +584,7 @@ func (b *Bouncer) buildAllowResponse(parsed *ParsedRequest, wafResult waf.WAFRes
 		IP:              parsed.RealIP,
 		Action:          wafResult.Action,
 		Reason:          "ok",
+		Origin:          cleanAppSecOrigin,
 		HTTPStatus:      http.StatusOK,
 		ParsedRequest:   parsed,
 		ResponseHeaders: buildResponseHeaders(wafResult.UserHeaders, wafResult.UserCookies),
@@ -613,6 +605,7 @@ func (b *Bouncer) buildChallengeResponse(parsed *ParsedRequest, wafResult waf.WA
 		IP:              parsed.RealIP,
 		Action:          "challenge",
 		Reason:          "crowdsec challenge",
+		Origin:          appSecOrigin,
 		HTTPStatus:      status,
 		ParsedRequest:   parsed,
 		ResponseBody:    wafResult.UserBodyContent,
@@ -650,12 +643,12 @@ func isAppSecChallengePath(path string) bool {
 func (b *Bouncer) wafFailure(parsed *ParsedRequest, challengePath bool) CheckedRequest {
 	b.PrometheusRecorder.IncWAFErrorsTotal()
 	if challengePath {
-		return NewCheckedRequest(parsed.RealIP, "ban", "appsec challenge path waf error", b.getBanStatusCode(), nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "ban", "appsec challenge path waf error", appSecOrigin, b.getBanStatusCode(), nil, "", parsed, nil)
 	}
 	if b.config.WAF.FailOpen {
-		return NewCheckedRequest(parsed.RealIP, "allow", wafFailOpenReason, http.StatusOK, nil, "", parsed, nil)
+		return NewCheckedRequest(parsed.RealIP, "allow", wafFailOpenReason, cleanAppSecOrigin, http.StatusOK, nil, "", parsed, nil)
 	}
-	return NewCheckedRequest(parsed.RealIP, "error", "error", http.StatusInternalServerError, nil, "", parsed, nil)
+	return NewCheckedRequest(parsed.RealIP, "error", "error", cleanOrigin, http.StatusInternalServerError, nil, "", parsed, nil)
 }
 
 // ParseCheckRequest extracts relevant fields from the gRPC CheckRequest for remediation.

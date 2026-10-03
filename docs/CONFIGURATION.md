@@ -38,11 +38,12 @@ export ENVOY_BOUNCER_SERVER_LOGLEVEL=info
 | Option | Type | Default | Required | Description |
 |--------|------|---------|----------|-------------|
 | `enabled` | bool | `true` | No | Enable CrowdSec bouncer functionality |
+| `name` | string | `"envoy-proxy-crowdsec-bouncer"` | No | Name reported in CrowdSec metrics |
 | `apiKey` | string | `""` | Yes (unless using TLS) | CrowdSec LAPI bouncer API key |
 | `lapiURL` | string | `""` | Yes (when enabled) | CrowdSec LAPI URL |
 | `metrics` | bool | `false` | No | Enable metrics reporting to CrowdSec |
 | `tickerInterval` | duration | `"10s"` | No | Interval to fetch decisions from LAPI |
-| `metricsInterval` | duration | `"10m"` | No | Interval to report metrics to LAPI |
+| `metricsInterval` | duration | `"15m"` | No | Interval to report metrics to LAPI |
 | `banStatusCode` | int | `403` | No | HTTP status code for ban responses |
 | `tls.enabled` | bool | `false` | No | Enable mTLS authentication with LAPI (mutually exclusive with `apiKey`) |
 | `tls.certPath` | string | `""` | Yes (when TLS enabled) | Path to client certificate file |
@@ -53,11 +54,12 @@ export ENVOY_BOUNCER_SERVER_LOGLEVEL=info
 ```yaml
 bouncer:
   enabled: true
+  name: "envoy-proxy-crowdsec-bouncer"
   apiKey: "<lapi-key>"
   lapiURL: "http://crowdsec:8080"
   metrics: false
   tickerInterval: "10s"
-  metricsInterval: "10m"
+  metricsInterval: "15m"
   banStatusCode: 403
   tls:
     enabled: false
