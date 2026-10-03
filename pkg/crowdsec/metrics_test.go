@@ -254,13 +254,13 @@ func TestMetricsService_Set(t *testing.T) {
 }
 
 func TestMetricsService_Reset(t *testing.T) {
-	t.Run("clears all metrics", func(t *testing.T) {
+	t.Run("clears sent counter metrics", func(t *testing.T) {
 		collector := newTestCollector(t)
 		collector.Inc("key1", "metric1", "count", nil)
 		collector.Inc("key2", "metric2", "count", nil)
 		collector.Set("key3", "metric3", "gauge", 42, nil)
 
-		collector.Reset()
+		collector.Reset(collector.GetSnapshot())
 
 		assert.Equal(t, 0, collector.cache.Size())
 	})
@@ -270,7 +270,7 @@ func TestMetricsService_Reset(t *testing.T) {
 		collector.Inc("key1", "metric1", "count", nil)
 		collector.Set("active_decisions:cscli:ban:ipv4", "active_decisions", "ip", 5, map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"})
 
-		collector.Reset()
+		collector.Reset(collector.GetSnapshot())
 
 		assert.Equal(t, map[string]Metric{
 			"active_decisions:cscli:ban:ipv4": {
@@ -279,6 +279,22 @@ func TestMetricsService_Reset(t *testing.T) {
 				Value:  5,
 				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
 			},
+		}, collector.GetSnapshot())
+	})
+
+	t.Run("decrements counters by sent value", func(t *testing.T) {
+		collector := newTestCollector(t)
+		collector.Inc("key1", "metric1", "count", nil)
+		collector.Inc("key1", "metric1", "count", nil)
+		collector.Inc("key2", "metric2", "count", nil)
+
+		collector.Reset(map[string]Metric{
+			"key1": {Name: "metric1", Unit: "count", Value: 1, Labels: nil},
+		})
+
+		assert.Equal(t, map[string]Metric{
+			"key1": {Name: "metric1", Unit: "count", Value: 1, Labels: nil},
+			"key2": {Name: "metric2", Unit: "count", Value: 1, Labels: nil},
 		}, collector.GetSnapshot())
 	})
 }
