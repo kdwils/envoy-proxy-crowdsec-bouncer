@@ -81,6 +81,7 @@ type BouncerTLS struct {
 
 type Bouncer struct {
 	Enabled         bool          `yaml:"enabled" json:"enabled"`
+	Name            string        `yaml:"name" json:"name"`
 	Metrics         bool          `yaml:"metrics" json:"metrics"`
 	TickerInterval  string        `yaml:"tickerInterval" json:"tickerInterval"`
 	MetricsInterval time.Duration `yaml:"metricsInterval" json:"metricsInterval"`
@@ -215,9 +216,10 @@ func GetViper(cfgFile string) *viper.Viper {
 	v.SetDefault("bouncer.apiKey", "")
 	v.SetDefault("bouncer.lapiURL", "")
 	v.SetDefault("bouncer.enabled", true)
+	v.SetDefault("bouncer.name", "envoy-proxy-crowdsec-bouncer")
 	v.SetDefault("bouncer.metrics", false)
 	v.SetDefault("bouncer.tickerInterval", "10s")
-	v.SetDefault("bouncer.metricsInterval", "10m")
+	v.SetDefault("bouncer.metricsInterval", "15m")
 	v.SetDefault("bouncer.banStatusCode", 403)
 	v.SetDefault("bouncer.tls.enabled", false)
 	v.SetDefault("bouncer.tls.certPath", "")

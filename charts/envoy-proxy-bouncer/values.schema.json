@@ -63,7 +63,11 @@
                             "type": "boolean"
                         },
                         "metricsInterval": {
-                            "default": "10m",
+                            "default": "15m",
+                            "type": "string"
+                        },
+                        "name": {
+                            "default": "envoy-proxy-crowdsec-bouncer",
                             "type": "string"
                         },
                         "tickerInterval": {

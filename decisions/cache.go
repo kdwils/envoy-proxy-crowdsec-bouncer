@@ -12,12 +12,20 @@ import (
 	csbouncer "github.com/crowdsecurity/go-cs-bouncer"
 	"github.com/gaissmai/bart"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/ip"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/cache"
 	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/kdwils/envoy-proxy-bouncer/recorder"
 	"github.com/kdwils/envoy-proxy-bouncer/version"
 )
+
+// OriginRemediationIPType is the aggregate key for active_decisions metrics.
+type OriginRemediationIPType struct {
+	Origin      string
+	Remediation string
+	IPType      string
+}
 
 type Cache struct {
 	stream         *csbouncer.StreamBouncer
@@ -155,6 +163,84 @@ func (dc *Cache) GetOriginCounts() map[string]int {
 	return originCounts
 }
 
+func (dc *Cache) GetOriginRemediationIPTypeCounts() map[OriginRemediationIPType]int64 {
+	counts := make(map[OriginRemediationIPType]int64)
+	if dc.decisions == nil {
+		return counts
+	}
+	for _, key := range dc.decisions.Keys() {
+		decision, ok := dc.decisions.Get(key)
+		if !ok {
+			continue
+		}
+		ipType := decisionIPType(decision)
+		if ipType == "" {
+			continue
+		}
+		aggregate := OriginRemediationIPType{
+			Origin:      crowdsec.DecisionOrigin(&decision),
+			Remediation: decisionRemediation(decision),
+			IPType:      ipType,
+		}
+		counts[aggregate]++
+	}
+	return counts
+}
+
+func decisionIPType(decision models.Decision) string {
+	if decision.Value == nil {
+		return ""
+	}
+	value := strings.TrimSpace(*decision.Value)
+	if value == "" {
+		return ""
+	}
+	if addr, err := netip.ParseAddr(value); err == nil {
+		return ip.Type(addr)
+	}
+	if prefix, err := netip.ParsePrefix(value); err == nil {
+		return ip.TypeFromPrefix(prefix)
+	}
+	return ""
+}
+
+func decisionRemediation(decision models.Decision) string {
+	if decision.Type == nil {
+		return ""
+	}
+	return strings.ToLower(*decision.Type)
+}
+
+func (dc *Cache) reconcileActiveDecisionMetrics() {
+	if dc.MetricsService == nil {
+		return
+	}
+
+	desiredActiveDecisions := make(map[string]crowdsec.Metric)
+	for key, count := range dc.GetOriginRemediationIPTypeCounts() {
+		metricKey := "active_decisions:" + key.Origin + ":" + key.Remediation + ":" + key.IPType
+		desiredActiveDecisions[metricKey] = crowdsec.Metric{
+			Name:   "active_decisions",
+			Unit:   "ip",
+			Value:  count,
+			Labels: map[string]string{"origin": key.Origin, "remediation": key.Remediation, "ip_type": key.IPType},
+		}
+	}
+
+	for metricKey, metric := range desiredActiveDecisions {
+		dc.MetricsService.Set(metricKey, metric.Name, metric.Unit, metric.Value, metric.Labels)
+	}
+	for key := range dc.MetricsService.GetSnapshot() {
+		if !strings.HasPrefix(key, "active_decisions:") {
+			continue
+		}
+		if _, ok := desiredActiveDecisions[key]; ok {
+			continue
+		}
+		dc.MetricsService.Delete(key)
+	}
+}
+
 func (dc *Cache) buildIndex(ctx context.Context) *bart.Table[models.Decision] {
 	logger := logger.FromContext(ctx).With(slog.String("component", "bouncer"), slog.String("method", "build_index"))
 
@@ -270,11 +356,26 @@ func (dc *Cache) Sync(ctx context.Context) error {
 			}
 
 			if dc.MetricsService != nil {
-				for origin, count := range originCounts {
-					key := "active_decisions:" + origin
-					dc.MetricsService.Set(key, "active_decisions", "ip", int64(count), map[string]string{
-						"origin": origin,
-					})
+				desiredActiveDecisions := make(map[string]crowdsec.Metric)
+				for key, count := range dc.GetOriginRemediationIPTypeCounts() {
+					metricKey := "active_decisions:" + key.Origin + ":" + key.Remediation + ":" + key.IPType
+					desiredActiveDecisions[metricKey] = crowdsec.Metric{
+						Name:   "active_decisions",
+						Unit:   "ip",
+						Value:  count,
+						Labels: map[string]string{"origin": key.Origin, "remediation": key.Remediation, "ip_type": key.IPType},
+					}
+				}
+
+				for metricKey, metric := range desiredActiveDecisions {
+					dc.MetricsService.Set(metricKey, metric.Name, metric.Unit, metric.Value, metric.Labels)
+				}
+				for key := range dc.MetricsService.GetSnapshot() {
+					if strings.HasPrefix(key, "active_decisions:") {
+						if _, ok := desiredActiveDecisions[key]; !ok {
+							dc.MetricsService.Delete(key)
+						}
+					}
 				}
 			}
 

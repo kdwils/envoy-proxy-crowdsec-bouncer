@@ -30,6 +30,10 @@ func (n *NoopCache) GetOriginCounts() map[string]int {
 	return map[string]int{}
 }
 
+func (n *NoopCache) GetOriginRemediationIPTypeCounts() map[OriginRemediationIPType]int64 {
+	return map[OriginRemediationIPType]int64{}
+}
+
 func (n *NoopCache) IsReady() bool {
 	return true
 }

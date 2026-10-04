@@ -359,7 +359,7 @@ func (s *Server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
 	defer s.prometheusRecorder.ObserveDuration()()
 
 	if s.bouncer == nil {
-		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", 0, nil, "", nil, nil))
+		body, headers := s.renderDeniedResponse(bouncer.NewCheckedRequest("", "", "remediator not initialized", "clean", 0, nil, "", nil, nil))
 		return getDeniedResponse(envoy_type.StatusCode_InternalServerError, body, headers), nil
 	}
 

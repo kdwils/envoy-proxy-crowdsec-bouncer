@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
 	"github.com/crowdsecurity/crowdsec/pkg/models"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
+	"github.com/kdwils/envoy-proxy-bouncer/pkg/crowdsec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,6 +18,20 @@ func newCache(t *testing.T) *Cache {
 	dc, err := NewCache(config.Bouncer{ApiKey: "test-key", LAPIURL: "http://localhost:8080"}, nil, nil)
 	require.NoError(t, err)
 	return dc
+}
+
+func newCacheWithMetrics(t *testing.T) (*Cache, *crowdsec.MetricsService) {
+	t.Helper()
+	metricsService, err := crowdsec.NewMetricsService(crowdsec.MetricsConfig{
+		APIClient:   &apiclient.ApiClient{},
+		Name:        "test-bouncer",
+		BouncerType: "test-bouncer-type",
+		Version:     "v1.0.0",
+	})
+	require.NoError(t, err)
+	dc, err := NewCache(config.Bouncer{ApiKey: "test-key", LAPIURL: "http://localhost:8080"}, metricsService, nil)
+	require.NoError(t, err)
+	return dc, metricsService
 }
 
 func TestCache_GetDecision(t *testing.T) {
@@ -413,4 +429,297 @@ func BenchmarkGetDecision_Mixed_10k(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		dc.GetDecision(ctx, ips[i%10000])
 	}
+}
+
+func TestDecisionIPType(t *testing.T) {
+	tests := []struct {
+		name     string
+		decision models.Decision
+		want     string
+	}{
+		{
+			name:     "ipv4 exact",
+			decision: models.Decision{Value: new("192.168.1.100")},
+			want:     "ipv4",
+		},
+		{
+			name:     "ipv6 exact",
+			decision: models.Decision{Value: new("2001:db8::1")},
+			want:     "ipv6",
+		},
+		{
+			name:     "ipv4 mapped ipv6 exact unmaps to ipv4",
+			decision: models.Decision{Value: new("::ffff:192.168.1.100")},
+			want:     "ipv4",
+		},
+		{
+			name:     "ipv4 cidr",
+			decision: models.Decision{Value: new("10.0.0.0/8")},
+			want:     "ipv4",
+		},
+		{
+			name:     "ipv6 cidr",
+			decision: models.Decision{Value: new("2001:db8::/32")},
+			want:     "ipv6",
+		},
+		{
+			name:     "nil value",
+			decision: models.Decision{Value: nil},
+			want:     "",
+		},
+		{
+			name:     "invalid value",
+			decision: models.Decision{Value: new("not-an-ip")},
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, decisionIPType(tt.decision))
+		})
+	}
+}
+
+func TestDecisionRemediation(t *testing.T) {
+	tests := []struct {
+		name     string
+		decision models.Decision
+		want     string
+	}{
+		{
+			name:     "ban lowercased",
+			decision: models.Decision{Type: new("BAN")},
+			want:     "ban",
+		},
+		{
+			name:     "captcha lowercased",
+			decision: models.Decision{Type: new("Captcha")},
+			want:     "captcha",
+		},
+		{
+			name:     "nil type",
+			decision: models.Decision{Type: nil},
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, decisionRemediation(tt.decision))
+		})
+	}
+}
+
+func TestCache_ActiveDecisionsByOriginRemediationIPType(t *testing.T) {
+	t.Run("aggregates decisions in cache", func(t *testing.T) {
+		dc := newCache(t)
+
+		ban := models.Decision{
+			Value:    new("192.168.1.100"),
+			Type:     new("ban"),
+			Origin:   new("cscli"),
+			Scenario: new("crowdsecurity/test"),
+		}
+		captcha := models.Decision{
+			Value:  new("2001:db8::1"),
+			Type:   new("captcha"),
+			Origin: new("CAPI"),
+		}
+
+		dc.decisions.Set(*ban.Value, ban)
+		dc.decisions.Set("192.168.1.101", ban)
+		dc.decisions.Set(*captcha.Value, captcha)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "cscli", Remediation: "ban", IPType: "ipv4"}:    2,
+			{Origin: "CAPI", Remediation: "captcha", IPType: "ipv6"}: 1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("removing decisions updates counts", func(t *testing.T) {
+		dc := newCache(t)
+
+		ban := models.Decision{
+			Value:  new("192.168.1.100"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+		}
+		captcha := models.Decision{
+			Value:  new("2001:db8::1"),
+			Type:   new("captcha"),
+			Origin: new("CAPI"),
+		}
+
+		dc.decisions.Set(*ban.Value, ban)
+		dc.decisions.Set(*captcha.Value, captcha)
+		dc.decisions.Delete(*ban.Value)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "CAPI", Remediation: "captcha", IPType: "ipv6"}: 1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("lists origin includes scenario", func(t *testing.T) {
+		dc := newCache(t)
+
+		list := models.Decision{
+			Value:    new("10.0.0.0/8"),
+			Type:     new("ban"),
+			Origin:   new("lists"),
+			Scenario: new("blocklist-name"),
+		}
+
+		dc.decisions.Set(*list.Value, list)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "lists:blocklist-name", Remediation: "ban", IPType: "ipv4"}: 1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("skips decisions without valid ip type", func(t *testing.T) {
+		dc := newCache(t)
+
+		invalid := models.Decision{
+			Value:  new("not-an-ip"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+		}
+		ban := models.Decision{
+			Value:  new("192.168.1.100"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+		}
+
+		dc.decisions.Set(*invalid.Value, invalid)
+		dc.decisions.Set(*ban.Value, ban)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "cscli", Remediation: "ban", IPType: "ipv4"}: 1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("cidr range decisions", func(t *testing.T) {
+		dc := newCache(t)
+
+		ipv4Range := models.Decision{
+			Value:  new("10.0.0.0/8"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+			Scope:  new("Range"),
+		}
+		ipv6Range := models.Decision{
+			Value:  new("2001:db8::/32"),
+			Type:   new("ban"),
+			Origin: new("CAPI"),
+			Scope:  new("Range"),
+		}
+
+		dc.decisions.Set(*ipv4Range.Value, ipv4Range)
+		dc.decisions.Set(*ipv6Range.Value, ipv6Range)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "cscli", Remediation: "ban", IPType: "ipv4"}: 1,
+			{Origin: "CAPI", Remediation: "ban", IPType: "ipv6"}:  1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("overwrite with same value does not double count", func(t *testing.T) {
+		dc := newCache(t)
+
+		ban := models.Decision{
+			Value:  new("192.168.1.100"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+		}
+		captcha := models.Decision{
+			Value:  new("192.168.1.100"),
+			Type:   new("captcha"),
+			Origin: new("CAPI"),
+		}
+
+		dc.decisions.Set(*ban.Value, ban)
+		dc.decisions.Set(*captcha.Value, captcha)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "CAPI", Remediation: "captcha", IPType: "ipv4"}: 1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("nil origin defaults to crowdsec", func(t *testing.T) {
+		dc := newCache(t)
+
+		ban := models.Decision{
+			Value: new("192.168.1.100"),
+			Type:  new("ban"),
+		}
+
+		dc.decisions.Set(*ban.Value, ban)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "crowdsec", Remediation: "ban", IPType: "ipv4"}: 1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("nil type uses empty remediation", func(t *testing.T) {
+		dc := newCache(t)
+
+		ban := models.Decision{
+			Value:  new("192.168.1.100"),
+			Origin: new("cscli"),
+		}
+
+		dc.decisions.Set(*ban.Value, ban)
+
+		assert.Equal(t, map[OriginRemediationIPType]int64{
+			{Origin: "cscli", Remediation: "", IPType: "ipv4"}: 1,
+		}, dc.GetOriginRemediationIPTypeCounts())
+	})
+
+	t.Run("reconcile sets metrics from cache", func(t *testing.T) {
+		dc, metricsService := newCacheWithMetrics(t)
+
+		ban := models.Decision{
+			Value:  new("192.168.1.100"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+		}
+		dc.decisions.Set(*ban.Value, ban)
+
+		dc.reconcileActiveDecisionMetrics()
+
+		assert.Equal(t, map[string]crowdsec.Metric{
+			"active_decisions:cscli:ban:ipv4": {
+				Name:   "active_decisions",
+				Unit:   "ip",
+				Value:  1,
+				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+			},
+		}, metricsService.GetSnapshot())
+	})
+
+	t.Run("reconcile removes stale metrics", func(t *testing.T) {
+		dc, metricsService := newCacheWithMetrics(t)
+
+		metricsService.Set("active_decisions:cscli:ban:ipv4", "active_decisions", "ip", 1, map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"})
+		metricsService.Set("active_decisions:CAPI:captcha:ipv6", "active_decisions", "ip", 1, map[string]string{"origin": "CAPI", "remediation": "captcha", "ip_type": "ipv6"})
+
+		ban := models.Decision{
+			Value:  new("192.168.1.100"),
+			Type:   new("ban"),
+			Origin: new("cscli"),
+		}
+		dc.decisions.Set(*ban.Value, ban)
+
+		dc.reconcileActiveDecisionMetrics()
+
+		assert.Equal(t, map[string]crowdsec.Metric{
+			"active_decisions:cscli:ban:ipv4": {
+				Name:   "active_decisions",
+				Unit:   "ip",
+				Value:  1,
+				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+			},
+		}, metricsService.GetSnapshot())
+	})
 }
