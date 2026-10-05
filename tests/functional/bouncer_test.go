@@ -280,23 +280,23 @@ func testBouncer(t *testing.T, env *testEnv) {
 		snapshot := testBouncer.MetricsService.GetSnapshot()
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {
+			"processed:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
 				Value:  9,
-				Labels: nil,
+				Labels: map[string]string{"ip_type": "ipv4"},
 			},
-			"cscli:ban:ipv4": {
+			"cscli:ipv4": {
 				Name:   "dropped",
 				Unit:   "request",
 				Value:  3,
-				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
 			},
-			"appsec:ban:ipv4": {
+			"appsec:ipv4": {
 				Name:   "dropped",
 				Unit:   "request",
 				Value:  1,
-				Labels: map[string]string{"origin": "appsec", "remediation": "ban", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "appsec", "ip_type": "ipv4"},
 			},
 		}, snapshot)
 
@@ -332,29 +332,29 @@ func testBouncer(t *testing.T, env *testEnv) {
 		snapshot := testBouncer.MetricsService.GetSnapshot()
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {
+			"processed:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
 				Value:  12,
-				Labels: nil,
+				Labels: map[string]string{"ip_type": "ipv4"},
 			},
-			"cscli:ban:ipv4": {
+			"cscli:ipv4": {
 				Name:   "dropped",
 				Unit:   "request",
 				Value:  4,
-				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
 			},
-			"appsec:ban:ipv4": {
+			"appsec:ipv4": {
 				Name:   "dropped",
 				Unit:   "request",
 				Value:  1,
-				Labels: map[string]string{"origin": "appsec", "remediation": "ban", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "appsec", "ip_type": "ipv4"},
 			},
-			"active_decisions:cscli:ban:ipv4": {
+			"active_decisions:cscli:ipv4": {
 				Name:   "active_decisions",
 				Unit:   "ip",
 				Value:  2,
-				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
 			},
 		}, snapshot)
 
@@ -622,29 +622,29 @@ func testBouncerCaptcha(t *testing.T, env *testEnv) {
 
 	t.Run("Verify metrics after captcha scenarios", func(t *testing.T) {
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {
+			"processed:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
 				Value:  5,
-				Labels: nil,
+				Labels: map[string]string{"ip_type": "ipv4"},
 			},
-			"cscli:captcha:ipv4": {
+			"cscli:ipv4": {
 				Name:   "dropped",
 				Unit:   "request",
 				Value:  3,
-				Labels: map[string]string{"origin": "cscli", "remediation": "captcha", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
 			},
-			"appsec:captcha:ipv4": {
+			"appsec:ipv4": {
 				Name:   "dropped",
 				Unit:   "request",
 				Value:  1,
-				Labels: map[string]string{"origin": "appsec", "remediation": "captcha", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "appsec", "ip_type": "ipv4"},
 			},
-			"active_decisions:cscli:captcha:ipv4": {
+			"active_decisions:cscli:ipv4": {
 				Name:   "active_decisions",
 				Unit:   "ip",
 				Value:  1,
-				Labels: map[string]string{"origin": "cscli", "remediation": "captcha", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
 			},
 		}, testBouncer.MetricsService.GetSnapshot())
 

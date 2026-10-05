@@ -112,20 +112,19 @@ func testBouncerChallenge(t *testing.T, env *testEnv, appsecChallengeURL string)
 		assert.Equal(t, float64(1), testutil.ToFloat64(metrics.WAFRequestsTotal.WithLabelValues("challenge")), "expected 1 challenge WAF request")
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {
+			"processed:ipv4": {
 				Name:   "processed",
 				Unit:   "request",
 				Value:  1,
-				Labels: nil,
+				Labels: map[string]string{"ip_type": "ipv4"},
 			},
-			"appsec:challenge:ipv4": {
+			"appsec:ipv4": {
 				Name:  "dropped",
 				Unit:  "request",
 				Value: 1,
 				Labels: map[string]string{
-					"origin":      "appsec",
-					"remediation": "challenge",
-					"ip_type":     "ipv4",
+					"origin":  "appsec",
+					"ip_type": "ipv4",
 				},
 			},
 		}, testBouncer.MetricsService.GetSnapshot())

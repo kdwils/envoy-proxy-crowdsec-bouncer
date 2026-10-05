@@ -195,18 +195,22 @@ func (b *Bouncer) recordFinalMetric(result CheckedRequest) {
 
 	ipType := ip.Type(result.ParsedRequest.ParsedRealIP)
 
-	b.MetricsService.Inc("processed", "processed", "request", nil)
+	processedLabels := map[string]string{}
+	processedKey := "processed"
+	if ipType != "" {
+		processedLabels["ip_type"] = ipType
+		processedKey += ":" + ipType
+	}
+	b.MetricsService.Inc(processedKey, "processed", "request", processedLabels)
 
-	remediation := result.Action
-	if remediation == "allow" {
+	if result.Action == "allow" {
 		return
 	}
 
 	droppedLabels := map[string]string{
-		"origin":      result.Origin,
-		"remediation": remediation,
+		"origin": result.Origin,
 	}
-	droppedKey := result.Origin + ":" + remediation
+	droppedKey := result.Origin
 	if ipType != "" {
 		droppedLabels["ip_type"] = ipType
 		droppedKey += ":" + ipType

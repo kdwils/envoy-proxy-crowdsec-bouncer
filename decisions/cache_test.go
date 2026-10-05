@@ -689,11 +689,11 @@ func TestCache_ActiveDecisionsByOriginRemediationIPType(t *testing.T) {
 		dc.reconcileActiveDecisionMetrics()
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"active_decisions:cscli:ban:ipv4": {
+			"active_decisions:cscli:ipv4": {
 				Name:   "active_decisions",
 				Unit:   "ip",
 				Value:  1,
-				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
 			},
 		}, metricsService.GetSnapshot())
 	})
@@ -714,11 +714,11 @@ func TestCache_ActiveDecisionsByOriginRemediationIPType(t *testing.T) {
 		dc.reconcileActiveDecisionMetrics()
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"active_decisions:cscli:ban:ipv4": {
+			"active_decisions:cscli:ipv4": {
 				Name:   "active_decisions",
 				Unit:   "ip",
 				Value:  1,
-				Labels: map[string]string{"origin": "cscli", "remediation": "ban", "ip_type": "ipv4"},
+				Labels: map[string]string{"origin": "cscli", "ip_type": "ipv4"},
 			},
 		}, metricsService.GetSnapshot())
 	})
