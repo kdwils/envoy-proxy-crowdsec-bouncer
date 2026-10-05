@@ -964,8 +964,8 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			crowdsec.DefaultDecisionOrigin + ":ban:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": crowdsec.DefaultDecisionOrigin, "remediation": "ban", "ip_type": "ipv4"}},
+			"processed:ipv4":                         {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"ip_type": "ipv4"}},
+			crowdsec.DefaultDecisionOrigin + ":ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": crowdsec.DefaultDecisionOrigin, "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1034,8 +1034,8 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed":                {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			appSecOrigin + ":ban:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "ban", "ip_type": "ipv4"}},
+			"processed:ipv4":       {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"ip_type": "ipv4"}},
+			appSecOrigin + ":ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1110,8 +1110,8 @@ func TestBouncer_Check(t *testing.T) {
 
 		actualMetrics := r.MetricsService.GetSnapshot()
 		require.Equal(t, map[string]crowdsec.Metric{
-			"processed":                      {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			appSecOrigin + ":challenge:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "challenge", "ip_type": "ipv4"}},
+			"processed:ipv4":       {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"ip_type": "ipv4"}},
+			appSecOrigin + ":ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "ip_type": "ipv4"}},
 		}, actualMetrics)
 	})
 
@@ -1228,7 +1228,7 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed": {Name: "processed", Unit: "request", Value: 1, Labels: nil},
+			"processed:ipv4": {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 
@@ -1524,8 +1524,8 @@ func TestBouncer_Check(t *testing.T) {
 		assert.Equal(t, want, got)
 
 		assert.Equal(t, map[string]crowdsec.Metric{
-			"processed":                    {Name: "processed", Unit: "request", Value: 1, Labels: nil},
-			appSecOrigin + ":captcha:ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "remediation": "captcha", "ip_type": "ipv4"}},
+			"processed:ipv4":       {Name: "processed", Unit: "request", Value: 1, Labels: map[string]string{"ip_type": "ipv4"}},
+			appSecOrigin + ":ipv4": {Name: "dropped", Unit: "request", Value: 1, Labels: map[string]string{"origin": appSecOrigin, "ip_type": "ipv4"}},
 		}, r.MetricsService.GetSnapshot())
 	})
 

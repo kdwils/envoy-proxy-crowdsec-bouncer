@@ -27,6 +27,12 @@ type OriginRemediationIPType struct {
 	IPType      string
 }
 
+// originIPType is the aggregate key for active_decisions metrics without remediation.
+type originIPType struct {
+	Origin string
+	IPType string
+}
+
 type Cache struct {
 	stream         *csbouncer.StreamBouncer
 	decisions      *cache.Cache[string, models.Decision]
@@ -187,6 +193,25 @@ func (dc *Cache) GetOriginRemediationIPTypeCounts() map[OriginRemediationIPType]
 	return counts
 }
 
+func (dc *Cache) getOriginIPTypeCounts() map[originIPType]int64 {
+	counts := make(map[originIPType]int64)
+	if dc.decisions == nil {
+		return counts
+	}
+	for _, key := range dc.decisions.Keys() {
+		decision, ok := dc.decisions.Get(key)
+		if !ok {
+			continue
+		}
+		ipType := decisionIPType(decision)
+		if ipType == "" {
+			continue
+		}
+		counts[originIPType{Origin: crowdsec.DecisionOrigin(&decision), IPType: ipType}]++
+	}
+	return counts
+}
+
 func decisionIPType(decision models.Decision) string {
 	if decision.Value == nil {
 		return ""
@@ -217,13 +242,13 @@ func (dc *Cache) reconcileActiveDecisionMetrics() {
 	}
 
 	desiredActiveDecisions := make(map[string]crowdsec.Metric)
-	for key, count := range dc.GetOriginRemediationIPTypeCounts() {
-		metricKey := "active_decisions:" + key.Origin + ":" + key.Remediation + ":" + key.IPType
+	for key, count := range dc.getOriginIPTypeCounts() {
+		metricKey := "active_decisions:" + key.Origin + ":" + key.IPType
 		desiredActiveDecisions[metricKey] = crowdsec.Metric{
 			Name:   "active_decisions",
 			Unit:   "ip",
 			Value:  count,
-			Labels: map[string]string{"origin": key.Origin, "remediation": key.Remediation, "ip_type": key.IPType},
+			Labels: map[string]string{"origin": key.Origin, "ip_type": key.IPType},
 		}
 	}
 
@@ -355,29 +380,7 @@ func (dc *Cache) Sync(ctx context.Context) error {
 				dc.prom.SetDecisionCacheSize(origin, float64(count))
 			}
 
-			if dc.MetricsService != nil {
-				desiredActiveDecisions := make(map[string]crowdsec.Metric)
-				for key, count := range dc.GetOriginRemediationIPTypeCounts() {
-					metricKey := "active_decisions:" + key.Origin + ":" + key.Remediation + ":" + key.IPType
-					desiredActiveDecisions[metricKey] = crowdsec.Metric{
-						Name:   "active_decisions",
-						Unit:   "ip",
-						Value:  count,
-						Labels: map[string]string{"origin": key.Origin, "remediation": key.Remediation, "ip_type": key.IPType},
-					}
-				}
-
-				for metricKey, metric := range desiredActiveDecisions {
-					dc.MetricsService.Set(metricKey, metric.Name, metric.Unit, metric.Value, metric.Labels)
-				}
-				for key := range dc.MetricsService.GetSnapshot() {
-					if strings.HasPrefix(key, "active_decisions:") {
-						if _, ok := desiredActiveDecisions[key]; !ok {
-							dc.MetricsService.Delete(key)
-						}
-					}
-				}
-			}
+			dc.reconcileActiveDecisionMetrics()
 
 			dc.prom.SetLAPILastSyncTimestamp()
 

@@ -179,7 +179,7 @@ func testBouncerTLS(t *testing.T, env *testEnv) {
 		snapshot := b.MetricsService.GetSnapshot()
 		require.NotEmpty(t, snapshot, "expected metrics to be collected")
 
-		processedMetric, ok := snapshot["processed"]
+		processedMetric, ok := snapshot["processed:ipv4"]
 		require.True(t, ok, "expected processed metric to exist")
 		require.Greater(t, processedMetric.Value, int64(0), "expected processed count to be non-zero")
 
