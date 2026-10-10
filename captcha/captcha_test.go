@@ -178,6 +178,26 @@ func TestNewCaptchaService(t *testing.T) {
 		assert.Equal(t, "turnstile", service.Provider.GetProviderName())
 	})
 
+	t.Run("cap provider", func(t *testing.T) {
+		prom := recorder.NewNoOp()
+		cfg := config.Captcha{
+			Enabled:    true,
+			Provider:   "cap",
+			ServerURL:  "https://cap.example.com",
+			SiteKey:    "test-site-key",
+			SecretKey:  "test-secret",
+			SigningKey: "test-signing-key-that-is-at-least-32-bytes-long",
+		}
+
+		service, err := NewCaptchaService(cfg, http.DefaultClient, prom)
+
+		require.NoError(t, err)
+		require.NotNil(t, service)
+		assert.True(t, service.Config.Enabled)
+		assert.NotNil(t, service.Provider)
+		assert.Equal(t, "cap", service.Provider.GetProviderName())
+	})
+
 	t.Run("unsupported provider", func(t *testing.T) {
 		prom := recorder.NewNoOp()
 		cfg := config.Captcha{

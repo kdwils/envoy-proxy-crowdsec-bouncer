@@ -145,6 +145,7 @@ type CaptchaSession struct {
 	ExpiresAt    time.Time
 	Provider     string
 	SiteKey      string
+	ServerURL    string
 	CallbackURL  string
 	RedirectURL  string
 	ChallengeURL string
@@ -217,6 +218,8 @@ func NewCaptchaService(cfg config.Captcha, httpClient types.HTTPClient, prom *re
 		provider, err = NewRecaptchaProvider(cfg.SecretKey, httpClient)
 	case "turnstile":
 		provider, err = NewTurnstileProvider(cfg.SecretKey, httpClient)
+	case "cap":
+		provider, err = NewCapProvider(cfg.ServerURL, cfg.SiteKey, cfg.SecretKey, httpClient)
 	default:
 		return nil, fmt.Errorf("unsupported captcha provider: %s", cfg.Provider)
 	}
@@ -325,6 +328,7 @@ func (s *CaptchaService) GetSession(challengeToken string) (*CaptchaSession, boo
 		ExpiresAt:    expiresAt,
 		Provider:     s.Provider.GetProviderName(),
 		SiteKey:      s.Config.SiteKey,
+		ServerURL:    s.Config.ServerURL,
 		CallbackURL:  callbackURL,
 		RedirectURL:  claims.OriginalURL,
 		ChallengeURL: challengeURL,
@@ -380,6 +384,7 @@ func (s *CaptchaService) CreateSession(ip, originalURL, sessionToken string) (*C
 	session := CaptchaSession{
 		Provider:     s.Provider.GetProviderName(),
 		SiteKey:      s.Config.SiteKey,
+		ServerURL:    s.Config.ServerURL,
 		CallbackURL:  callbackURL,
 		OriginalURL:  originalURL,
 		RedirectURL:  originalURL,
