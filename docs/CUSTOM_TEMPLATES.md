@@ -69,6 +69,7 @@ Available fields (`CaptchaTemplateData`):
 |-------|------|---------|
 | `.Provider` | string | `"recaptcha"` |
 | `.SiteKey` | string | `"6LdX..."` |
+| `.ServerURL` | string | `"https://cap.example.com"` (only set for `cap`) |
 | `.CallbackURL` | string | `"https://example.com/captcha"` |
 | `.RedirectURL` | string | `"https://example.com/original-page"` |
 | `.ChallengeToken` | string | `"abc123..."` |

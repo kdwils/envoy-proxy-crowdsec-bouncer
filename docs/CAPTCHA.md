@@ -46,9 +46,11 @@ When `secureCookie` is true, cookies use `Secure` and `SameSite=None`. When fals
 |----------|-----------------|
 | Google reCAPTCHA v2 | `recaptcha` |
 | Cloudflare Turnstile | `turnstile` |
+| Cap (self-hosted) | `cap` |
 
 - [reCAPTCHA setup](https://developers.google.com/recaptcha/intro)
 - [Turnstile setup](https://developers.cloudflare.com/turnstile/)
+- [Cap setup](https://trycap.dev) — unlike reCAPTCHA/Turnstile, Cap requires `captcha.serverURL` pointing at your self-hosted instance. Its challenge is proof-of-work based and solves automatically in the background — there is no checkbox or user interaction, only a brief "Verifying your browser…" interstitial while the challenge page runs.
 
 ## Exposing CAPTCHA Endpoints
 
