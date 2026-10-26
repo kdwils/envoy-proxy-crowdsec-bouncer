@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	"github.com/kdwils/envoy-proxy-bouncer/bouncer"
 	"github.com/kdwils/envoy-proxy-bouncer/config"
 	"github.com/kdwils/envoy-proxy-bouncer/logger"
@@ -20,8 +21,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 )
 
 func testHealthProbes(t *testing.T, env *testEnv) {
@@ -46,9 +49,6 @@ func testHealthProbes(t *testing.T, env *testEnv) {
 
 	testBouncer, err := bouncer.New(cfg, rec, decisionCache, w, captchaService, metricsService)
 	require.NoError(t, err)
-	go testBouncer.Sync(ctx)
-
-	waitForDecisionCache(t, testBouncer.DecisionCache, 10*time.Second)
 
 	templateStore, err := template.NewStore(template.Config{})
 	require.NoError(t, err)
@@ -60,6 +60,18 @@ func testHealthProbes(t *testing.T, env *testEnv) {
 	conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer conn.Close()
+
+	t.Run("Authorization fails closed before initial decision sync", func(t *testing.T) {
+		client := auth.NewAuthorizationClient(conn)
+		request := createCheckRequest("192.0.2.1", createHttpRequest("GET", "/", "example.test", nil))
+		response, err := client.Check(t.Context(), request)
+		require.Error(t, err)
+		assert.Equal(t, codes.Unavailable, status.Code(err))
+		assert.Nil(t, response)
+	})
+
+	go testBouncer.Sync(ctx)
+	waitForDecisionCache(t, testBouncer.DecisionCache, 10*time.Second)
 
 	healthClient := grpc_health_v1.NewHealthClient(conn)
 
