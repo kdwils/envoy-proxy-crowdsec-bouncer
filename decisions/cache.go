@@ -112,6 +112,10 @@ func NewLiveBouncer(cfg config.Bouncer) (*csbouncer.LiveBouncer, error) {
 }
 
 func (dc *Cache) GetDecision(ctx context.Context, ip string) (*models.Decision, error) {
+	if !dc.syncComplete.Load() {
+		return nil, errors.New("initial decision sync has not completed")
+	}
+
 	log := logger.FromContext(ctx)
 	if ip == "" {
 		log.Debug("no ip provided")
