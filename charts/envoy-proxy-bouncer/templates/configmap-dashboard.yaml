@@ -8,14 +8,15 @@ metadata:
     {{- with .Values.grafana.dashboard.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- if or .Values.grafana.dashboard.annotations .Values.grafana.dashboard.folder }}
   annotations:
-    {{- include "envoy-proxy-bouncer.annotations" . | nindent 4 }}
     {{- with .Values.grafana.dashboard.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
     {{- if .Values.grafana.dashboard.folder }}
     grafana_folder: {{ .Values.grafana.dashboard.folder | quote }}
     {{- end }}
+  {{- end }}
 data:
   bouncer.json: |
     {{- .Files.Get "dashboards/bouncer.json" | nindent 4 }}
