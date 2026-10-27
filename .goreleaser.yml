@@ -67,6 +67,7 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    Fix CrowdSec dashboard metrics aggregation by reporting `dropped`/`active_decisions` by `origin` and `ip_type`, and include AppSec blocks under the `appsec` origin
+    - The bouncer now returns gRPC `Unavailable` for authorization checks until the first decision sync completes, preventing traffic from being allowed through an uninitialized decision cache. After the initial sync, behavior returns to normal.
+    - Builder image updated to Go 1.26.10 to address a toolchain vulnerability.
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}

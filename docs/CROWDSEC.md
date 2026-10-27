@@ -13,6 +13,8 @@ How the bouncer integrates with CrowdSec. For configuration options see the [Con
 ## Bouncer
 
 The bouncer uses CrowdSec's stream mode. It maintains a local in-memory cache of decisions synced from the local crowdsec instance.
+
+Until the first decision sync completes, decision lookups return an error instead of treating the uninitialized cache as an empty decision list. The ext_authz server returns gRPC Unavailable for these requests; configure the gateway to fail closed on authorization errors. After a successful initial sync, an empty decision list allows normal traffic. Explicit exempt IPs and disabled-bouncer mode retain their configured behavior. This startup check does not impose a maximum age on an already initialized cache during a later LAPI outage.
 ### Generating an API Key
 
 ```bash
