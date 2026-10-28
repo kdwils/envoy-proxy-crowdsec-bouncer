@@ -75,6 +75,8 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier 
 func (s *Server) ServeDual(ctx context.Context) error {
 	g, gctx := errgroup.WithContext(ctx)
 
+	s.rateLimiter.Start(gctx)
+
 	g.Go(func() error {
 		return s.serveGRPC(gctx, s.config.Server.GRPCPort)
 	})

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -43,5 +44,21 @@ func TestRateLimiter_Allow(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 
 		require.True(t, rl.Allow("192.168.1.1"))
+	})
+
+	t.Run("evicts stale entries", func(t *testing.T) {
+		rl := NewRateLimiterWithTTL(10, 10, 100*time.Millisecond, 50*time.Millisecond)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		rl.Start(ctx)
+		defer cancel()
+
+		rl.Allow("192.168.1.1")
+		require.Equal(t, 1, rl.limiters.Size())
+
+		time.Sleep(200 * time.Millisecond)
+		require.Eventually(t, func() bool {
+			return rl.limiters.Size() == 0
+		}, 2*time.Second, 50*time.Millisecond)
 	})
 }
