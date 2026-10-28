@@ -44,6 +44,11 @@ type Server struct {
 	GRPCPort int    `yaml:"grpcPort" json:"grpcPort"`
 	HTTPPort int    `yaml:"httpPort" json:"httpPort"`
 	LogLevel string `yaml:"logLevel" json:"logLevel"`
+
+	HTTPReadTimeout    time.Duration `yaml:"httpReadTimeout" json:"httpReadTimeout"`
+	HTTPWriteTimeout   time.Duration `yaml:"httpWriteTimeout" json:"httpWriteTimeout"`
+	HTTPIdleTimeout    time.Duration `yaml:"httpIdleTimeout" json:"httpIdleTimeout"`
+	HTTPMaxHeaderBytes int           `yaml:"httpMaxHeaderBytes" json:"httpMaxHeaderBytes"`
 }
 
 type Captcha struct {
@@ -212,6 +217,10 @@ func GetViper(cfgFile string) *viper.Viper {
 	v.SetDefault("server.grpcPort", 8080)
 	v.SetDefault("server.httpPort", 8081)
 	v.SetDefault("server.logLevel", "info")
+	v.SetDefault("server.httpReadTimeout", "5s")
+	v.SetDefault("server.httpWriteTimeout", "10s")
+	v.SetDefault("server.httpIdleTimeout", "120s")
+	v.SetDefault("server.httpMaxHeaderBytes", 1<<20)
 
 	v.SetDefault("bouncer.apiKey", "")
 	v.SetDefault("bouncer.lapiURL", "")

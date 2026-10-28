@@ -137,14 +137,22 @@ func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Server) newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:           addr,
+		Handler:        handler,
+		ReadTimeout:    s.config.Server.HTTPReadTimeout,
+		WriteTimeout:   s.config.Server.HTTPWriteTimeout,
+		IdleTimeout:    s.config.Server.HTTPIdleTimeout,
+		MaxHeaderBytes: s.config.Server.HTTPMaxHeaderBytes,
+	}
+}
+
 func (s *Server) serveMetrics(ctx context.Context, port int) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(s.gatherer, promhttp.HandlerOpts{}))
 
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
-	}
+	srv := s.newHTTPServer(fmt.Sprintf(":%d", port), mux)
 
 	return s.gracefullyListenAndServe(ctx, srv, "prometheus")
 }
@@ -160,10 +168,7 @@ func (s *Server) serveHTTP(ctx context.Context, port int) error {
 		handlers.AllowedHeaders([]string{"Content-Type"}),
 	)(r)
 
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: s.rateLimitMiddleware(corsHandler),
-	}
+	srv := s.newHTTPServer(fmt.Sprintf(":%d", port), s.rateLimitMiddleware(corsHandler))
 
 	return s.gracefullyListenAndServe(ctx, srv, "HTTP server")
 }
