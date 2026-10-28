@@ -8,9 +8,14 @@ metadata:
     {{- with .Values.grafana.dashboard.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- if .Values.grafana.dashboard.folder }}
+  {{- if or .Values.grafana.dashboard.annotations .Values.grafana.dashboard.folder }}
   annotations:
+    {{- with .Values.grafana.dashboard.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if .Values.grafana.dashboard.folder }}
     grafana_folder: {{ .Values.grafana.dashboard.folder | quote }}
+    {{- end }}
   {{- end }}
 data:
   bouncer.json: |
