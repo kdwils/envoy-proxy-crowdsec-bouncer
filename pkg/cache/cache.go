@@ -91,13 +91,23 @@ func (c *Cache[K, T]) StartCleanup(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				c.mu.Lock()
+				var keysToDelete []K
+
+				c.mu.RLock()
 				for key, value := range c.entries {
 					if c.cleanupFunc(key, value) {
-						delete(c.entries, key)
+						keysToDelete = append(keysToDelete, key)
 					}
 				}
-				c.mu.Unlock()
+				c.mu.RUnlock()
+
+				if len(keysToDelete) > 0 {
+					c.mu.Lock()
+					for _, key := range keysToDelete {
+						delete(c.entries, key)
+					}
+					c.mu.Unlock()
+				}
 			case <-ctx.Done():
 				return
 			}
