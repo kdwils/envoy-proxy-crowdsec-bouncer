@@ -329,9 +329,13 @@ func TestGetViper(t *testing.T) {
 
 		want := Config{
 			Server: Server{
-				GRPCPort: 8080,
-				HTTPPort: 8081,
-				LogLevel: "info",
+				GRPCPort:           8080,
+				HTTPPort:           8081,
+				LogLevel:           "info",
+				HTTPReadTimeout:    5 * time.Second,
+				HTTPWriteTimeout:   10 * time.Second,
+				HTTPIdleTimeout:    120 * time.Second,
+				HTTPMaxHeaderBytes: 1 << 20,
 			},
 			Bouncer: Bouncer{
 				Enabled:         true,
