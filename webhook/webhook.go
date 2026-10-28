@@ -176,7 +176,7 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 }
 
 func (s *Service) send(ctx context.Context, endpoint string, body []byte) {
-	reqCtx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	reqCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(body))
