@@ -64,7 +64,7 @@ func NewServer(config config.Config, bouncer Bouncer, captcha Captcha, notifier 
 		notifier:           notifier,
 		templateStore:      templateStore,
 		now:                time.Now,
-		rateLimiter:        NewRateLimiter(10, 20),
+		rateLimiter:        NewRateLimiter(config.Server.RateLimitRequestsPerSecond, config.Server.RateLimitBurst, config.Server.RateLimitTTL, config.Server.RateLimitCleanupInterval),
 		healthServer:       healthServer,
 		prometheusRecorder: prom,
 		gatherer:           gatherer,

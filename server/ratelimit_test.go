@@ -10,7 +10,7 @@ import (
 
 func TestRateLimiter_Allow(t *testing.T) {
 	t.Run("allows requests under the limit", func(t *testing.T) {
-		rl := NewRateLimiter(10, 10)
+		rl := NewRateLimiter(10, 10, 5*time.Minute, time.Minute)
 
 		for range 10 {
 			require.True(t, rl.Allow("192.168.1.1"))
@@ -18,7 +18,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	})
 
 	t.Run("blocks requests over the limit", func(t *testing.T) {
-		rl := NewRateLimiter(2, 2)
+		rl := NewRateLimiter(2, 2, 5*time.Minute, time.Minute)
 
 		require.True(t, rl.Allow("192.168.1.1"))
 		require.True(t, rl.Allow("192.168.1.1"))
@@ -26,7 +26,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	})
 
 	t.Run("tracks different IPs separately", func(t *testing.T) {
-		rl := NewRateLimiter(1, 1)
+		rl := NewRateLimiter(1, 1, 5*time.Minute, time.Minute)
 
 		require.True(t, rl.Allow("192.168.1.1"))
 		require.True(t, rl.Allow("192.168.1.2"))
@@ -36,7 +36,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	})
 
 	t.Run("refills tokens over time", func(t *testing.T) {
-		rl := NewRateLimiter(10, 1)
+		rl := NewRateLimiter(10, 1, 5*time.Minute, time.Minute)
 
 		require.True(t, rl.Allow("192.168.1.1"))
 		require.False(t, rl.Allow("192.168.1.1"))
@@ -47,7 +47,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 	})
 
 	t.Run("evicts stale entries", func(t *testing.T) {
-		rl := NewRateLimiterWithTTL(10, 10, 100*time.Millisecond, 50*time.Millisecond)
+		rl := NewRateLimiter(10, 10, 100*time.Millisecond, 50*time.Millisecond)
 
 		ctx, cancel := context.WithCancel(t.Context())
 		rl.Start(ctx)

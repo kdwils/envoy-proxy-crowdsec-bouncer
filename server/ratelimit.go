@@ -8,11 +8,6 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const (
-	defaultRateLimiterTTL           = 5 * time.Minute
-	defaultRateLimiterCleanupInterval = time.Minute
-)
-
 type rateLimiterEntry struct {
 	limiter  *rate.Limiter
 	lastUsed time.Time
@@ -25,11 +20,7 @@ type RateLimiter struct {
 	ttl      time.Duration
 }
 
-func NewRateLimiter(requestsPerSecond float64, burst int) *RateLimiter {
-	return NewRateLimiterWithTTL(requestsPerSecond, burst, defaultRateLimiterTTL, defaultRateLimiterCleanupInterval)
-}
-
-func NewRateLimiterWithTTL(requestsPerSecond float64, burst int, ttl, cleanupInterval time.Duration) *RateLimiter {
+func NewRateLimiter(requestsPerSecond float64, burst int, ttl, cleanupInterval time.Duration) *RateLimiter {
 	rl := &RateLimiter{
 		rate:  rate.Limit(requestsPerSecond),
 		burst: burst,
