@@ -49,6 +49,11 @@ type Server struct {
 	HTTPWriteTimeout   time.Duration `yaml:"httpWriteTimeout" json:"httpWriteTimeout"`
 	HTTPIdleTimeout    time.Duration `yaml:"httpIdleTimeout" json:"httpIdleTimeout"`
 	HTTPMaxHeaderBytes int           `yaml:"httpMaxHeaderBytes" json:"httpMaxHeaderBytes"`
+
+	RateLimitRequestsPerSecond float64       `yaml:"rateLimitRequestsPerSecond" json:"rateLimitRequestsPerSecond"`
+	RateLimitBurst             int           `yaml:"rateLimitBurst" json:"rateLimitBurst"`
+	RateLimitTTL               time.Duration `yaml:"rateLimitTTL" json:"rateLimitTTL"`
+	RateLimitCleanupInterval   time.Duration `yaml:"rateLimitCleanupInterval" json:"rateLimitCleanupInterval"`
 }
 
 type Captcha struct {
@@ -221,6 +226,10 @@ func GetViper(cfgFile string) *viper.Viper {
 	v.SetDefault("server.httpWriteTimeout", "10s")
 	v.SetDefault("server.httpIdleTimeout", "120s")
 	v.SetDefault("server.httpMaxHeaderBytes", 1<<20)
+	v.SetDefault("server.rateLimitRequestsPerSecond", 10.0)
+	v.SetDefault("server.rateLimitBurst", 20)
+	v.SetDefault("server.rateLimitTTL", "5m")
+	v.SetDefault("server.rateLimitCleanupInterval", "1m")
 
 	v.SetDefault("bouncer.apiKey", "")
 	v.SetDefault("bouncer.lapiURL", "")
