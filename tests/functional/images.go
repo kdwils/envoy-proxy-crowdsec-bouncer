@@ -17,4 +17,5 @@ var CrowdsecImages = []CrowdsecImage{
 	{Tag: "crowdsecurity/crowdsec:v1.7.8"},
 	{Tag: "crowdsecurity/crowdsec:v1.8.0", SupportsBotChallenge: true},
 	{Tag: "crowdsecurity/crowdsec:v1.8.1", SupportsBotChallenge: true},
+	{Tag: "crowdsecurity/crowdsec:v1.8.2", SupportsBotChallenge: true},
 }

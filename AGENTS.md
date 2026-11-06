@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Envoy ext_authz service (Go 1.26, module `github.com/kdwils/envoy-proxy-bouncer`) that bounces malicious traffic using CrowdSec: streamed IP decisions (ban/captcha), AppSec WAF inspection, and CAPTCHA challenges (reCAPTCHA v2, Cloudflare Turnstile).
+Envoy ext_authz service (Go 1.27, module `github.com/kdwils/envoy-proxy-bouncer`) that bounces malicious traffic using CrowdSec: streamed IP decisions (ban/captcha), AppSec WAF inspection, and CAPTCHA challenges (reCAPTCHA v2, Cloudflare Turnstile).
 
 ## Project map
 
