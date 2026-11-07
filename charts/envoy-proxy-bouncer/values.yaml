@@ -38,6 +38,14 @@ config:
     grpcPort: 8080 # @schema default: 8080
     httpPort: 8081 # @schema default: 8081
     logLevel: "info" # @schema default: "info"
+    httpReadTimeout: "5s" # @schema default: "5s"
+    httpWriteTimeout: "10s" # @schema default: "10s"
+    httpIdleTimeout: "120s" # @schema default: "120s"
+    httpMaxHeaderBytes: 1048576 # @schema default: 1048576
+    rateLimitRequestsPerSecond: 10.0 # @schema default: 10.0
+    rateLimitBurst: 20 # @schema default: 20
+    rateLimitTTL: "5m" # @schema default: "5m"
+    rateLimitCleanupInterval: "1m" # @schema default: "1m"
 
   trustedProxies: [] # @schema default: []
   exemptIPs: [] # @schema default: []
@@ -86,7 +94,7 @@ config:
     #     port: 7423
     routes: [] # @schema default: []
 
-  # enable endpoint for prometheus metrics scraping on the configured port
+  # enable endpoint for prometheus metrics s`craping on the configured port
   prometheus:
     enabled: false # @schema default: false
     port: 9090 # @schema default: 9090

@@ -67,7 +67,12 @@ release:
     owner: kdwils
     name: envoy-proxy-crowdsec-bouncer
   header: |
-    - The bouncer now returns gRPC `Unavailable` for authorization checks until the first decision sync completes, preventing traffic from being allowed through an uninitialized decision cache. After the initial sync, behavior returns to normal.
-    - Builder image updated to Go 1.26.10 to address a toolchain vulnerability.
+    - Added configurable HTTP server timeouts (`httpReadTimeout`, `httpWriteTimeout`, `httpIdleTimeout`, `httpMaxHeaderBytes`) and per-IP rate limiter tuning (`rateLimitRequestsPerSecond`, `rateLimitBurst`, `rateLimitTTL`, `rateLimitCleanupInterval`) under the `server` config block.
+    - Fixed cache cleanup to reduce lock contention by collecting expired keys under a read lock before deleting.
+    - Fixed per-IP rate limiter memory growth by evicting stale limiter entries based on TTL.
+    - Fixed webhook dispatches to respect the caller context cancellation instead of using a detached background context.
+    - Added Helm Grafana dashboard ConfigMap to render `grafana.dashboard.annotations` when set.
+    - Added CrowdSec v1.8.2 to the tested image matrix.
+    - Builder image updated to Go 1.27.3, bumped packages to CrowdSec v1.8.2
   footer: |
     **Full Changelog**: https://github.com/kdwils/envoy-proxy-crowdsec-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}
