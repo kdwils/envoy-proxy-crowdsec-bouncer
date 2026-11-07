@@ -2,6 +2,14 @@ server:
   grpcPort: 8080
   httpPort: 8081
   logLevel: "info"
+  httpReadTimeout: "5s"
+  httpWriteTimeout: "10s"
+  httpIdleTimeout: "120s"
+  httpMaxHeaderBytes: 1048576
+  rateLimitRequestsPerSecond: 10.0
+  rateLimitBurst: 20
+  rateLimitTTL: "5m"
+  rateLimitCleanupInterval: "1m"
 
 trustedProxies:
   - 10.0.0.0/8

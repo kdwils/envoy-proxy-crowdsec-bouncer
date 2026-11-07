@@ -19,18 +19,42 @@ See [example.yaml](./examples/config/example.yaml) for a complete configuration 
 | `grpcPort` | int | `8080` | Port for gRPC ext_authz server (Envoy integration) |
 | `httpPort` | int | `8081` | Port for HTTP server (CAPTCHA endpoints) |
 | `logLevel` | string | `"info"` | Log level: `debug`, `info`, `warn`, `error` |
+| `httpReadTimeout` | duration | `"5s"` | HTTP server read timeout |
+| `httpWriteTimeout` | duration | `"10s"` | HTTP server write timeout |
+| `httpIdleTimeout` | duration | `"120s"` | HTTP server idle timeout |
+| `httpMaxHeaderBytes` | int | `1048576` | Maximum HTTP request header bytes |
+| `rateLimitRequestsPerSecond` | float | `10.0` | Per-IP rate limit: requests per second |
+| `rateLimitBurst` | int | `20` | Per-IP rate limit: burst size |
+| `rateLimitTTL` | duration | `"5m"` | Time after last use before a per-IP limiter entry is evicted |
+| `rateLimitCleanupInterval` | duration | `"1m"` | Interval to scan for and evict stale per-IP limiter entries |
 
 ```yaml
 server:
   grpcPort: 8080
   httpPort: 8081
   logLevel: "info"
+  httpReadTimeout: "5s"
+  httpWriteTimeout: "10s"
+  httpIdleTimeout: "120s"
+  httpMaxHeaderBytes: 1048576
+  rateLimitRequestsPerSecond: 10.0
+  rateLimitBurst: 20
+  rateLimitTTL: "5m"
+  rateLimitCleanupInterval: "1m"
 ```
 
 ```bash
 export ENVOY_BOUNCER_SERVER_GRPCPORT=8080
 export ENVOY_BOUNCER_SERVER_HTTPPORT=8081
 export ENVOY_BOUNCER_SERVER_LOGLEVEL=info
+export ENVOY_BOUNCER_SERVER_HTTPREADTIMEOUT=5s
+export ENVOY_BOUNCER_SERVER_HTTPWRITETIMEOUT=10s
+export ENVOY_BOUNCER_SERVER_HTTPIDLETIMEOUT=120s
+export ENVOY_BOUNCER_SERVER_HTTPMAXHEADERBYTES=1048576
+export ENVOY_BOUNCER_SERVER_RATELIMITREQUESTSPERSECOND=10.0
+export ENVOY_BOUNCER_SERVER_RATELIMITBURST=20
+export ENVOY_BOUNCER_SERVER_RATELIMITTTL=5m
+export ENVOY_BOUNCER_SERVER_RATELIMITCLEANUPINTERVAL=1m
 ```
 
 ## Bouncer

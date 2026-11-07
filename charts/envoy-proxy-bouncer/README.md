@@ -1,6 +1,6 @@
 # envoy-proxy-bouncer
 
-![Version: 0.8.3](https://img.shields.io/badge/Version-0.8.3-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.8.3](https://img.shields.io/badge/AppVersion-v0.8.3-informational?style=flat-square)
+![Version: 0.8.4](https://img.shields.io/badge/Version-0.8.4-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: v0.8.4](https://img.shields.io/badge/AppVersion-v0.8.4-informational?style=flat-square)
 
 A Helm chart for CrowdSec Envoy Proxy Bouncer
 
@@ -62,6 +62,14 @@ A Helm chart for CrowdSec Envoy Proxy Bouncer
 | config.server.grpcPort | int | `8080` |  |
 | config.server.httpPort | int | `8081` |  |
 | config.server.logLevel | string | `"info"` |  |
+| config.server.httpReadTimeout | string | `"5s"` |  |
+| config.server.httpWriteTimeout | string | `"10s"` |  |
+| config.server.httpIdleTimeout | string | `"120s"` |  |
+| config.server.httpMaxHeaderBytes | int | `1048576` |  |
+| config.server.rateLimitRequestsPerSecond | float | `10.0` |  |
+| config.server.rateLimitBurst | int | `20` |  |
+| config.server.rateLimitTTL | string | `"5m"` |  |
+| config.server.rateLimitCleanupInterval | string | `"1m"` |  |
 | config.templates.captchaTemplateHeaders | string | `""` |  |
 | config.templates.captchaTemplatePath | string | `""` |  |
 | config.templates.deniedTemplateHeaders | string | `""` |  |
