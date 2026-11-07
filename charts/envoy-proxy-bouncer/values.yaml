@@ -94,7 +94,7 @@ config:
     #     port: 7423
     routes: [] # @schema default: []
 
-  # enable endpoint for prometheus metrics s`craping on the configured port
+  # enable endpoint for prometheus metrics scraping on the configured port
   prometheus:
     enabled: false # @schema default: false
     port: 9090 # @schema default: 9090
