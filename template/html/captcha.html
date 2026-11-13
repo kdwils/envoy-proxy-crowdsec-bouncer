@@ -74,6 +74,7 @@
     <div class="container">
         <h1 class="title">Security Verification</h1>
         <p class="description">Please complete the security verification to continue.</p>
+        <p id="cap-status" class="description" style="display:none;">Verifying your browser…</p>
 
         <form id="captcha-form" method="POST" action="{{.CallbackURL}}/verify">
             <div id="captcha-container"></div>
@@ -125,6 +126,24 @@
                 sitekey: '{{.SiteKey}}',
                 callback: onTurnstileSuccess,
                 'error-callback': onTurnstileError
+            });
+        };
+    </script>
+    {{else if eq .Provider "cap"}}
+    <script src="https://cdn.jsdelivr.net/npm/cap-widget" defer></script>
+    <script>
+        window.onload = function () {
+            document.getElementById('captcha-container').style.display = 'none';
+            document.getElementById('submit-btn').style.display = 'none';
+            document.getElementById('cap-status').style.display = 'block';
+
+            var cap = new Cap({ apiEndpoint: '{{.ServerURL}}/{{.SiteKey}}/' });
+            cap.solve().then(function (result) {
+                document.getElementById('captcha-response').value = result.token;
+                document.getElementById('captcha-form').submit();
+            }).catch(function () {
+                document.getElementById('cap-status').style.display = 'none';
+                showError('Verification failed. Please try again.');
             });
         };
     </script>
