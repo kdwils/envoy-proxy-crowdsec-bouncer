@@ -445,6 +445,7 @@ func (s *Server) buildDeniedTemplateData(result bouncer.CheckedRequest) template
 		Scheme:   parsed.URL.Scheme,
 		Protocol: fmt.Sprintf("HTTP/%d.%d", parsed.ProtoMajor, parsed.ProtoMinor),
 		URL:      parsed.URL.String(),
+		ID:       parsed.ID,
 	}
 
 	return data

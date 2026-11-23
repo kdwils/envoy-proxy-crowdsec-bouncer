@@ -100,6 +100,7 @@ func wantParsed(ip, scheme, authority, path, method string, body []byte, protoMa
 		Body:       body,
 		ProtoMajor: protoMajor,
 		ProtoMinor: protoMinor,
+		ID:         "",
 	}
 }
 
@@ -616,6 +617,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   0,
 				ProtoMinor:   0,
+				ID:           "",
 			},
 		},
 		{
@@ -633,6 +635,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   0,
 				ProtoMinor:   0,
+				ID:           "",
 			},
 		},
 		{
@@ -661,6 +664,7 @@ func TestParseCheckRequest(t *testing.T) {
 							},
 							Protocol: "HTTP/1.1",
 							Body:     "bodydata",
+							Id:       "req-123",
 						},
 					},
 				},
@@ -677,6 +681,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
+				ID:           "req-123",
 			},
 		},
 		{
@@ -719,6 +724,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   2,
 				ProtoMinor:   0,
+				ID:           "",
 			},
 		},
 		{
@@ -761,6 +767,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   2,
 				ProtoMinor:   0,
+				ID:           "",
 			},
 		},
 		{
@@ -803,6 +810,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
+				ID:           "",
 			},
 		},
 		{
@@ -845,6 +853,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
+				ID:           "",
 			},
 		},
 		{
@@ -887,6 +896,7 @@ func TestParseCheckRequest(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   1,
 				ProtoMinor:   1,
+				ID:           "",
 			},
 		},
 	}
@@ -935,6 +945,7 @@ func TestParseCheckRequest_TrustedIPHeader(t *testing.T) {
 		Body:         nil,
 		ProtoMajor:   1,
 		ProtoMinor:   1,
+		ID:           "",
 	}
 	assert.Equal(t, want, got)
 }
@@ -960,6 +971,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   1,
 			ProtoMinor:   1,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 
@@ -990,6 +1002,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   1,
 			ProtoMinor:   1,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 	})
@@ -1014,6 +1027,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   1,
 			ProtoMinor:   1,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 
@@ -1101,6 +1115,7 @@ func TestBouncer_Check(t *testing.T) {
 				Body:         nil,
 				ProtoMajor:   2,
 				ProtoMinor:   0,
+				ID:           "",
 			},
 			CaptchaSession:  nil,
 			ResponseBody:    "<html>challenge</html>",
@@ -1311,6 +1326,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   2,
 			ProtoMinor:   0,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 	})
@@ -1335,6 +1351,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   2,
 			ProtoMinor:   0,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 	})
@@ -1435,6 +1452,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   1,
 			ProtoMinor:   1,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 	})
@@ -1576,6 +1594,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   1,
 			ProtoMinor:   1,
+			ID:           "",
 		}, session)
 		assert.Equal(t, want, got)
 	})
@@ -1600,6 +1619,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   1,
 			ProtoMinor:   1,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 	})
@@ -1624,6 +1644,7 @@ func TestBouncer_Check(t *testing.T) {
 			Body:         nil,
 			ProtoMajor:   1,
 			ProtoMinor:   1,
+			ID:           "",
 		}, nil)
 		assert.Equal(t, want, got)
 	})

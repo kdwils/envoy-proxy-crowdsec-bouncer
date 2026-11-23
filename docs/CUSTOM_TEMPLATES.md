@@ -48,6 +48,7 @@ Available fields (`DeniedTemplateData`):
 | `.Request.Scheme` | string | `"https"` |
 | `.Request.Protocol` | string | `"HTTP/1.1"` |
 | `.Request.URL` | string | `"https://example.com/api/users"` |
+| `.Request.ID` | string | `"a1b2c3d4-e5f6-7890-abcd-ef1234567890"` (Envoy request ID, same as `x-request-id`; empty if Envoy sends none) |
 | `.Decision` | *models.Decision | may be nil |
 
 When `.Decision` is not nil:

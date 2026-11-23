@@ -79,6 +79,7 @@ type DeniedRequest struct {
 	Scheme   string
 	Protocol string
 	URL      string
+	ID       string
 }
 
 func (s *Store) RenderDenied(data DeniedTemplateData) (string, error) {
