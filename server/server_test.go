@@ -334,6 +334,62 @@ func TestServer_Check(t *testing.T) {
 		}
 	})
 
+	t.Run("denied template data includes request ID", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockBouncer := mocks.NewMockBouncer(ctrl)
+		mockBouncer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(bouncer.CheckedRequest{
+			Action:     "ban",
+			Reason:     "crowdsecurity/http-bad",
+			HTTPStatus: 403,
+			Decision:   nil,
+			IP:         "192.0.2.1",
+			ParsedRequest: &bouncer.ParsedRequest{
+				Method: "GET",
+				URL: url.URL{
+					Scheme: "https",
+					Host:   "example.com",
+					Path:   "/blocked",
+				},
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				ID:         "9b2f7c1e-4d3a-4f8e-b6a5-1c0d2e3f4a5b",
+			},
+		})
+
+		var got template.DeniedTemplateData
+		mockTemplateStore := mocks.NewMockTemplateStore(ctrl)
+		mockTemplateStore.EXPECT().RenderDenied(gomock.Any()).Do(func(data template.DeniedTemplateData) {
+			got = data
+		}).Return("denied", nil)
+
+		s := NewServer(getDefaultConfig(), mockBouncer, nil, webhook.NewNoopNotifier(), mockTemplateStore, log, recorder.NewNoOp(), nil)
+		fixedTime := time.Date(2023, 12, 25, 10, 30, 0, 0, time.UTC)
+		s.now = func() time.Time { return fixedTime }
+
+		_, err := s.Check(t.Context(), &auth.CheckRequest{})
+		require.NoError(t, err)
+
+		want := template.DeniedTemplateData{
+			IP:        "192.0.2.1",
+			Reason:    "crowdsecurity/http-bad",
+			Action:    "ban",
+			Timestamp: fixedTime,
+			Request: template.DeniedRequest{
+				Method:   "GET",
+				Path:     "/blocked",
+				Host:     "example.com",
+				Scheme:   "https",
+				Protocol: "HTTP/1.1",
+				URL:      "https://example.com/blocked",
+				ID:       "9b2f7c1e-4d3a-4f8e-b6a5-1c0d2e3f4a5b",
+			},
+			Decision: nil,
+		}
+		assert.Equal(t, want, got)
+	})
+
 	t.Run("notifies even when action is error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()

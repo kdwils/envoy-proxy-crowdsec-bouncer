@@ -337,6 +337,7 @@ type ParsedRequest struct {
 	Body         []byte
 	ProtoMajor   int
 	ProtoMinor   int
+	ID           string
 }
 
 func (e *ParseError) Error() string { return e.Reason }
@@ -685,6 +686,8 @@ func (b *Bouncer) ParseCheckRequest(ctx context.Context, req *auth.CheckRequest)
 	if httpRequest == nil {
 		return parsedRequest
 	}
+
+	parsedRequest.ID = httpRequest.GetId()
 
 	var xForwardedFor, xRealIP, trustedValue, cookieHeader string
 	for k, v := range httpRequest.Headers {
